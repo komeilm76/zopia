@@ -127,7 +127,7 @@ export interface ApiModel {
 export interface OperationModel {
   id: string;            // 🆔 operationId, or derived (see 07 → Naming)
   path: string;          // 🛣️  OpenAPI style: /admin/users/{id}
-  method: HttpMethod;    // 🧭  get | post | put | delete | patch | head | options | trace
+  method: HttpMethod;    // 🧭  the seven km-api methods: get | post | put | delete | patch | head | options (no `trace` — R-642)
   summary?: string;      // 📝
   description?: string;  // 📝 (Markdown allowed)
   tags: string[];        // 🏷️
@@ -176,7 +176,7 @@ export interface ParameterModel {
 | 📦 Where | 📏 Order |
 | --- | --- |
 | `ApiModel.operations` | document order of the source spec |
-| emitted files (listing) | sorted by `(path, method)` — method order: `get, put, post, delete, options, head, patch, trace` |
+| emitted files (listing) | sorted by `(path, method)` — method order: `get, put, post, delete, options, head, patch` (the seven km-api methods — no `trace`, see R-642) |
 | schema properties | document order (JSON object key order of the source) |
 | OpenAPI output document | `openapi, info, servers, security, tags, paths, components, externalDocs` |
 | path keys inside `paths` | sorted by path string |
@@ -185,8 +185,9 @@ export interface ParameterModel {
 > applies. Anywhere zopia *mirrors* source data (properties, params), the
 > source order applies. No `Date.now()`, no `Math.random()` anywhere in the
 > package (P-1). Value-level normalizations (Zod sentinel bounds, const-union →
-> `enum`, defaulted keys in `required`) live with the engines that apply them —
-> see [Conversions → R-618 / R-654](06-conversions.md).
+> `enum`, the `io` input/output split for `required`/`default`) live with the
+> engines that apply them — see
+> [Conversions → R-615 / R-618 / R-654](06-conversions.md).
 
 ## 🔗 The reference graph
 
@@ -213,7 +214,11 @@ flowchart LR
    (component mode) or an inlined copy (default mode).
 
 > 📌 **Rule R-402** — circular schemas never fail: they always become
-> `z.lazy()`. Linear refs become direct references/imports.
+> `z.lazy()`. Linear refs become direct references/imports. **Scope:** graph
+> nodes are *schema* components only; refs to reusable non-schema objects
+> (Swagger 2.0 global `parameters`/`responses`, OpenAPI 3 `components.parameters`
+> /`responses`/`examples`) are **inlined by the normalizer** before the graph is
+> built (Phase 1 — see [Roadmap Phase 2](03-roadmap.md)).
 
 ## 🧮 Schema deduplication (within one file)
 
@@ -253,6 +258,7 @@ export interface ZopiaError extends Error {
 | `ZOPIA_SPEC_INVALID_JSON` | engine ③ entry | input is not valid JSON | "fix the syntax at …" |
 | `ZOPIA_SPEC_UNSUPPORTED_VERSION` | `detect()` | neither `swagger: "2.0"` nor `openapi: "3.x"` | "supported: swagger 2.0, openapi 3.0/3.1" |
 | `ZOPIA_SPEC_MISSING_PATHS` | normalizers | document has no `paths` | — |
+| `ZOPIA_SPEC_PATH_REF` | normalizers | 3.1 path item is a `$ref` (the 3.1 "leading $ref" feature) | "path-item refs land in Phase 2" |
 | `ZOPIA_REF_NOT_FOUND` | `refs()` | `$ref` points to nothing | "check #/components/schemas/…" |
 | `ZOPIA_REF_EXTERNAL` | `refs()` | `$ref` points to another file (Phase 1) | "multi-file refs land in Phase 2" |
 | `ZOPIA_DOCS_MISSING_MANIFEST` | engine ④ | no `.zopia-manifest.json` in docs dir | "generate first, or pass …" |

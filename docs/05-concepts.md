@@ -59,6 +59,7 @@ Recognized by `"openapi": "3.1.x"`. Same shape as 3.0, but:
 - 🌗 Nullability via `"type": ["string", "null"]` — `nullable` is removed
 - 📸 `examples` (array) replaces `example`; `const` is allowed
 - 🧮 `exclusiveMinimum/Maximum` are **numbers** (were booleans in draft-04/07)
+- 🪝 adds `webhooks` (not paths — Phase 2, warning in Phase 1) and path items may *be* a `$ref` (`ZOPIA_SPEC_PATH_REF` in Phase 1)
 - 📌 zopia treats 3.0 and 3.1 with the same normalizer + a small dialect shim
 
 ### 📐 JSON Schema
@@ -105,6 +106,7 @@ depends on Zod **v4** idioms — *not* v3 — throughout:
 | `z.intersection(a, b)` | `allOf` |
 | `z.tuple([...])` | `prefixItems` / tuple `items` |
 | `z.lazy(() => …)` | circular `$ref`s (R-402) |
+| `.meta({ title, description, examples, … })` / `z.globalRegistry` | **all** metadata fields are copied verbatim into the JSON Schema output (verified); ⚠️ never set the `id` key — it triggers `$def` extraction |
 | `z.object({…})` + `.strict()` / `.catchall(s)` / `.optional()` / `.default(v)` | objects, `additionalProperties`, `required`, `default` |
 | `.min()` / `.max()` / `.int()` / `.regex()` / `.multipleOf()` | string/number/array constraints |
 
@@ -148,6 +150,24 @@ normalize paths back to `{param}` form.
 > No zopia runtime is imported by generated code (the tree is self-contained
 > unless `useComponentAsReference` is on — even then, only local files are
 > imported).
+
+### 🚧 km-api's closed unions (read from the `0.3.3` source)
+
+`makeApiConfig` is a **type-level factory** — it does no runtime validation, so
+the closed unions below are enforced whenever a consumer project **typechecks**
+the generated tree. zopia emits only what these unions accept (R-642):
+
+| 🧩 Union | 📏 Contents | ⚠️ Not included |
+| --- | --- | --- |
+| `IMethod` | `get/post/put/delete/patch/head/options` (each case-insensitive: `GET`, `Get`, …) | **`trace`** — TRACE operations are skipped + warned (R-642a) |
+| `IHttpStatusCode` | the standard 2xx/3xx/4xx/5xx literals (response keys, numeric or string) | **`419`, `427`, `444`, `499`, `509`, `512+` and the `default` key** — such responses go to the manifest `responseOverlay` (R-642b) |
+| `IResponseContentType` / `IRequestContentType` | closed MIME unions (`application/json`, `multipart/form-data`, office/image/audio/video types, …) | exotic types (`application/vnd.custom+json`, `text/event-stream`, …) — field omitted, actual media type kept in the manifest (R-642c) |
+
+Other fixed shapes (source-verified): `ITags` = strings **prefixed with `#`**;
+`IPath` = string starting with `/`; `auth`/`disable` = `'YES' | 'NO'`;
+`request.body` is required (any Zod schema), `params/query/headers/cookies`
+required Zod objects; `operationId` is **not** a km-api field — zopia uses it
+only for the export identifier (R-732) and the manifest.
 
 ### 📂 api docs
 

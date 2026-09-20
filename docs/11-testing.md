@@ -49,7 +49,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-04 | OpenAPI 3.0 — cookie params, requestBody, `nullable: true`, single `example` | ③ v3 table |
 | S-05 | OpenAPI 3.1 — `type: [t, "null"]`, `const`, numeric `exclusiveMinimum`, `prefixItems`, `examples` array | R-503 |
 | S-06 | Both dialects — `deprecated`, tags with descriptions, multiple servers | R-641 |
-| S-07 | Error inputs — invalid JSON, unknown version, missing `paths`, unknown/external `$ref` | error model (R-404) |
+| S-07 | Error inputs — invalid JSON, unknown version, missing `paths`, unknown/external `$ref`, 3.1 path-item `$ref` (`ZOPIA_SPEC_PATH_REF`) | error model (R-404) |
 
 ### 🔗 Ref-graph scenarios
 
@@ -70,6 +70,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-23 | flat name collision → `-2` suffix | R-722 |
 | S-24 | path with a literal segment equal to a method name (`/users/get`) | R-714 |
 | S-25 | deep paths (5+ segments) & params at every level | R-711 |
+| S-26 | `TRACE` operation → skipped, warning `ZOPIA_WARN_TRACE`, manifest `skipped[]` entry, omitted from tree & reversed spec | R-642a |
 
 ### ⚙️ Option scenarios
 
@@ -85,7 +86,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 
 | # | Scenario |
 | --- | --- |
-| S-41 | every string format of R-627 (email, uuid, url/uri alias, hostname, ipv4/6, date-time, date, time, duration) + custom formats → `z.string()` + warning + overlay |
+| S-41 | every format row of R-627 (email, uuid, url/uri alias, hostname, ipv4/6, date-time, date, time, duration, `byte` → `z.base64()`) + unmapped formats (password, binary, int32/64, float, double, …) → base type + warning + overlay |
 | S-42 | every numeric/string/array constraint of R-628 (min/max, int, regex, multipleOf, exclusive bounds both forms) |
 | S-43 | enum (string/non-string), const, nullable (both spellings), tuples (both spellings) |
 | S-44 | objects: required/optional, `additionalProperties` (false/schema/true), defaults, catchall |
@@ -95,7 +96,8 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-48 | ① unrepresentable (transforms, functions, NaN, `z.set`) → `{}` + warning (R-614) |
 | S-49 | ② cross-check: generated code's runtime schema behaves like `z.fromJSONSchema()`'s (experimental) one on the fixture set |
 | S-50 | ②/① determinism — same input ⇒ identical output, twice in a row |
-| S-51 | ①/④ value normalizations — sentinel integer bounds stripped (R-618), const-literal unions → `enum`, defaulted keys dropped from `required` (R-654) — asserted before the round-trip comparison |
+| S-51 | ①/④ value normalizations — sentinel integer bounds stripped (R-618), const-literal unions → `enum` (R-654) — asserted before the round-trip comparison |
+| S-52 | `io: 'input'` request conversion (R-615) — defaulted request fields stay out of `required`, transformed request fields convert to their *input* type; response schemas use `io: 'output'` |
 
 ### 🔁 Reverse-conversion scenarios (engine ④)
 
@@ -108,6 +110,9 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-65 | missing manifest / renamed file / broken export → typed errors | R-651/R-652 |
 | S-66 | metadata restoration — titles, examples, servers, tag descriptions, security schemes, multi-content types come back verbatim | R-656/R-657 + honest-limits table |
 | S-67 | idempotence — `reverse(generate(spec))` then `generate(…)` ⇒ identical tree (T-11) | R-409 |
+| S-68 | non-standard status (`419`) + `default` response → manifest `responseOverlay`, absent from code, re-emitted verbatim on reverse | R-642b |
+| S-69 | exotic media type (`application/vnd.custom+json`) → km-api field omitted, manifest media type used as the `content` key on reverse | R-642c |
+| S-70 | parameter extras (`allowEmptyValue`, `style`, `explode`) + response `headers` → overlay/`responseOverlay`, restored verbatim on reverse | R-635/R-754 |
 
 ## 🔄 Round-trip property tests
 
@@ -175,6 +180,7 @@ tested — a warning that never fires in tests is a red flag, not a shrug.
 | R-123 | **Errors assert on `code`** (R-404), never on message text |
 | R-124 | **New rule ⇒ new test** — adding an R-… row to any doc requires the matching test in the same PR |
 | R-125 | **No skipped tests in main** — `it.skip` is allowed only with a linked issue and a removal date |
+| R-126 | **Golden trees typecheck** — the contract suite runs `tsc` over the golden `api_docs` trees against the installed km-api: km-api's closed unions (method, status codes, content types) are type-level only (R-642), so this is the gate that proves generated code is valid km-api |
 
 ## 🔗 Next
 

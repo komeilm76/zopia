@@ -66,6 +66,10 @@ A Phase 1 release is complete when **all** of the following hold:
 - 🧪 More JSON Schema keywords — `patternProperties`, `if/then/else`,
   `minProperties/maxProperties`, `propertyNames`, `contains`
   (Phase 1: documented approximation + warning, D-12)
+- 🪝 3.1 `webhooks` support and path-item `$ref` (Phase 1: warning / typed error)
+- 🧩 km-api union extensions — `TRACE` method, custom status codes, open
+  content types, emitted reusable parameters/responses (Phase 1: manifest
+  preserves them — R-642; unlocks once km-api adds them)
 - 👀 **Watch mode** — `zopia generate --watch` for spec-driven development
 
 ## 🌌 Phase 3 — Ecosystem (v0.3+)

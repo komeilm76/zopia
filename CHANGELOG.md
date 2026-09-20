@@ -33,6 +33,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- 🏛️ Deeper review against primary sources (zod.dev, km-api `0.3.3` source,
+  OpenAPI specs) — second round:
+  - **km-api closed unions are now the documented emission boundary (R-642,
+    D-14)** — read from `km-api`'s source: `IMethod` has **no `trace`**
+    (TRACE operations are skipped + manifest `skipped[]`);
+    `IHttpStatusCode` excludes `419`/`427`/`444`/`499`/`509`/`512+` **and
+    `default`** (such responses → manifest `responseOverlay`); content types
+    are closed unions (exotic media types → field omitted, actual type kept
+    in the manifest)
+  - new manifest keys: `skipped`, `apis[].requestMediaType` /
+    `responseMediaType`, `apis[].responseOverlay` (R-754)
+  - engine ① adopts Zod's native **`io` parameter** (R-615): request schemas
+    convert with `io: 'input'` (defaulted fields naturally stay out of
+    `required`), responses with `io: 'output'` — replaces the ad-hoc
+    `required` normalization
+  - R-614 now lists Zod's **official unrepresentable set** (incl.
+    `z.void()`, `z.date()`, `z.int64()`, …); 204 → `z.void()` explicitly
+    detected *before* engine ① (R-654)
+  - R-612/R-633: metadata flows through **`.meta({ title, description,
+    examples })`** (verified verbatim in output), not comments
+  - `format: 'byte'` → `z.base64()`; unmapped formats generalized to any base
+    type; Swagger 2.0 `int32/int64` primitive params pinned (with
+    `ZOPIA_WARN_INT64`)
+  - non-schema refs (reusable parameters/responses) inlined by the normalizer
+    (R-402 scope); 3.1 path-item `$ref` → `ZOPIA_SPEC_PATH_REF`; 3.1
+    `webhooks` → warning
+  - km-api cheatsheet: source-verified closed-union table, type-level-only
+    `makeApiConfig`, `operationId` is not a km-api field
+  - new test scenarios S-26/S-52/S-68…S-70 and rule R-126 (golden trees must
+    **typecheck** against installed km-api)
 - 📐 Document review against the real libraries (Zod **4.6.5**, run locally):
   - engine ① now specifies **R-618** — stripping of Zod's redundant
     built-in `format`+`pattern` pairs and safe-integer sentinel bounds

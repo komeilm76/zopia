@@ -155,7 +155,7 @@ export function openApiToApiDocs(
 | 📦 Dep | 🏷️ Kind | 📝 Rule |
 | --- | --- | --- |
 | `zod` `^4` | peer + dev | generated code needs it; tests need it |
-| `km-api` `^0.3` (latest) | peer + dev | generated code imports it; tests execute it |
+| `km-api` `^0.3` (latest) | peer + dev | generated code imports it; tests execute it — its closed unions (method/status/content-type) are part of zopia's output contract (D-14) |
 | *(nothing else at runtime)* | — | **zero runtime dependencies** in Phase 1 (D-11); every new runtime dep needs a D-… decision |
 
 ## 🔑 Key decisions
@@ -178,6 +178,7 @@ export function openApiToApiDocs(
 | **D-11** | 📦 zero runtime dependencies (Phase 1) | `zod` + `km-api` are peers of the *generated* code; a small surface = small attack area (P-6) |
 | **D-12** | ⚠️ unsupported keywords never fail silently — warning + nearest approximation + `// @zopia:warn` marker + manifest record | "pure, safe, clean" means *visible* loss; the reverse conversion restores the original verbatim from the manifest |
 | **D-13** | 📝 Phase 1 input is JSON only (YAML, external refs, server variables → Phase 2) | keeps the v0.1.0 contract tight; every deferral is listed in [Roadmap](03-roadmap.md) with a date-like horizon |
+| **D-14** | 🚧 km-api's **closed unions are the emission boundary** — zopia emits only what km-api `0.3.x`'s *types* accept (`IMethod` without `trace`, the `IHttpStatusCode` set, closed content-type unions); everything else is preserved in the manifest (`skipped`, `responseOverlay`, actual media types) and re-emitted on the reverse trip (R-642/R-754) | `makeApiConfig` is a type-level factory (no runtime validation), so the real contract is "the generated tree typechecks" — enforced by the golden-tree contract test (R-126). Re-verify the unions against km-api's source on every km-api bump |
 
 ## 🔗 Back to
 
