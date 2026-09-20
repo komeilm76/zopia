@@ -170,7 +170,7 @@ export function openApiToApiDocs(
 | **D-03** | ① builds on Zod v4's built-in `z.toJSONSchema()` | the third-party `zod-to-json-schema` is deprecated (Nov 2025); Zod v4 is self-sufficient; fewer deps (D-11) |
 | **D-04** | ② is a custom emitter (Zod's experimental `z.fromJSONSchema()` is test-only) | we control the *style* of emitted code (the product surface); experimental APIs don't sit on an output path; `z.fromJSONSchema` still cross-checks us in S-49 |
 | **D-05** | 🛣️ generated `pathShape` uses OpenAPI `{param}` syntax | km-api's dual syntax makes it lossless both ways; matches the spec |
-| **D-06** | 📦 every generated tree carries `.zopia-manifest.json` (always, no timestamps) | flat names can collide; metadata (titles/examples/servers/schemes) has no home in Zod; the manifest makes reverse conversion lossless and deterministic |
+| **D-06** | 📦 every generated tree carries `.zopia-manifest.json` (always, no timestamps) | flat names can collide; component schemas, `$ref` placement (`refs`) and non-representable keywords (`overlay`) have no home in Zod code; the manifest is what makes reverse conversion lossless and deterministic |
 | **D-07** | 📂 default layout is `directory` | mirrors the spec's path structure — the most intuitive mapping of "route = directory path" |
 | **D-08** | ④ imports generated `.ts` at runtime (Bun) | the files *are* the source of truth (developers may extend them); importing is the only way to read edited schemas; trust is bounded by the manifest (R-152) |
 | **D-09** | 📤 reverse output defaults to OpenAPI **3.1** | 3.1 schemas = full JSON Schema 2020-12 (the "same standard" the project is built on); 3.0 remains one flag away |

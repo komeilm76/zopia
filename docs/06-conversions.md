@@ -19,7 +19,7 @@ flowchart LR
 
 ---
 
-## ️ Engine ① — Zod → JSON Schema
+## Engine ① — Zod → JSON Schema
 
 ```ts
 /** ⚛️ Convert a Zod v4 schema to a JSON Schema object. */
@@ -29,7 +29,7 @@ function zodToJsonSchema(schema: $ZodType, options?: ZodToJsonSchemaOptions): Js
 | ⚙️ Option | 📏 Type | 🆔 Default | 📝 Meaning |
 | --- | --- | --- | --- |
 | `target` | `'openapi-3.1' \| 'openapi-3.0' \| 'draft-2020-12' \| 'draft-07'` | `'openapi-3.1'` | dialect of the output |
-| `$schema` | `boolean` | `true` | include the `$schema` identifier |
+| `$schema` | `boolean` | `true` | include the `$schema` URI — Zod emits it natively for the draft targets; for the `openapi-3.0` target (where Zod omits it) zopia adds `http://json-schema.org/draft-07/schema#` when enabled, removes it when disabled |
 
 **Implementation** (D-03): a thin, deterministic layer over Zod v4's built-in
 `z.toJSONSchema()`. The `zod-to-json-schema` third-party package is **not used**
@@ -49,10 +49,11 @@ function zodToJsonSchema(schema: $ZodType, options?: ZodToJsonSchemaOptions): Js
 | R-611 | 🌗 Nullability | `z.string().nullable()` → `type: ["string", "null"]` (2020-12/3.1) or `nullable: true` (3.0 target) — whatever the target dialect prescribes |
 | R-612 | 📝 Metadata | `.describe("…")` → `description`; metadata registered via the Zod registry → `title`/`description` |
 | R-613 | 🌀 Cycles | Zod's `cycles: "ref"` handling — recursive schemas become `$defs` + `$ref` |
-| R-614 | 🚫 Unrepresentable | `unrepresentable: "any"` — functions/transforms/NaNs become `{}` **plus a `ZopiaWarning`** (never a throw, R-408) |
+| R-614 | 🚫 Unrepresentable | `unrepresentable: "any"` — functions/transforms/NaNs/**sets** become `{}` **plus a `ZopiaWarning`** (never a throw, R-408 — Zod's own default is to throw, e.g. `z.set`) |
 | R-615 | 🧮 Transform/pipe | the **input** side of the schema is converted (documented limitation — matches what validators see) |
-| R-616 | 🗺️ Maps/sets | `z.map(k, v)` → `{"type":"object","additionalProperties": v}`; `z.set(v)` → `{"type":"array","items": v, "uniqueItems": true}` |
-| R-617 | 📏 Key order | canonical (R-401): `type` first, then keywords in a fixed dictionary order — byte-stable output |
+| R-616 | 🗺️ Maps/records | `z.map(k, v)` / `z.record(k, v)` → `{"type":"object","additionalProperties": v}` plus `propertyNames` when `k` is a constrained schema (Zod's native shape); `z.set(v)` → unrepresentable (R-614) |
+| R-617 | 📏 Key order | canonical (R-401): `type` first, then keywords in a fixed dictionary order — byte-stable output (zopia re-sorts Zod's emission order) |
+| R-618 | 🧹 Redundancy stripping | Zod emits built-in format schemas with a strict companion `pattern`, and `z.number().int()` with sentinel bounds `minimum: -9007199254740991` / `maximum: 9007199254740991` (±(2⁵³−1)). ① **strips** (a) `pattern` when paired with a known built-in `format` (`uuid`, `email`, `hostname`, `ipv4`, `ipv6`, `date-time`, `date`, `duration`, `uri`), and (b) each sentinel bound whenever present (independently). Custom patterns (`z.string().regex(…)` — no `format`) and real user bounds are kept. This is what keeps ① output spec-clean and round-trips exact |
 
 **Example**
 
@@ -75,14 +76,17 @@ zodToJsonSchema(user, { target: 'openapi-3.1' });
     email: { type: 'string', format: 'email' },
     role: { type: 'string', enum: ['admin', 'editor', 'viewer'], default: 'viewer' },
   },
-  required: ['id', 'name', 'email'],
+  required: ['id', 'name', 'email', 'role'],
   additionalProperties: false,
 }
+// ⤴ faithful: Zod's output-side semantics put defaulted keys in `required`
+//   (`role` has a default but is always present in the output). Spec-convention
+//   normalization (drop defaulted keys from `required`) happens in engine ④, R-654.
 ```
 
 ---
 
-## ️ Engine ② — JSON Schema → Zod
+## Engine ② — JSON Schema → Zod
 
 ```ts
 /** 📐 Convert a JSON Schema object (or .json file path) to Zod v4 code. */
@@ -118,44 +122,52 @@ used in tests as an independent cross-check.
 | *(no `type`, or `{}`)* | `z.unknown()` | R-624 |
 | `{ "type": ["string", "null"] }` *(3.1/2020-12 nullable)* | `⟦string⟧.nullable()` | R-625 |
 | `{ "nullable": true }` *(3.0)* | `⟦…⟧.nullable()` | R-625 |
-| `{ "enum": ["a", "b"] }` | `z.enum(['a', 'b'])` (string enums) | R-626 |
-| `{ "enum": [1, 2] }` / mixed | `z.union([z.literal(1), z.literal(2)])` | R-626 |
+| `{ "enum": ["a", "b"] }` | `z.enum(['a', 'b'])` (string enums — round-trips exactly) | R-626 |
+| `{ "enum": [1, 2] }` / mixed | `z.union([z.literal(1), z.literal(2)])` — ⚠️ ① expands this to `anyOf` of `const` nodes; engine ④'s serializer re-emits it as `enum` (R-654) | R-626 |
 | `{ "const": v }` | `z.literal(v)` | R-626 |
-| `{ "format": "email" }` | `z.email()` | R-627 |
-| `{ "format": "uuid" }` | `z.uuid()` | R-627 |
-| `{ "format": "uri" \| "url" }` | `z.url()` | R-627 |
-| `{ "format": "hostname" }` | `z.hostname()` | R-627 |
-| `{ "format": "ipv4" \| "ipv6" }` | `z.ipv4()` / `z.ipv6()` | R-627 |
-| `{ "format": "date-time" }` | `z.iso.datetime()` | R-627 |
-| `{ "format": "date" \| "time" \| "duration" }` | `z.iso.date()` / `z.iso.time()` / `z.iso.duration()` | R-627 |
-| `{ "format": "<other>" }` | `z.string().openFormat('<other>')` — **preserved** for round-trip | R-627 |
+| `{ "format": "email" \| "uuid" \| "hostname" \| "ipv4" \| "ipv6" \| "date-time" \| "date" \| "duration" }` | `z.email()` / `z.uuid()` / `z.hostname()` / `z.ipv4()` / `z.ipv6()` / `z.iso.datetime()` / `z.iso.date()` / `z.iso.duration()` — all round-trip exactly (① strips Zod's companion `pattern`, R-618) | R-627 |
+| `{ "format": "uri" \| "url" }` | `z.url()` — Zod emits `format: "uri"`; when the source said `"url"` an overlay entry restores the exact original alias (R-635) | R-627 |
+| `{ "format": "time" }` | `z.iso.time()` — ⚠️ Zod emits a pattern but **no** `format` key; overlay entry restores `{ "format": "time" }` and removes the pattern (R-635) | R-627 |
+| `{ "format": "<other>" }` | `z.string()` (no Zod v4 API for arbitrary formats) + warning `ZOPIA_WARN_CUSTOM_FORMAT` + overlay restoring the format verbatim (R-635) | R-627 |
 | `{ "minimum": n }` / `{ "maximum": n }` | `.min(n)` / `.max(n)` | R-628 |
-| `{ "exclusiveMinimum": n }` *(number — 2020-12/3.1)* | `.gt(n)` | R-628 |
-| `{ "exclusiveMinimum": true }` *(boolean — draft-04/07)* | `.gt(n)` over `minimum` for numbers; `.min(n + 1)` for integers — **plus warning** `ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND` | R-628 |
+| `{ "exclusiveMinimum": n }` *(number — 2020-12/3.1)* | `.gt(n)` — round-trips exactly (Zod emits numeric `exclusiveMinimum`) | R-628 |
+| `{ "exclusiveMinimum": true }` *(boolean — draft-04/07)* | `.gt(n)` over `minimum` for numbers; `.min(n + 1)` for integers — **plus warning** `ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND` + overlay restoring the original boolean form (R-635) | R-628 |
 | `{ "minLength": n }` / `{ "maxLength": n }` | `.min(n)` / `.max(n)` on strings | R-628 |
 | `{ "pattern": p }` | `.regex(new RegExp(p))` | R-628 |
 | `{ "multipleOf": n }` | `.multipleOf(n)` | R-628 |
 | `{ "minItems": n }` / `{ "maxItems": n }` | array `.min(n)` / `.max(n)` | R-628 |
-| `{ "uniqueItems": true }` | ⚠️ no Zod equivalent → **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + plain array (manifest keeps the fact) | D-12 |
+| `{ "uniqueItems": true }` | ⚠️ no Zod equivalent → **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + plain array + overlay `set: { "uniqueItems": true }` (restored verbatim on reverse) | D-12 |
 | `{ "default": v }` (on optional) | `.default(v)` | R-629 |
 | `{ "required": [...] }` | keys listed are non-optional | R-623 |
 | `{ "additionalProperties": false }` | `z.object({…}).strict()` | R-630 |
 | `{ "additionalProperties": S }` | `z.object({…}).catchall(⟦S⟧)` | R-630 |
 | `{ "additionalProperties": true }` *(or absent)* | plain `z.object({…})` | R-630 |
 | `{ "oneOf": [A, B, …] }` | `z.union([⟦A⟧, ⟦B⟧, …])` | R-631 |
-| `{ "oneOf": […], "discriminator": {"propertyName": k} }` | `z.discriminatedUnion(k, [⟦…⟧])` — every member must be an object with a literal/enum at `k`, otherwise fall back to `z.union` + warning | R-631 |
+| `{ "oneOf": […], "discriminator": {"propertyName": k} }` | `z.discriminatedUnion(k, [⟦…⟧])` — every member must be an object with a literal/enum at `k`, otherwise fall back to `z.union` + warning; the `discriminator` keyword itself is restored by an overlay entry (R-635) | R-631 |
 | `{ "anyOf": […] }` | `z.union([…])` | R-631 |
-| `{ "allOf": [A, B, …] }` | `z.intersection(⟦A⟧, ⟦B⟧, …)` (left-fold) | R-632 |
-| `{ "not": S }` | ⚠️ no Zod equivalent → `z.any()` + warning `ZOPIA_WARN_NOT` | D-12 |
+| `{ "allOf": [A, B, …] }` | `z.intersection(⟦A⟧, ⟦B⟧, …)` (left-fold) — ⚠️ ① flattens object intersections into one object (structural loss) → overlay `node` entry freezes the original `allOf` subtree verbatim (R-635/R-659) | R-632 |
+| `{ "not": S }` | ⚠️ no Zod equivalent → `z.any()` + warning `ZOPIA_WARN_NOT` + overlay `node` (original subtree verbatim) | D-12 |
+| `{ "$schema": … } / { "$id": … } / { "$comment": … }` | ignored (document annotations; no Zod home) | R-636 |
 | `{ "title": t }` | code comment `// 🏷️  <t>` (manifest keeps it) | R-633 |
 | `{ "description": d }` | `.describe('d')` | R-633 |
 | `{ "example": v }` / `{ "examples": […] }` | ⚠️ manifest-only (no Zod home) + comment | R-633 |
 | `{ "$ref": "#/…/schemas/X" }` | component mode: import `XSchema`; default mode: local const (R-403) | R-402/R-634 |
 | `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order | R-634 |
-| `{ "if": …, "then": …, "else": … }` | ⚠️ `z.any()` + warning `ZOPIA_WARN_IF_THEN_ELSE` (Phase 2: real support) | D-12 |
-| `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | ⚠️ nearest approximation (`z.record(z.string(), z.unknown())` where sensible) + warnings | D-12 |
+| `{ "if": …, "then": …, "else": … }` | ⚠️ `z.any()` + warning `ZOPIA_WARN_IF_THEN_ELSE` + overlay `node` (Phase 2: real support) | D-12 |
+| `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | ⚠️ nearest approximation (`z.record(z.string(), z.unknown())` where sensible) + warnings + overlay `node` for the unsupported keywords | D-12 |
 
 > ⟦S⟧ = "the Zod code of the sub-schema S" (recursion).
+
+> 📌 **Rule R-635** — *overlay recording.* Every ② mapping that is not
+> round-trip-identity records a **manifest overlay entry** preserving the
+> original keywords verbatim, so engine ④ can restore them. Overlay entry:
+> `{ at: <JSON pointer>, set?: <keywords>, remove?: <keys>, node?: <sub-tree> }` —
+> `set`/`remove` for surgical keyword restoration (format aliases, `time`,
+> boolean exclusive bounds, `discriminator`, `uniqueItems`), `node` for
+> structural freezes (`allOf`-of-objects, `not`, `if/then/else`,
+> `patternProperties`, … — each emits warning `ZOPIA_WARN_FROZEN_SUBTREE`).
+> A schema with no lossy keywords produces **no** overlay entries — the
+> canonical Admin API fixture asserts exactly that.
 
 ### 📏 Emitted code style (fixed)
 
@@ -181,9 +193,9 @@ jsonSchemaToZod({
     id:    { type: 'string', format: 'uuid' },
   },
 });
-// ↓ code
+// ↓ code  (rootName default: 'schema' — see Configuration)
 `
-const userSchema = z.object({
+const schema = z.object({
   name: z.string().min(1),
   email: z.email(),
   role: z.enum(['admin', 'editor', 'viewer']).default('viewer'),
@@ -194,7 +206,7 @@ const userSchema = z.object({
 
 ---
 
-## ️ Engine ③ — OpenAPI → api docs
+## Engine ③ — OpenAPI → api docs
 
 ```ts
 /** 📄 Generate the api_docs tree from a spec (JSON object or file path). */
@@ -228,7 +240,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | parameters `in: query/header/path` | `request.query/headers/params` — primitive params (`type`, `format`, `enum`, …) become their `schema` |
 | operation/global `consumes` | `requestContentType` (first JSON-ish type wins; else first) |
 | operation/global `produces` | `responseContentType`; each response's single `schema` → `response.statuses[].schema` under that media type |
-| response `examples` (media-type map) | `response.statuses[].examples` (single-name map) |
+| response `examples` (media-type → single value, the legacy shape) | wrapped as one `default`-named example under the primary media type |
 | `securityDefinitions` (basic/apiKey/oauth2) | `securitySchemes` (OpenAPI 3 shapes) |
 | `security` (op or global) | `security` + `auth: true` |
 | `deprecated: true` | `deprecated: true` |
@@ -284,7 +296,7 @@ interface ZopiaGenerateResult {
 
 ---
 
-## ️ Engine ④ — api docs → OpenAPI
+## Engine ④ — api docs → OpenAPI
 
 ```ts
 /** 📂 Regenerate an OpenAPI document from an api_docs tree. */
@@ -310,27 +322,36 @@ Pipeline: **load (manifest + imports) → extract → (engine ① per schema) �
 | R-651 | 📦 **Manifest required** | no `.zopia-manifest.json` → `ZOPIA_DOCS_MISSING_MANIFEST`; manifest lists a missing/renamed file → `ZOPIA_DOCS_MANIFEST_MISMATCH`. (The manifest is what makes flat mode unambiguous — D-06.) |
 | R-652 | 🧬 **Trusted import** (D-08) | each `apis[].file` is imported at runtime (Bun executes the `.ts`). The module must export a `makeApiConfig` result — default or named; otherwise `ZOPIA_DOCS_IMPORT_FAILED`. |
 | R-653 | 🧩 **Extraction** | from the config result: `method`, `pathShape → makeOpenApiPathShape()` (guarantees `{param}` form), `summary`, `description`, `tags` (strip `#`), `auth === 'YES'` → security, `disable === 'YES'` → `deprecated: true`, `requestContentType`/`responseContentType`, `examples`. |
-| R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`. `z.any()` body → no `requestBody`. `z.void()` response → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. |
-| R-655 | 🧱 **Components** | when `insertComponents` was on (manifest `components` non-empty): component files are imported too; their schemas go to `components.schemas` and use sites become `$ref`s. |
+| R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`. `z.any()` body → no `requestBody`. `z.void()` response → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. The serializer then applies **value normalizations**: (a) drop sentinel safe-integer bounds (R-618), (b) re-emit const-literal `anyOf`/`oneOf` as `enum` (inverse of Zod's expansion), (c) drop properties carrying a `default` from `required` (spec convention vs. Zod's output-side semantics). |
+| R-655 | 🧱 **Components** | the manifest **always** lists components (name, full `schema`, `file: <path> \| null`). `file` set (components mode): the component file is imported and converted — developer edits win. `file: null` (default mode): the manifest `schema` is re-emitted verbatim. Either way, use sites become `$ref`s via the per-API ref pointers (R-752). |
 | R-656 | 🔐 **Security** | `securitySchemes` restored from the manifest. If an operation has `auth: YES` but the manifest has no schemes → a default `bearerAuth` (http/bearer) scheme is added **plus warning** `ZOPIA_WARN_DEFAULT_SECURITY`. |
 | R-657 | 🏷️ **Document frame** | `info` from the manifest `source` (title/version/description); `servers`, `tags` from the manifest; fallbacks (`title: 'Zopia API'`, `version: '0.0.0'`) + warning when the manifest lacks them. |
 | R-658 | 📏 **Shape** | key order per R-401; paths sorted; method order per R-401; `openapi: '3.1'` / `'3.0'` per option (D-09). |
+| R-659 | 🩹 **Refs & overlay applied last** | after conversion: (1) replace each ref pointer (`apis[].refs`) with `$ref: "#/components/schemas/<name>"`; (2) apply overlay entries (R-635) — `set` keywords, `remove` keys, `node` subtree replacement. Order: refs, then overlay, so frozen subtrees can carry their own refs untouched. |
 
 ### 🔁 Why the round-trip closes
 
-`③` writes into the manifest exactly the facts that have no home in Zod code
-(titles, examples, media types, security schemes, servers, tag descriptions,
-unsupported keywords). `④` reads them back. What *is* in the Zod code is
-converted back by engine ①. Union of both = the original document, up to
-canonicalization. That is tested as a property ([Testing](11-testing.md#-round-trip-property-tests)).
+Two sources of truth, one rule each:
+
+| 📦 Source | Carries |
+| --- | --- |
+| 📄 **the generated code** | schema *content* — what developers may edit. Converted back by engine ① + serializer normalizations (R-654) |
+| 📦 **the manifest** | *placement & non-representable facts* — full component schemas, `$ref` pointers (`refs`), keyword-level restorations (`overlay`: format aliases, `time`, boolean exclusive bounds, `discriminator`, `uniqueItems`, …) and frozen subtrees (`overlay.node`: `allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …), plus the document frame (info, servers, tags, security schemes, non-primary media types, titles, examples) |
+
+Engine ④ applies them in the fixed order **convert → refs → overlay**
+(R-659). The union reproduces the original document; the only remaining
+difference is key order, which canonicalization (R-401) resolves. That is
+tested as a property for every fixture
+([Testing](11-testing.md#-round-trip-property-tests)).
 
 ### ⚠️ Honest limits (documented, warned, manifest-recorded)
 
-| 🧩 Fact | Where it lives on the way back |
+| 🧩 Fact | What happens |
 | --- | --- |
-| `title`, `example(s)`, unsupported keywords | manifest → re-emitted verbatim |
+| `title`, `example(s)` | manifest → re-emitted verbatim |
 | non-primary media types | manifest → re-emitted as extra `content` entries |
-| `uniqueItems`, `not`, `if/then/else` (D-12 approximations) | manifest → re-emitted verbatim |
+| keyword-level losses (`uniqueItems`, `discriminator`, `time`/`url` formats, boolean exclusive bounds, custom formats) | overlay `set`/`remove` → restored verbatim (R-635) |
+| structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate in Phase 1 (documented in the generated comment) |
 | server `variables` | warning (Phase 1 drops them + `ZOPIA_WARN_SERVER_VARIABLES`) |
 
 ## 🔗 Next

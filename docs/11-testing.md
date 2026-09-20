@@ -14,10 +14,11 @@
 | Fixtures | plain JSON files under `tests/fixtures/` | specs are the unit of integration |
 
 ```bash
-bun run typecheck   # ✅ strict TS
-bun run test        # 🧪 vitest run (CI mode)
-bun run test:watch  # 👀 vitest watch
-bun run coverage    # 📈 vitest --coverage
+bun run typecheck     # ✅ strict TS
+bun run test          # 🧪 vitest run (CI mode)
+bun run test:watch    # 👀 vitest watch
+bun run coverage      # 📈 vitest --coverage
+bun run golden:update # 📸 regenerate golden trees deliberately (R-112)
 ```
 
 ## 📐 Test pyramid
@@ -84,16 +85,17 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 
 | # | Scenario |
 | --- | --- |
-| S-41 | every string format of R-627 (email, uuid, url, hostname, ipv4/6, date-time, date, time, duration, custom via `openFormat`) |
+| S-41 | every string format of R-627 (email, uuid, url/uri alias, hostname, ipv4/6, date-time, date, time, duration) + custom formats → `z.string()` + warning + overlay |
 | S-42 | every numeric/string/array constraint of R-628 (min/max, int, regex, multipleOf, exclusive bounds both forms) |
 | S-43 | enum (string/non-string), const, nullable (both spellings), tuples (both spellings) |
 | S-44 | objects: required/optional, `additionalProperties` (false/schema/true), defaults, catchall |
 | S-45 | oneOf/anyOf/allOf, discriminator → `discriminatedUnion` (+ fallback case) |
-| S-46 | D-12 unsupported keywords → warning + approximation + `// @zopia:warn` comment (uniqueItems, not, if/then/else, patternProperties, propertyNames, min/maxProperties, contains) |
+| S-46 | D-12 unsupported keywords → warning + approximation + `// @zopia:warn` comment (uniqueItems, not, if/then/else, patternProperties, propertyNames, min/maxProperties, contains) — and the manifest overlay restores the original keywords verbatim (R-635, asserted in the round-trip) |
 | S-47 | ① targets — output diffs between `openapi-3.1` / `openapi-3.0` / `draft-2020-12` / `draft-07` for the same input |
-| S-48 | ① unrepresentable (transforms, functions, NaN) → `{}` + warning (R-614) |
+| S-48 | ① unrepresentable (transforms, functions, NaN, `z.set`) → `{}` + warning (R-614) |
 | S-49 | ② cross-check: generated code's runtime schema behaves like `z.fromJSONSchema()`'s (experimental) one on the fixture set |
 | S-50 | ②/① determinism — same input ⇒ identical output, twice in a row |
+| S-51 | ①/④ value normalizations — sentinel integer bounds stripped (R-618), const-literal unions → `enum`, defaulted keys dropped from `required` (R-654) — asserted before the round-trip comparison |
 
 ### 🔁 Reverse-conversion scenarios (engine ④)
 
@@ -121,8 +123,12 @@ for (const fixture of loadFixtures('specs/*.json')) {
 ```
 
 `canonicalize()` = R-401 key ordering + deep-equal on JSON (whitespace
-independent). Any mismatch is a **real bug** unless it is one of the documented
-losses (D-12) — and those must be *asserted as warnings*, not ignored.
+independent). Value normalizations are **not** part of canonicalization —
+engine ④'s serializer applies them (R-654) *before* comparison, so a mismatch
+is a real engine bug. Every dialect fixture (S-01…S-06) round-trips against
+**its own original**; the canonical Admin API additionally asserts an
+**empty `overlay` on every API** — a spec-clean spec must round-trip without a
+single frozen subtree or keyword restoration.
 
 ## 🧰 Fixtures
 

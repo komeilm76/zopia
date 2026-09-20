@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-🚧 **Status — Phase 1: documentation & standards finalized · implementation in progress**
+🚧 **Status — Phase 0 complete (documentation & standards) · Phase 1 implementation in progress**
 
 </div>
 
@@ -26,22 +26,15 @@ files — into **type-safe, ready-to-use endpoint code**, and turns that code ba
 into a spec. It is the bridge between four formats an API team lives in:
 
 ```text
-        ┌──────────────────────────────────────────────────────────────┐
-        │                          zopia engines                       │
-        │                                                              │
-  ┌─────────────┐  ③ openapi → api docs   ┌──────────────────────────┐ │
-  │ swagger.json │ ──────────────────────▶ │      api_docs/**        │ │
-  │ (v2 / v3)   │                          │  .ts · km-api · zod v4  │ │
-  └─────────────┘                          └──────────────────────────┘ │
-        ▲                                    │                          │
-        └────── ④ api docs → openapi ────────┘                          │
-                                                                        │
-  ┌─────────────┐  ① zod → JSON Schema                                   │
-  │   Zod v4    │ ─────────────────────────────────────▶ ┌─────────────┐ │
-  │   schemas   │  ② JSON Schema → zod (reverse)         │  JSON       │ │
-  └─────────────┘ ◀───────────────────────────────────── │  Schema     │ │
-                                                         └─────────────┘ │
-        └──────────────────────────────────────────────────────────────┘
+┌─────────────┐  ③ openapi → api docs  ┌───────────────────┐
+│ swagger.json│───────────────────────▶│ api_docs/**       │
+│ (v2 / v3)   │◀───────────────────────│ .ts · km-api · zod│
+└─────────────┘  ④ api docs → openapi  └───────────────────┘
+
+┌────────┐  ① zod → JSON Schema   ┌────────────┐
+│ Zod v4 │───────────────────────▶│ JSON Schema│
+│ schemas│◀───────────────────────│            │
+└────────┘  ② JSON Schema → zod   └────────────┘
 ```
 
 Developers stop hand-writing validation, schemas, and documentation. zopia

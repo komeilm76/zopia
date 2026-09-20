@@ -6,6 +6,7 @@ Vitest suite — see [Testing → Scenario matrix](11-testing.md).
 
 > ✅ **Spec'd** = fully specified by this documentation set.
 > 🚧 **To implement** = built in the Phase 1 implementation pass.
+> ✅ **alone** = complete in this phase (Phase 0 — the documentation set itself).
 
 ## 🔄 Conversion targets
 

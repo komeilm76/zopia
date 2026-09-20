@@ -148,7 +148,7 @@ as before.
 
 | # | Rule |
 | --- | --- |
-| R-821 | 🧱 When the manifest lists components, engine ④ imports the component files, converts each schema with engine ①, and places them under `components.schemas` (R-655) |
+| R-821 | 🧱 Engine ④ rebuilds `components.schemas` from the manifest in **every** mode: `file` set (components mode) → the component file is imported and converted with engine ① (developer edits win); `file: null` (default mode) → the manifest `schema` is re-emitted verbatim (R-655/R-751) |
 | R-822 | 🔗 Endpoint use-sites of a component become `$ref: "#/components/schemas/<Name>"` again — the original ref structure is restored |
 | R-823 | 🌀 `z.lazy` cycles serialize back to self `$ref`s — recursion round-trips |
 | R-824 | 📸 Component `title`/`example` (no home in Zod) come from the manifest entries |

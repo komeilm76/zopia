@@ -69,8 +69,7 @@ See [Conversions → Engine ①](06-conversions.md)
 
 | ⚙️ Option | 📏 Type | 🆔 Default | 📝 Notes |
 | --- | --- | --- | --- |
-| `namePrefix` | `string` | `''` | prefix for the generated root const name (`'models'` → `modelsUserSchema`) |
-| `rootName` | `string` | `'schema'` | name of the root const (components keep their spec name) |
+| `rootName` | `string` | `'schema'` | name of the root const (component files always keep their spec name — `<ComponentName>Schema`) |
 
 ## 🧮 Defaults at a glance
 

@@ -31,6 +31,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔑 Recorded the first architecture decisions (**D-01 … D-13**) in
   [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
 
+### 🐛 Fixed
+
+- 📐 Document review against the real libraries (Zod **4.6.5**, run locally):
+  - engine ① now specifies **R-618** — stripping of Zod's redundant
+    built-in `format`+`pattern` pairs and safe-integer sentinel bounds
+    (`±(2⁵³−1)`), so output stays spec-clean and round-trips exact
+  - engine ②: removed the non-existent `z.string().openFormat()` mapping —
+    custom formats become `z.string()` + warning + manifest overlay; `time`
+    and `url`/`uri` alias drift handled by overlay (R-627/R-635)
+  - `z.set` documented as **unrepresentable** (`{}` + warning), not as
+    `uniqueItems`; `z.map`/`z.record` mapped to their native Zod shape
+  - engine ④ serializer value normalizations pinned (R-654): sentinel
+    bounds, const-literal unions → `enum`, defaulted keys out of `required`
+  - manifest redesigned (R-751…R-753): full component schemas **always**
+    carried, per-API `refs` pointers restore `$ref` placement, `overlay`
+    entries restore non-representable keywords — the reverse trip is now
+    lossless in **all** modes, not only with components emitted
+  - Swagger 2.0 `examples` (legacy media-type → value shape) normalization
+    corrected; v2 nullability claim corrected
+  - status banner, module tree, rule numbering, and cross-links audited
+    and made consistent
+
 ### 🚧 Planned (Phase 1 implementation)
 
 - 🔄 Conversion engines: `zod → JSON Schema`, `JSON Schema → zod`,

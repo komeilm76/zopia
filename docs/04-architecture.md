@@ -13,9 +13,11 @@ src/
 ├── index.ts                    # 🚪 Public entry — named exports only (JSDoc'd)
 ├── types/
 │   ├── options.ts              # ⚙️  ZopiaGenerateOptions / ZopiaReverseOptions / …
-│   ├── model.ts                # 🧬 Internal model (ApiModel & friends)
 │   ├── errors.ts               # 🛑 ZopiaError + all error codes
 │   └── warnings.ts             # ⚠️  ZopiaWarning shape
+├── ir/
+│   ├── model.ts                # 🧬 ApiModel, OperationModel, ComponentSchema, ParameterModel
+│   └── order.ts                # 📏 canonical-ordering helpers (R-401)
 ├── engines/
 │   ├── zod-to-json-schema/     # ①  zod → JSON Schema
 │   │   └── index.ts
@@ -182,7 +184,9 @@ export interface ParameterModel {
 > 📌 **Rule R-401** — anywhere zopia *creates* a list or object, the order above
 > applies. Anywhere zopia *mirrors* source data (properties, params), the
 > source order applies. No `Date.now()`, no `Math.random()` anywhere in the
-> package (P-1).
+> package (P-1). Value-level normalizations (Zod sentinel bounds, const-union →
+> `enum`, defaulted keys in `required`) live with the engines that apply them —
+> see [Conversions → R-618 / R-654](06-conversions.md).
 
 ## 🔗 The reference graph
 

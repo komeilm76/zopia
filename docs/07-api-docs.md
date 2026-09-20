@@ -55,7 +55,7 @@ api_docs/
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
 | R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method (`get`, `post`, `put`, `delete`, `patch`, `head`, `options`, `trace`) |
 | R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
-| R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): no collision is possible, because method directories sit one level *below* the path leaf; the manifest removes any remaining ambiguity (D-06) |
+| R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
 ## 📂 Mode — `flat`
 
@@ -209,15 +209,32 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
     "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
   },
   "components": [
-    { "name": "User",      "file": "components/User/index.ts",      "title": "User", "example": null },
-    { "name": "UserInput", "file": "components/UserInput/index.ts", "title": "UserInput", "example": null },
-    { "name": "Error",     "file": "components/Error/index.ts",     "title": "Error", "example": null }
+    // ⤵ one entry per declared component, always — even when not emitted.
+    //    `file` is null while insertComponents is false; `schema` is the full
+    //    JSON Schema, restored verbatim by engine ④ (R-751). Content elided here.
+    {
+      "name": "User",
+      "file": null,
+      "title": "User",
+      "example": null,
+      "schema": { "type": "object", "required": ["id", "name", "email"], "properties": { "…": "…" } }
+    }
   ],
   "apis": [
-    { "file": "admin/users/get/index.ts",            "path": "/admin/users",      "method": "get",    "operationId": "listUsers" },
-    { "file": "admin/users/post/index.ts",           "path": "/admin/users",      "method": "post",   "operationId": "createUser" },
-    { "file": "admin/users/{id}/get/index.ts",       "path": "/admin/users/{id}", "method": "get",    "operationId": "getUser" },
-    { "file": "admin/users/{id}/delete/index.ts",    "path": "/admin/users/{id}", "method": "delete", "operationId": "deleteUser" }
+    // ⤵ full shape shown for one API; the other three entries share the same
+    //    structure (listUsers, createUser, deleteUser).
+    {
+      "file": "admin/users/{id}/get/index.ts",
+      "path": "/admin/users/{id}",
+      "method": "get",
+      "operationId": "getUser",
+      "refs": [
+        { "at": "/responses/200/content/application/json/schema", "component": "User" },
+        { "at": "/responses/401/content/application/json/schema", "component": "Error" },
+        { "at": "/responses/404/content/application/json/schema", "component": "Error" }
+      ],
+      "overlay": [] // ⤵ empty — the Admin API uses no lossy keywords (tests assert that)
+    }
   ]
 }
 ```
@@ -226,9 +243,27 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | --- | --- |
 | `source` | 🏷️ rebuild `info`; verify the tree matches the spec it claims to come from |
 | `servers`, `tags`, `securitySchemes` | 🌍🏷️🔐 document frame that has no home in Zod (R-656/R-657) |
-| `components[].file` | 🧱 where to find each component schema (R-655) |
+| `components[].schema` | 🧱 the **full** component JSON Schema — restored verbatim into `components.schemas` (R-655/R-751) |
+| `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, the imported file wins over `schema` (developer edits) |
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — the single source of truth for engine ④ |
+| `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree) → component name (R-752/R-659) |
+| `apis[].overlay` | 🩹 keyword-level restorations & frozen subtrees — the non-representable facts, verbatim (R-753/R-635) |
 | `source.sha256` | 🆔 staleness detection: regeneration warns when the tree's manifest hash differs from the new input |
+
+> 📌 **Rule R-751** — the manifest carries a **full** `schema` for every
+> declared component, in every mode. It is the verbatim source of
+> `components.schemas` on the reverse trip; when `file` is set, the imported
+> file takes precedence (the code is the truth, D-08).
+>
+> 📌 **Rule R-752** — `refs` entries address **the source operation subtree**
+> (pointer relative to `paths.<path>.<method>`). Engine ④ applies them after
+> conversion, so `$ref` placement — including refs *inside* inlined schemas —
+> is restored exactly (R-659).
+>
+> 📌 **Rule R-753** — `overlay` entries are `{ at, set?, remove?, node? }`
+> (R-635). `node`-form entries freeze a subtree to its original form; the
+> corresponding generated position carries a `// @zopia:warn
+> ZOPIA_WARN_FROZEN_SUBTREE` comment, so developers see what is not live.
 
 ## 🏷️ Naming conventions (fixed)
 

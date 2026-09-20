@@ -97,9 +97,9 @@ depends on Zod **v4** idioms — *not* v3 — throughout:
 | --- | --- |
 | `z.toJSONSchema(schema, { target })` | engine ① — built-in, no third-party converter (D-03); targets: `draft-2020-12` (default), `draft-07`, `draft-04`, `openapi-3.0` |
 | `z.fromJSONSchema(schema)` | ⚠️ experimental in Zod — used **only** as a cross-check in tests, never in the output path (D-04) |
-| top-level format schemas | `z.email()`, `z.uuid()`, `z.url()`, `z.hostname()`, `z.ipv4()`, `z.ipv6()` |
-| ISO builders | `z.iso.datetime()`, `z.iso.date()`, `z.iso.time()`, `z.iso.duration()` |
-| `z.string().openFormat(name)` | unknown/custom `format` values — preserved for round-trip |
+| top-level format schemas | `z.email()`, `z.uuid()`, `z.url()`, `z.hostname()`, `z.ipv4()`, `z.ipv6()` — ⚠️ each emits `format` **plus a strict `pattern`** (engine ① strips the redundant pair — R-618); `z.url()` emits `format: "uri"` |
+| ISO builders | `z.iso.datetime()`, `z.iso.date()`, `z.iso.time()`, `z.iso.duration()` — ⚠️ `z.iso.time()` emits a pattern but **no `format` key** (round-trip needs the manifest overlay — R-635) |
+| *(no v4 API for arbitrary formats)* | custom `format` values → `z.string()` + warning + manifest overlay preserving the format verbatim (R-627) |
 | `z.enum([...])`, `z.literal(v)` | `enum` / `const` keywords |
 | `z.union([...])`, `z.discriminatedUnion(key, [...])` | `oneOf` / `anyOf` (with the `discriminator` heuristic) |
 | `z.intersection(a, b)` | `allOf` |
@@ -159,8 +159,10 @@ endpoint (plus optional `components/**` and the manifest). Defined fully in
 
 The hidden metadata file written into `api_docs/` (D-06). It is what makes
 engine ④ lossless: exact paths & methods per file, spec identity
-(kind/title/version/sha256), servers, tags, security schemes, and metadata
-that has no home in Zod (titles, examples, unsupported keywords). See
+(kind/title/version/sha256), servers, tags, security schemes, the **full
+component schemas**, **`$ref` placement** (per-API ref pointers), and
+**non-representable facts** (overlay entries: titles, examples, custom
+formats, unsupported keywords). See
 [API docs format → The manifest](07-api-docs.md).
 
 ### 🧬 IR (internal model)
@@ -186,7 +188,7 @@ properties*, not by eye (see [Testing](11-testing.md#-round-trip-property-tests)
 | 📦 Body | param `in: body` | `requestBody.content` | `requestBody.content` |
 | 🧾 FormData | param `in: formData` | `requestBody.content['multipart/…' \| 'x-www-form-urlencoded']` | same as 3.0 |
 | 🍪 Cookie params | ❌ | ✅ | ✅ |
-| 🌗 Nullable | ❌ (use `type: ["…", "null"]` not allowed either) | `nullable: true` | `type: ["…", "null"]` |
+| 🌗 Nullable | ❌ no standard way (draft-04 allows type arrays, but 2.0 tooling rarely supports them) | `nullable: true` | `type: ["…", "null"]` |
 | 📸 Examples | `examples` (media-type map, legacy) | `example` (single) | `examples` (array) |
 | 🔐 Security | `securityDefinitions` | `components.securitySchemes` | same as 3.0 |
 | 🚦 Response schema | response.schema (single) | per media type | per media type |
