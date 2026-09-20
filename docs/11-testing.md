@@ -70,7 +70,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-23 | flat name collision → `-2` suffix | R-722 |
 | S-24 | path with a literal segment equal to a method name (`/users/get`) | R-714 |
 | S-25 | deep paths (5+ segments) & params at every level | R-711 |
-| S-26 | `TRACE` operation → skipped, warning `ZOPIA_WARN_TRACE`, manifest `skipped[]` entry, omitted from tree & reversed spec | R-642a |
+| S-26 | `TRACE` operation → emitted as a `trace/` method dir with `method: 'TRACE'` (km-api ≥ 0.4.0) | R-712/R-642 |
 
 ### ⚙️ Option scenarios
 
@@ -110,8 +110,8 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-65 | missing manifest / renamed file / broken export → typed errors | R-651/R-652 |
 | S-66 | metadata restoration — titles, examples, servers, tag descriptions, security schemes, multi-content types come back verbatim | R-656/R-657 + honest-limits table |
 | S-67 | idempotence — `reverse(generate(spec))` then `generate(…)` ⇒ identical tree (T-11) | R-409 |
-| S-68 | non-standard status (`419`) + `default` response → manifest `responseOverlay`, absent from code, re-emitted verbatim on reverse | R-642b |
-| S-69 | exotic media type (`application/vnd.custom+json`) → km-api field omitted, manifest media type used as the `content` key on reverse | R-642c |
+| S-68 | non-standard status (`419`) + `default` response → emitted as numeric/`default` response keys, round-trips exactly (km-api ≥ 0.4.0) | R-642 |
+| S-69 | exotic media type (`application/vnd.custom+json`) → emitted verbatim as the content type, used as the `content` key on reverse (km-api ≥ 0.4.0) | R-642 |
 | S-70 | parameter extras (`allowEmptyValue`, `style`, `explode`) + response `headers` → overlay/`responseOverlay`, restored verbatim on reverse | R-635/R-754 |
 
 ## 🔄 Round-trip property tests
@@ -180,7 +180,7 @@ tested — a warning that never fires in tests is a red flag, not a shrug.
 | R-123 | **Errors assert on `code`** (R-404), never on message text |
 | R-124 | **New rule ⇒ new test** — adding an R-… row to any doc requires the matching test in the same PR |
 | R-125 | **No skipped tests in main** — `it.skip` is allowed only with a linked issue and a removal date |
-| R-126 | **Golden trees typecheck** — the contract suite runs `tsc` over the golden `api_docs` trees against the installed km-api: km-api's closed unions (method, status codes, content types) are type-level only (R-642), so this is the gate that proves generated code is valid km-api |
+| R-126 | **Golden trees typecheck** — the contract suite runs `tsc` over the golden `api_docs` trees against the installed km-api (≥ 0.4.0): `makeApiConfig` is a type-level factory, so this is the gate that proves generated code is valid km-api (D-14/R-642) |
 
 ## 🔗 Next
 

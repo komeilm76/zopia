@@ -113,7 +113,7 @@ depends on Zod **v4** idioms — *not* v3 — throughout:
 ### 🧱 km-api
 
 The user's endpoint-definition package — **the make function of this project's
-generated code**. zopia targets **km-api latest (`0.3.x`)** and generates:
+generated code**. zopia targets **km-api latest (`0.4.x`)** and generates:
 
 ```ts
 import { makeApiConfig } from 'km-api';
@@ -151,23 +151,26 @@ normalize paths back to `{param}` form.
 > unless `useComponentAsReference` is on — even then, only local files are
 > imported).
 
-### 🚧 km-api's closed unions (read from the `0.3.3` source)
+### 📐 km-api's type surface (read from the `0.4.0` source)
 
 `makeApiConfig` is a **type-level factory** — it does no runtime validation, so
-the closed unions below are enforced whenever a consumer project **typechecks**
-the generated tree. zopia emits only what these unions accept (R-642):
+the generated tree's contract is that it **typechecks** against km-api
+≥ 0.4.0 (D-14; the golden-tree contract test enforces this, R-126):
 
-| 🧩 Union | 📏 Contents | ⚠️ Not included |
-| --- | --- | --- |
-| `IMethod` | `get/post/put/delete/patch/head/options` (each case-insensitive: `GET`, `Get`, …) | **`trace`** — TRACE operations are skipped + warned (R-642a) |
-| `IHttpStatusCode` | the standard 2xx/3xx/4xx/5xx literals (response keys, numeric or string) | **`419`, `427`, `444`, `499`, `509`, `512+` and the `default` key** — such responses go to the manifest `responseOverlay` (R-642b) |
-| `IResponseContentType` / `IRequestContentType` | closed MIME unions (`application/json`, `multipart/form-data`, office/image/audio/video types, …) | exotic types (`application/vnd.custom+json`, `text/event-stream`, …) — field omitted, actual media type kept in the manifest (R-642c) |
+| 🧩 Field | 📏 Accepts (km-api 0.4.0) |
+| --- | --- |
+| `method` (`IMethod`) | all **8** standard methods — `get/post/put/delete/patch/head/options/trace` (each case-insensitive: `GET`, `Get`, …) |
+| `response` keys | standard status codes (number or string form), **any custom numeric code** (`419`, `499`, `512`, …) and the **`default`** key |
+| `responseContentType` / `requestContentType` | **any** MIME type (known values still autocompleted) |
+| `operationId` | any string — a real km-api field in 0.4.0; zopia emits it and reuses it as the export identifier (R-732) |
 
 Other fixed shapes (source-verified): `ITags` = strings **prefixed with `#`**;
 `IPath` = string starting with `/`; `auth`/`disable` = `'YES' | 'NO'`;
 `request.body` is required (any Zod schema), `params/query/headers/cookies`
-required Zod objects; `operationId` is **not** a km-api field — zopia uses it
-only for the export identifier (R-732) and the manifest.
+required Zod objects. The remaining km-api gaps — **per-parameter metadata**
+(`style`, `explode`, `allowEmptyValue`, `deprecated`, `example`) and **response
+`headers`** — have no home in km-api; zopia preserves them in the manifest
+(overlay / `responseOverlay`, R-635/R-754).
 
 ### 📂 api docs
 

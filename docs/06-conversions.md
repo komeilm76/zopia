@@ -261,7 +261,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | `exclusiveMinimum/Maximum` boolean *(3.0)* | numeric form + warning (R-628) |
 | `components.securitySchemes` | `securitySchemes` |
 | `example` (single) | `examples` single-name map |
-| the `default` response | status `'default'` — km-api cannot hold this key (closed union) → `apis[].responseOverlay` + warning (R-642b) |
+| the `default` response & non-standard codes (`419`, `499`, `512`, …) | emitted verbatim as the `default` / numeric response keys (km-api ≥ 0.4.0 accepts both) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, `deprecated`, `example`) | no home in Zod/km-api → overlay entries on the operation subtree pointers (R-635) |
 | response `headers` | no home in km-api → `apis[].responseOverlay` entries (re-emitted verbatim, R-654d) |
 | 3.1 `webhooks` object | skipped + warning `ZOPIA_WARN_WEBHOOKS` (Phase 2) |
@@ -273,21 +273,15 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 > Non-primary media types are recorded in the manifest and produce warning
 > `ZOPIA_WARN_MULTI_CONTENT`.
 >
-> 📌 **Rule R-642** — *the km-api closed-union boundary.* `makeApiConfig` is a
-> type-level factory (no runtime validation), so the generated tree must
-> **typecheck** against km-api `0.3.x` (D-14; the golden-tree contract test
-> enforces this). zopia therefore:
-> **(a)** `TRACE` operations → skipped, warning `ZOPIA_WARN_TRACE`, recorded in
-> the manifest `skipped[]`;
-> **(b)** response codes outside `IHttpStatusCode` (e.g. `419`, `427`, `444`,
-> `499`, `509`, `512+`) and the `default` response → kept verbatim in
-> `apis[].responseOverlay` (full OpenAPI Response Object), omitted from the
-> code, warning `ZOPIA_WARN_RESPONSE_CODE`;
-> **(c)** request/response media types outside km-api's closed content-type
-> unions → the `requestContentType`/`responseContentType` fields are omitted,
-> warning `ZOPIA_WARN_CONTENT_TYPE`, and the **actual** media type is recorded
-> in the manifest (`apis[].requestMediaType` / `responseMediaType`) — engine ④
-> uses those for the `content` keys.
+> 📌 **Rule R-642** — *the km-api 0.4.0 contract.* zopia **requires km-api ≥
+> 0.4.0**: `makeApiConfig` is a type-level factory (no runtime validation), so
+> the generated tree must **typecheck** against km-api 0.4.x (D-14; the
+> golden-tree contract test enforces this, R-126). km-api 0.4.0's open type
+> surface — all 8 methods (incl. `trace`), any custom numeric status code and
+> the `default` key, any MIME type, `operationId` — means **every practical
+> API fact is emitted as code**. The remaining km-api gaps (per-parameter
+> metadata, response `headers`) are preserved in the manifest (overlay /
+> `apis[].responseOverlay`, R-635/R-754).
 
 ### 🔗 Step 3 — refs
 
@@ -347,8 +341,8 @@ Pipeline: **load (manifest + imports) → extract → (engine ① per schema) �
 | --- | --- | --- |
 | R-651 | 📦 **Manifest required** | no `.zopia-manifest.json` → `ZOPIA_DOCS_MISSING_MANIFEST`; manifest lists a missing/renamed file → `ZOPIA_DOCS_MANIFEST_MISMATCH`. (The manifest is what makes flat mode unambiguous — D-06.) |
 | R-652 | 🧬 **Trusted import** (D-08) | each `apis[].file` is imported at runtime (Bun executes the `.ts`). The module must export a `makeApiConfig` result — default or named; otherwise `ZOPIA_DOCS_IMPORT_FAILED`. |
-| R-653 | 🧩 **Extraction** | from the config result: `method`, `pathShape → makeOpenApiPathShape()` (guarantees `{param}` form; identity on already-OpenAPI paths), `summary`, `description`, `tags` (strip `#`), `auth === 'YES'` → security, `disable === 'YES'` → `deprecated: true`, `examples`. Response codes are a subset of km-api's union by construction — anything missing arrives via `apis[].responseOverlay` (R-642b). |
-| R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`; **request** schemas with `io: 'input'`, **response** schemas with `io: 'output'` (R-615) — so defaulted request fields naturally stay out of `required`. `z.any()` body → no `requestBody`. `z.void()` responses are detected **before** engine ① (Zod lists `z.void()` as unrepresentable — it would become `{}` + warning) → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. The serializer then applies **value normalizations**: (a) drop sentinel safe-integer bounds (R-618), (b) re-emit const-literal `anyOf`/`oneOf` as `enum` (inverse of Zod's expansion), (c) `content` keys use the manifest media types (`apis[].requestMediaType`/`responseMediaType`) — not the km-api fields, which may be omitted (R-642c), (d) `apis[].responseOverlay` entries (non-standard codes, `default`, response `headers`) are re-emitted verbatim into `responses`. |
+| R-653 | 🧩 **Extraction** | from the config result: `method`, `pathShape → makeOpenApiPathShape()` (guarantees `{param}` form; identity on already-OpenAPI paths), `summary`, `description`, `operationId`, `tags` (strip `#`), `auth === 'YES'` → security, `disable === 'YES'` → `deprecated: true`, `requestContentType`/`responseContentType` (the actual media types — km-api 0.4.0's open unions), `examples`. Response keys — incl. custom codes and `default` — come straight from the config; response `headers` arrive via `apis[].responseOverlay`. |
+| R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`; **request** schemas with `io: 'input'`, **response** schemas with `io: 'output'` (R-615) — so defaulted request fields naturally stay out of `required`. `z.any()` body → no `requestBody`. `z.void()` responses are detected **before** engine ① (Zod lists `z.void()` as unrepresentable — it would become `{}` + warning) → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. The serializer then applies **value normalizations**: (a) drop sentinel safe-integer bounds (R-618), (b) re-emit const-literal `anyOf`/`oneOf` as `enum` (inverse of Zod's expansion), (c) `apis[].responseOverlay` entries (response `headers`) are re-emitted verbatim into the matching `responses` entry. |
 | R-655 | 🧱 **Components** | the manifest **always** lists components (name, full `schema`, `file: <path> \| null`). `file` set (components mode): the component file is imported and converted — developer edits win. `file: null` (default mode): the manifest `schema` is re-emitted verbatim. Either way, use sites become `$ref`s via the per-API ref pointers (R-752). |
 | R-656 | 🔐 **Security** | `securitySchemes` restored from the manifest. If an operation has `auth: YES` but the manifest has no schemes → a default `bearerAuth` (http/bearer) scheme is added **plus warning** `ZOPIA_WARN_DEFAULT_SECURITY`. |
 | R-657 | 🏷️ **Document frame** | `info` from the manifest `source` (title/version/description); `servers`, `tags` from the manifest; fallbacks (`title: 'Zopia API'`, `version: '0.0.0'`) + warning when the manifest lacks them. |
@@ -362,7 +356,7 @@ Two sources of truth, one rule each:
 | 📦 Source | Carries |
 | --- | --- |
 | 📄 **the generated code** | schema *content* — what developers may edit. Converted back by engine ① + serializer normalizations (R-654) |
-| 📦 **the manifest** | *placement & non-representable facts* — full component schemas, `$ref` pointers (`refs`), keyword-level restorations (`overlay`: format aliases, `time`, boolean exclusive bounds, `discriminator`, `uniqueItems`, parameter extras, …) and frozen subtrees (`overlay.node`: `allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …), km-api-union casualties (`responseOverlay`, `skipped`, actual media types — R-642), plus the document frame (info, servers, tags, security schemes, non-primary media types, titles, examples) |
+| 📦 **the manifest** | *placement & non-representable facts* — full component schemas, `$ref` pointers (`refs`), keyword-level restorations (`overlay`: format aliases, `time`, boolean exclusive bounds, `discriminator`, `uniqueItems`, parameter extras, …) and frozen subtrees (`overlay.node`: `allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …), km-api-less response facts (`apis[].responseOverlay`: response `headers` — R-754), plus the document frame (info, servers, tags, security schemes, non-primary media types, titles, examples) |
 
 Engine ④ applies them in the fixed order **convert → refs → overlay**
 (R-659). The union reproduces the original document; the only remaining
@@ -378,8 +372,7 @@ tested as a property for every fixture
 | non-primary media types | manifest → re-emitted as extra `content` entries |
 | keyword-level losses (`uniqueItems`, `discriminator`, `time`/`url` formats, boolean exclusive bounds, custom formats) | overlay `set`/`remove` → restored verbatim (R-635) |
 | structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate in Phase 1 (documented in the generated comment) |
-| km-api union casualties — `TRACE` operations; non-standard/`default` status responses; exotic media types (R-642) | `skipped[]` / `apis[].responseOverlay` / manifest media types → re-emitted verbatim on the reverse trip; the generated code simply omits them (typecheck-safe) |
-| parameter extras (`allowEmptyValue`, `style`, `explode`, …) & response `headers` | overlay / `responseOverlay` → restored verbatim |
+| parameter extras (`allowEmptyValue`, `style`, `explode`, …) & response `headers` — no home in km-api (R-642) | overlay / `apis[].responseOverlay` → restored verbatim |
 | 3.1 `webhooks` | warning (Phase 1 drops them + `ZOPIA_WARN_WEBHOOKS`) |
 | server `variables` | warning (Phase 1 drops them + `ZOPIA_WARN_SERVER_VARIABLES`) |
 

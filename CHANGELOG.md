@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔑 Recorded the first architecture decisions (**D-01 … D-13**) in
   [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
 
+### ✨ Changed
+
+- 🤝 **Aligned with km-api 0.4.0** (`komeilm76/km-api` — additive release
+  prepared in the `feat/open-unions-v0-4-0` branch, pending publish):
+  `TRACE` method, any custom numeric status code + `default` response key,
+  open (any-MIME) content types, and a real `operationId` field.
+  Consequences for zopia: all of that is now **emitted as code** —
+  `R-642` redefined as the km-api 0.4.0 typecheck contract (D-14); manifest
+  keys `skipped` / `requestMediaType` / `responseMediaType` removed;
+  `responseOverlay` narrowed to response facts with no km-api home (today:
+  response `headers`, R-754); peer dependency → `km-api ^0.4`; test
+  scenarios S-26/S-68/S-69 updated to the emission path.
+
 ### 🐛 Fixed
 
 - 🏛️ Deeper review against primary sources (zod.dev, km-api `0.3.3` source,

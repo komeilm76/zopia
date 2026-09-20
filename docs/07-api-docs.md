@@ -53,7 +53,7 @@ api_docs/
 | # | Invariant |
 | --- | --- |
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
-| R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the seven km-api methods: `get`, `post`, `put`, `delete`, `patch`, `head`, `options` (no `trace` — R-642a) |
+| R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `patch`, `head`, `options`, `trace` (km-api ≥ 0.4.0) |
 | R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
 | R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
@@ -119,6 +119,7 @@ export const getUser = makeApiConfig({
   method: 'GET',
   pathShape: '/admin/users/{id}',
   auth: 'YES',
+  operationId: 'getUser',
   responseContentType: 'application/json',
   summary: 'Get user by ID',
   description: 'Retrieves a single user by their unique identifier.',
@@ -159,12 +160,12 @@ export default getUser;
 | any `security` requirement | `auth: 'YES'` (else `'NO'` — always emitted explicitly) | R-731 |
 | `request.body` | `request.body`; *no body* → `z.any()` | R-731 |
 | `request.params / query / headers / cookies` | `request.params / query / headers / cookies` — always `z.object(…)` (km-api requires all five) | R-731 |
-| `requestContentType` | `requestContentType` — emitted **only** when the media type is in km-api's closed `IRequestContentType` union; otherwise omitted + warning, actual type recorded in the manifest (R-642c) | R-731 |
+| `requestContentType` | `requestContentType` — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
 | `responseContentType` | `responseContentType` (from the first content-bearing response) — same closed-union guard | R-731 |
-| `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — deliberately **not** `z.object({})` (the convention in km-api's own examples): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614). Response codes must lie in km-api's `IHttpStatusCode` union — non-standard codes (`419`, `499`, …) and `default` go to the manifest `responseOverlay` instead (R-642b) | R-731 |
+| `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — deliberately **not** `z.object({})` (the convention in km-api's own examples): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614). Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.0); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
 | `deprecated` | `disable: 'YES'` | R-731 |
 | `examples` | `examples` (km-api `IEndpointExamples` shape) | R-731 |
-| `operationId` | the export identifier (see Naming below) | R-732 |
+| `operationId` | the config's `operationId` field (km-api ≥ 0.4.0) **and** the export identifier (see Naming below) | R-732 |
 
 > 📌 **Rule R-732** — the export identifier is the `operationId` when present
 > (camelCased); otherwise derived deterministically: **method + PascalCase of
@@ -220,7 +221,6 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
       "schema": { "type": "object", "required": ["id", "name", "email"], "properties": { "…": "…" } }
     }
   ],
-  "skipped": [], // ⤵ operations km-api cannot express (e.g. TRACE) — with reasons (R-642a)
   "apis": [
     // ⤵ full shape shown for one API; the other three entries share the same
     //    structure (listUsers, createUser, deleteUser).
@@ -229,15 +229,13 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
       "path": "/admin/users/{id}",
       "method": "get",
       "operationId": "getUser",
-      "requestMediaType": null,            // ⤵ actual media type (null ⇔ no body) — the
-      "responseMediaType": "application/json", //    `content` key on the reverse trip (R-642c)
       "refs": [
         { "at": "/responses/200/content/application/json/schema", "component": "User" },
         { "at": "/responses/401/content/application/json/schema", "component": "Error" },
         { "at": "/responses/404/content/application/json/schema", "component": "Error" }
       ],
-      "overlay": [],          // ⤵ empty — the Admin API uses no lossy keywords (asserted in tests)
-      "responseOverlay": []   // ⤵ responses km-api cannot hold (non-standard codes, `default`, headers)
+      "overlay": [],         // ⤵ empty — the Admin API uses no lossy keywords (asserted in tests)
+      "responseOverlay": []  // ⤵ response facts with no km-api home (e.g. response headers)
     }
   ]
 }
@@ -252,9 +250,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — the single source of truth for engine ④ |
 | `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree) → component name (R-752/R-659) |
 | `apis[].overlay` | 🩹 keyword-level restorations & frozen subtrees — the non-representable facts, verbatim (R-753/R-635) |
-| `apis[].requestMediaType` / `apis[].responseMediaType` | 📦 the **actual** primary media types (km-api's closed unions may force the code fields to be omitted — R-642c); the `content` keys of the reversed spec |
-| `apis[].responseOverlay` | 🚦 responses km-api cannot hold — non-standard status codes, `default`, response `headers` — full Response Objects, re-emitted verbatim (R-642b) |
-| `skipped` | ⛔ operations skipped for union reasons (e.g. `TRACE`) with the reason code — surfaced as warnings on the reverse trip |
+| `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` (and any future non-expressible response fields) — full Response Objects, re-emitted verbatim (R-754) |
 | `source.sha256` | 🆔 staleness detection: regeneration warns when the tree's manifest hash differs from the new input |
 
 > 📌 **Rule R-751** — the manifest carries a **full** `schema` for every
@@ -272,13 +268,14 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 > corresponding generated position carries a `// @zopia:warn
 > ZOPIA_WARN_FROZEN_SUBTREE` comment, so developers see what is not live.
 >
-> 📌 **Rule R-754** — the manifest also records everything km-api's closed
-> unions cannot express (R-642): `skipped` (top-level, e.g. `TRACE`
-> operations), `apis[].requestMediaType` / `responseMediaType` (actual media
-> types, `null` ⇔ absent), and `apis[].responseOverlay` (verbatim Response
-> Objects for non-standard/`default` codes and response `headers`). Engine ④
-> re-emits all of it, so the union boundary is a *code* convenience, never a
-> data loss.
+> 📌 **Rule R-754** — `apis[].responseOverlay` records the response facts that
+> have no home in km-api (today: response `headers`; any future
+> non-expressible response field joins it). Entries are full OpenAPI Response
+> Objects keyed by status code (or `default`); engine ④ re-emits them verbatim
+> (R-654c), so the boundary is a *code* convenience, never a data loss.
+> Everything else km-api can express — incl. `trace` operations, custom status
+> codes, `default` responses, and arbitrary media types (km-api ≥ 0.4.0, R-642)
+> — lives in the generated code.
 
 ## 🏷️ Naming conventions (fixed)
 

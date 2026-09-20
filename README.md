@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9%2B-blue.svg)](https://www.typescriptlang.org/)
 [![Zod](https://img.shields.io/badge/Zod-4.x-purple.svg)](https://zod.dev/)
-[![km-api](https://img.shields.io/badge/km--api-0.3.x-0ea5e9.svg)](https://www.npmjs.com/package/km-api)
+[![km-api](https://img.shields.io/badge/km--api-0.4.x-0ea5e9.svg)](https://www.npmjs.com/package/km-api)
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
