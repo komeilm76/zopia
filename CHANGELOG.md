@@ -26,15 +26,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔐 [`LICENSE`](LICENSE) (MIT) and [`.gitignore`](.gitignore) for the
   Bun / TypeScript workspace.
 
+### 🔗 Dependency
+
+- 🔗 **km-api is now vendored as a git submodule** (`km-api/`, branch
+  `feat/open-unions-v0-4-0`) — the complete 0.4.0 change set (8 src/test
+  files + `CHANGES.md` / `README.md` / `rules.md`; **170/170 tests, `tsc`
+  clean**) is committed in the clone's own `.git`, kept local and **never
+  pushed or published** until the final release step. The earlier handoff
+  patch file (`0001-feat-v0.4.0-...patch`) is removed — superseded by the
+  submodule. Final step (D-15): push the branch → publish `km-api@0.4.0` →
+  remove the submodule → `km-api: ^0.4.0` from npm.
+
 ### 📝 Decisions
 
-- 🔑 Recorded the first architecture decisions (**D-01 … D-13**) in
+- 🔑 Recorded the first architecture decisions (**D-01 … D-15**) in
   [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
 
 ### ✨ Changed
 
-- 🤝 **Aligned with km-api 0.4.0** (`komeilm76/km-api` — additive release
-  prepared in the `feat/open-unions-v0-4-0` branch, pending publish):
+- 🤝 **Aligned with km-api 0.4.0** (`komeilm76/km-api` — the additive
+  release now lives in this repository as the `km-api/` git submodule on
+  branch `feat/open-unions-v0-4-0`, committed locally and pending the final
+  push + publish — see above and D-15):
   `TRACE` method, any custom numeric status code + `default` response key,
   open (any-MIME) content types, and a real `operationId` field.
   Consequences for zopia: all of that is now **emitted as code** —

@@ -146,7 +146,9 @@ export function openApiToApiDocs(
 1. 🔖 bump version (SemVer — [Roadmap → Versioning](03-roadmap.md#-versioning))
 2. 📜 CHANGELOG: [Unreleased] → [x.y.z] - YYYY-MM-DD
 3. 🏷️ git tag  v0.1.0
-4. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.3)
+4. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
+   at publish time the local submodule has already been replaced by the
+   published km-api 0.4.0, D-15)
 5. 📝 README status banner updated to the new phase
 ```
 
@@ -155,7 +157,7 @@ export function openApiToApiDocs(
 | 📦 Dep | 🏷️ Kind | 📝 Rule |
 | --- | --- | --- |
 | `zod` `^4` | peer + dev | generated code needs it; tests need it |
-| `km-api` `^0.4` (latest) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14) |
+| `km-api` `^0.4` (latest) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** local git submodule `km-api/` (branch `feat/open-unions-v0-4-0`) during development → published `0.4.0` from npm after the final step (D-15) |
 | *(nothing else at runtime)* | — | **zero runtime dependencies** in Phase 1 (D-11); every new runtime dep needs a D-… decision |
 
 ## 🔑 Key decisions
@@ -179,6 +181,7 @@ export function openApiToApiDocs(
 | **D-12** | ⚠️ unsupported keywords never fail silently — warning + nearest approximation + `// @zopia:warn` marker + manifest record | "pure, safe, clean" means *visible* loss; the reverse conversion restores the original verbatim from the manifest |
 | **D-13** | 📝 Phase 1 input is JSON only (YAML, external refs, server variables → Phase 2) | keeps the v0.1.0 contract tight; every deferral is listed in [Roadmap](03-roadmap.md) with a date-like horizon |
 | **D-14** | 📐 zopia **targets km-api ≥ 0.4.0** — the output contract is "the generated tree **typechecks** against km-api 0.4.x" (enforced by the golden-tree test, R-126). km-api 0.4.0's open type surface (8 methods incl. `trace`, any custom/`default` status code, any MIME type, `operationId`) means every practical API fact is emitted **as code**; the remaining km-api gaps (per-parameter metadata, response `headers`) are preserved in the manifest (overlay / `responseOverlay`, R-635/R-754) | `makeApiConfig` is a type-level factory (no runtime validation) — the typecheck *is* the contract. km-api 0.4.0 was designed with zopia in mind (komeilm76/km-api); re-verify km-api's type surface against its source on every km-api bump |
+| **D-15** | 🔗 **km-api is vendored as a git submodule during development** — `km-api/` (branch `feat/open-unions-v0-4-0`) holds the complete, tested 0.4.0 change set, committed in the clone's own `.git`. Until zopia is finished, it is **never pushed and never published**; the final release step is: push the branch to `komeilm76/km-api` → publish `km-api@0.4.0` → `git submodule deinit` + remove the folder → `km-api: ^0.4.0` from the registry → full suite green ([Roadmap → DoD 7](03-roadmap.md#-definition-of-done--phase-1)) | keeps both repos clean while the two packages co-develop; zopia never depends on an unpublished npm version; the swap at the end is a one-line dependency change because the dev surface equals the published one. **Maintenance of the clone:** (1) every change is committed in the clone's own `.git` (its history is the push payload); (2) every touched file's markdown is updated in the same commit (`CHANGES.md`, `README.md`, `rules.md` where relevant); (3) the clone's standards are kept — tests green, `tsc` clean, prettier on touched files, MIT, no API removals (purely additive until 0.4.0 ships) |
 
 ## 🔗 Back to
 
