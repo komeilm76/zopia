@@ -141,7 +141,7 @@ export interface ApiModel {
 export interface OperationModel {
   id: string;            // 🆔 operationId, or derived (see 07 → Naming)
   path: string;          // 🛣️  OpenAPI style: /admin/users/{id}
-  method: HttpMethod;    // 🧭  the eight standard methods (km-api ≥ 0.4.0): get | post | put | delete | patch | head | options | trace
+  method: HttpMethod;    // 🧭  the eight standard methods (km-api ≥ 0.4.0): get | post | put | delete | head | options | patch | trace
   summary?: string;      // 📝
   description?: string;  // 📝 (Markdown allowed)
   tags: string[];        // 🏷️
@@ -190,7 +190,7 @@ export interface ParameterModel {
 | 📦 Where | 📏 Order |
 | --- | --- |
 | `ApiModel.operations` | document order of the source spec |
-| emitted files (listing) | sorted by `(path, method)` — method order: `get, put, post, delete, options, head, patch, trace` (the eight standard methods; km-api ≥ 0.4.0) |
+| emitted files (listing) | sorted by `(path, method)` — method order: `get, post, put, delete, head, options, patch, trace` (the eight standard methods; same order as km-api's `IMethod` union; km-api ≥ 0.4.0) |
 | schema properties | document order (JSON object key order of the source) |
 | OpenAPI output document | `openapi, info, servers, security, tags, paths, components, externalDocs` |
 | path keys inside `paths` | sorted by path string |

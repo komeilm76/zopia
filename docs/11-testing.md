@@ -113,6 +113,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-68 | non-standard status (`419`) + `default` response → emitted as numeric/`default` response keys, round-trips exactly (km-api ≥ 0.4.0) | R-642 |
 | S-69 | exotic media type (`application/vnd.custom+json`) → emitted verbatim as the content type, used as the `content` key on reverse (km-api ≥ 0.4.0) | R-642 |
 | S-70 | parameter extras (`allowEmptyValue`, `style`, `explode`) + response `headers` → overlay/`responseOverlay`, restored verbatim on reverse | R-635/R-754 |
+| S-71 | multiple security schemes + per-operation requirements with scopes (oauth2) + an explicit `security: []` operation → `defaultSecurity` / `apis[].security` manifest fields, round-trips exactly (km-api stores only the `auth` boolean) | R-653/R-656 |
 
 ## 🔄 Round-trip property tests
 

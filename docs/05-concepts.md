@@ -113,7 +113,7 @@ depends on Zod **v4** idioms — *not* v3 — throughout:
 ### 🧱 km-api
 
 The user's endpoint-definition package — **the make function of this project's
-generated code**. zopia targets **km-api latest (`0.4.x`)** and generates:
+generated code**. zopia targets **km-api `0.4.x`** and generates:
 
 ```ts
 import { makeApiConfig } from 'km-api';
@@ -159,7 +159,7 @@ the generated tree's contract is that it **typechecks** against km-api
 
 | 🧩 Field | 📏 Accepts (km-api 0.4.0) |
 | --- | --- |
-| `method` (`IMethod`) | all **8** standard methods — `get/post/put/delete/patch/head/options/trace` (each case-insensitive: `GET`, `Get`, …) |
+| `method` (`IMethod`) | all **8** standard methods — `get/post/put/delete/head/options/patch/trace` (each case-insensitive: `GET`, `Get`, …) |
 | `response` keys | standard status codes (number or string form), **any custom numeric code** (`419`, `499`, `512`, …) and the **`default`** key |
 | `responseContentType` / `requestContentType` | **any** MIME type (known values still autocompleted) |
 | `operationId` | any string — a real km-api field in 0.4.0; zopia emits it and reuses it as the export identifier (R-732) |

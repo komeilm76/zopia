@@ -56,6 +56,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- 🎯 Fourth pass — km-api 0.4.0 precision audit (every claim re-checked
+  against the submodule source line by line):
+  - **security requirements are now part of the contract** — km-api's config
+    stores only the `auth` boolean, so the actual requirement lists live in
+    the manifest: new `defaultSecurity` (spec-level) and `apis[].security`
+    (per-operation, incl. explicit `[]`) fields (R-653/R-656); the missing
+    OpenAPI 3.x `security` normalization row added (v2 row corrected);
+    scenario S-71 pins a multi-scheme + scopes + `security: []` round-trip
+  - `204 → z.void()` reworded — that is **zopia's** marker; km-api's own
+    README examples use `z.object({})` for 204 (both typecheck, but the
+    docs no longer cite a non-existent km-api convention)
+  - method enumeration now uses **km-api's real `IMethod` order**
+    (`get, post, put, delete, head, options, patch, trace`) everywhere —
+    R-401's canonical file order unified with it (was three different
+    orderings across four places)
+  - T-7's practical-content list gained `operationId`; stray "latest"
+    version references normalized to `0.4.x`
 - 🔍 Third documentation review pass (cross-audited against the km-api 0.4.0
   submodule source and live Zod 4.6.5 probes):
   - `z.map()` corrected to **unrepresentable** (R-614) — only `z.record()`

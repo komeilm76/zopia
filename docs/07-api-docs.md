@@ -53,7 +53,7 @@ api_docs/
 | # | Invariant |
 | --- | --- |
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
-| R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `patch`, `head`, `options`, `trace` (km-api ≥ 0.4.0) |
+| R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `head`, `options`, `patch`, `trace` (km-api ≥ 0.4.0) |
 | R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
 | R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): within the endpoint area (outside `components/`, whose component dirs also hold an `index.ts`) the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
@@ -162,7 +162,7 @@ export default getUser;
 | `request.params / query / headers / cookies` | `request.params / query / headers / cookies` — always `z.object(…)` (km-api requires all five) | R-731 |
 | `requestContentType` | `requestContentType` — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
 | `responseContentType` | `responseContentType` (from the first content-bearing response) — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
-| `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — deliberately **not** `z.object({})` (the convention in km-api's own examples): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614). Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.0); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
+| `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — **zopia's own marker**, deliberately not `z.object({})` (the shape km-api's README examples use for 204 — both typecheck, response values accept any Zod schema): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614) so it emits **no `content` at all**; a real `z.object({})` stays a schema. Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.0); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
 | `deprecated` | `disable: 'YES'` | R-731 |
 | `examples` | `examples` — km-api's `request` / `response` maps of `IExamplesMap` | R-731 |
 | `operationId` | the config's `operationId` field (km-api ≥ 0.4.0) **and** the export identifier (see Naming below) | R-732 |
@@ -211,6 +211,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
   "securitySchemes": {
     "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
   },
+  "defaultSecurity": [{ "bearerAuth": [] }], // ⤵ global `security` requirement list, verbatim
   "components": [
     // ⤵ one entry per declared component, always — even when not emitted.
     //    `file` is null while insertComponents is false; `schema` is the full
@@ -231,6 +232,9 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
       "path": "/admin/users/{id}",
       "method": "get",
       "operationId": "getUser",
+      // ⤵ no `security` key — the operation declares none of its own, so the
+      //    top-level `defaultSecurity` applies (an operation that *does*
+      //    declare `security` — even `[]` — gets its own key here, verbatim)
       "refs": [
         { "at": "/responses/200/content/application/json/schema", "component": "User" },
         { "at": "/responses/401/content/application/json/schema", "component": "Error" },
@@ -250,6 +254,8 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `components[].schema` | 🧱 the **full** component JSON Schema — restored verbatim into `components.schemas` (R-655/R-751) |
 | `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, the imported file wins over `schema` (developer edits) |
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — the single source of truth for engine ④ |
+| `defaultSecurity` | 🔐 the spec-level `security` requirement list, verbatim — applies to every operation unless the operation declares its own `security`; key absent ⇔ the source had no global `security` |
+| `apis[].security` | 🔐 the operation's own `security` requirement list — present only when the operation declares the key (including an explicit `[]` = "no security"); km-api's config can store only the `auth` boolean, so the actual requirement (which schemes, which scopes) lives here (R-653/R-656) |
 | `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree) → component name (R-752/R-659) |
 | `apis[].overlay` | 🩹 keyword-level restorations & frozen subtrees — the non-representable facts, verbatim (R-753/R-635) |
 | `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` (and any future non-expressible response fields) — full Response Objects, re-emitted verbatim (R-754) |

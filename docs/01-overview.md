@@ -32,7 +32,7 @@ flowchart LR
 ```
 
 - **③** reads a spec, resolves every `$ref`, and renders one **`index.ts` per
-  endpoint** — each built with `makeApiConfig()` from **km-api** (latest), with
+  endpoint** — each built with `makeApiConfig()` from **km-api** (0.4.x), with
   request/response/params/query/headers/cookies validated by **Zod v4** schemas.
 - **④** reads that tree back and regenerates a complete OpenAPI document — so
   developer edits to the generated code become the new spec.
