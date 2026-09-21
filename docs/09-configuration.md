@@ -63,7 +63,7 @@ interface ZopiaReverseOptions {
 ## 📄 `ZodToJsonSchemaOptions` — engine ①
 
 See [Conversions → Engine ①](06-conversions.md)
-(`target`, `$schema`).
+(`target`, `$schema`, `io`).
 
 ## 📄 `JsonSchemaToZodOptions` — engine ②
 

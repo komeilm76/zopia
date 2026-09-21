@@ -120,8 +120,9 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 // 🧪 tests/roundtrip/property.test.ts (sketch)
 for (const fixture of loadFixtures('specs/*.json')) {
   it(`round-trips ${fixture.name}`, async () => {
-    const tree = await openApiToApiDocs(fixture.json, DEFAULTS);
-    const back = await apiDocsToOpenApi(tree.dir, { version: fixture.version });
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zopia-rt-')); // R-111
+    await openApiToApiDocs(fixture.json, { ...DEFAULTS, outDir });
+    const back = await apiDocsToOpenApi(outDir, { version: fixture.version });
     expect(canonicalize(back.openapi)).toEqual(canonicalize(fixture.json));
   });
 }

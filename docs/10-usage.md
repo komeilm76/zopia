@@ -15,7 +15,7 @@ bun add zod km-api   # ⚛️🧱 required by the *generated* files
 | --- | --- | --- |
 | `zopia` | dependency | the engines |
 | `zod` `^4` | peer | generated schemas validate at runtime |
-| `km-api` `^0.3` (latest) | peer | generated files call `makeApiConfig()` |
+| `km-api` `^0.4` (0.4.x) | peer | generated files call `makeApiConfig()` |
 
 ## ⚡ Quick start — all four engines
 
@@ -71,7 +71,9 @@ api_docs/
 └── admin/users/
     ├── get/index.ts
     ├── post/index.ts
-    └── {id}/get/index.ts
+    └── {id}/
+        ├── get/index.ts
+        └── delete/index.ts
 ```
 
 …and `api_docs/admin/users/{id}/get/index.ts` is real, runnable, type-safe

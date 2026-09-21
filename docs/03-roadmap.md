@@ -13,7 +13,7 @@ The standard documentation of the project:
 - 🏠 `README.md` — project home with the documentation map
 - 📜 `CHANGELOG.md` — Keep-a-Changelog format + the "changelog after commits" rule
 - 🔐 `LICENSE` (MIT) · 🧹 `.gitignore`
-- 🔑 Key decisions **D-01 … D-13** recorded in [Standards](12-standards.md#-key-decisions)
+- 🔑 Key decisions **D-01 … D-15** recorded in [Standards](12-standards.md#-key-decisions)
 
 **Done when:** a new contributor can read only `docs/` and implement Phase 1
 without asking questions. ✅ *That bar is the acceptance test of this phase.*
@@ -66,16 +66,15 @@ A Phase 1 release is complete when **all** of the following hold:
 
 - 📝 **YAML input** — accept `swagger.yaml` / `openapi.yaml` (D-13 lifts)
 - 🔗 **External `$ref`s** — resolve references to other files in the same folder
-- 🧩 **Reusable parameters & responses** as emitted components
-  (Phase 1 inlines them at every use site)
+- 🧩 **Reusable parameters & responses** — emitted as their own component files
+  (Phase 1 inlines them at every use site; km-api has no
+  standalone-parameter concept — a Phase 2 design decision)
 - 🧾 **`zopia.config.ts`** — project-level config file (CLI flags stay available)
 - 📤 **OpenAPI 2.0 output** from engine ④ (`version: '2.0'`) for legacy targets
 - 🧪 More JSON Schema keywords — `patternProperties`, `if/then/else`,
   `minProperties/maxProperties`, `propertyNames`, `contains`
   (Phase 1: documented approximation + warning, D-12)
 - 🪝 3.1 `webhooks` support and path-item `$ref` (Phase 1: warning / typed error)
-- 🧩 emitted reusable parameters/responses as their own files (km-api has no
-  standalone-parameter concept — Phase 2 design decision)
 - 👀 **Watch mode** — `zopia generate --watch` for spec-driven development
 
 ## 🌌 Phase 3 — Ecosystem (v0.3+)

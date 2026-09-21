@@ -49,7 +49,7 @@ flowchart LR
 | 🧩 Piece | Version | Role in zopia |
 | --- | --- | --- |
 | ⚛️ [Zod](https://zod.dev/) | **v4** (`^4`) | Runtime validation + static types; built-in `z.toJSONSchema()` |
-| 🧱 [km-api](https://www.npmjs.com/package/km-api) | **latest** (`^0.3`) | The "make function" — `makeApiConfig()` builds every generated endpoint |
+| 🧱 [km-api](https://www.npmjs.com/package/km-api) | **0.4.x** (`^0.4` — local submodule during dev, D-15) | The "make function" — `makeApiConfig()` builds every generated endpoint |
 | 🟣 [Bun](https://bun.sh/) | `≥ 1.1` | Primary runtime & toolchain (runs the package, tests, and generated code) |
 | 🧪 [Vitest](https://vitest.dev/) | latest stable | Test runner for the full scenario matrix |
 | 🔷 TypeScript | `5.9+`, `strict` | Language of the package and of every generated file |

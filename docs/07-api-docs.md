@@ -55,7 +55,7 @@ api_docs/
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
 | R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `patch`, `head`, `options`, `trace` (km-api ≥ 0.4.0) |
 | R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
-| R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
+| R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): within the endpoint area (outside `components/`, whose component dirs also hold an `index.ts`) the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
 ## 📂 Mode — `flat`
 
@@ -138,7 +138,7 @@ export const getUser = makeApiConfig({
       id: z.uuid(),
       name: z.string().min(1),
       email: z.email(),
-      role: z.enum(['admin', 'editor', 'viewer']),
+      role: z.enum(['admin', 'editor', 'viewer']).optional(), // ⤵ not in `required` (R-623)
     }),
     401: error,
     404: error,
@@ -161,10 +161,10 @@ export default getUser;
 | `request.body` | `request.body`; *no body* → `z.any()` | R-731 |
 | `request.params / query / headers / cookies` | `request.params / query / headers / cookies` — always `z.object(…)` (km-api requires all five) | R-731 |
 | `requestContentType` | `requestContentType` — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
-| `responseContentType` | `responseContentType` (from the first content-bearing response) — same closed-union guard | R-731 |
+| `responseContentType` | `responseContentType` (from the first content-bearing response) — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
 | `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — deliberately **not** `z.object({})` (the convention in km-api's own examples): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614). Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.0); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
 | `deprecated` | `disable: 'YES'` | R-731 |
-| `examples` | `examples` (km-api `IEndpointExamples` shape) | R-731 |
+| `examples` | `examples` — km-api's `request` / `response` maps of `IExamplesMap` | R-731 |
 | `operationId` | the config's `operationId` field (km-api ≥ 0.4.0) **and** the export identifier (see Naming below) | R-732 |
 
 > 📌 **Rule R-732** — the export identifier is the `operationId` when present
@@ -183,8 +183,10 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 ## 📦 The manifest — `.zopia-manifest.json`
 
 > 🎯 **T-10** — the manifest is what makes every conversion reversible (D-06).
-> It is always written (no timestamps, no environment data — P-1), always
-> hidden (dotfile), and always versioned (`"$schema": "zopia:manifest@1"`).
+> It is written by default (the `manifest` option, on unless explicitly
+> disabled — [Configuration](09-configuration.md)), has no timestamps or
+> environment data (P-1), is always hidden (dotfile), and always versioned
+> (`"$schema": "zopia:manifest@1"`).
 
 ```jsonc
 {

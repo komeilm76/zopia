@@ -59,8 +59,6 @@ src/
 │       ├── loader.ts           #    manifest + module import (trusted, D-08)
 │       ├── extract.ts          #    makeApiConfig result → IR
 │       └── serializer.ts       #    IR → OpenAPI 3.0/3.1 document
-├── ir/
-│   └── model.ts                # 🧬 shared IR types re-exports + canonical order
 ├── fs/
 │   └── guard.ts                # 🛡️  outDir guard, path traversal prevention
 └── cli/
@@ -293,7 +291,7 @@ export interface ZopiaError extends Error {
 | R-405 | **Pure core** — no `fs`, `process`, or `Date` inside `engines/*`; only the public wrappers and CLI touch the outside world | architecture (module boundaries) + import-lint in tests |
 | R-406 | **outDir guard** — every path joined to `outDir` is canonicalized and verified to stay inside it; `..` in spec-derived segment names is impossible because segments are template literals, and flat names are sanitized (see [API docs → Naming](07-api-docs.md#-naming-conventions-fixed)) | `fs/guard.ts` |
 | R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `loader.ts` |
-| R-408 | **No silent loss** — every lossy/unsupported conversion produces a `ZopiaWarning` (D-12): `{ code, at, message }` collected on the result, mirrored as `// @zopia:warn …` comments in generated code | every engine |
+| R-408 | **No silent loss** — every lossy/unsupported conversion produces a `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144) collected on the result, mirrored as `// @zopia:warn …` comments in generated code | every engine |
 | R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; engine ④ output is canonical (R-401) | round-trip tests |
 
 ## 📏 Performance

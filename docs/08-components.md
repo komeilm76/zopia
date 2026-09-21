@@ -60,7 +60,7 @@ export const UserSchema = z.object({
   id: z.uuid(),
   name: z.string().min(1),
   email: z.email(),
-  role: z.enum(['admin', 'editor', 'viewer']),
+  role: z.enum(['admin', 'editor', 'viewer']).optional(), // ⤵ not in `required` (R-623)
 });
 
 export default UserSchema;
@@ -157,7 +157,7 @@ as before.
 
 | 🧩 Thing | Phase 1 behaviour | When |
 | --- | --- | --- |
-| `components.parameters` / `components.responses` / `components.examples` (reusable non-schema objects) | inlined at every use-site (the manifest keeps the originals for a faithful reverse) | Phase 2 |
+| `components.parameters` / `components.responses` / `components.examples` (reusable non-schema objects) | inlined at every use-site by the normalizer (R-402 scope); the reverse re-emits them inlined — semantically equivalent, reusability restored in Phase 2 | Phase 2 |
 | external refs to other files | `ZOPIA_REF_EXTERNAL` | Phase 2 |
 
 ## 🔗 Next

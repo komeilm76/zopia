@@ -26,24 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔐 [`LICENSE`](LICENSE) (MIT) and [`.gitignore`](.gitignore) for the
   Bun / TypeScript workspace.
 
-### 🔗 Dependency
+### 📝 Decisions
+
+- 🔑 Recorded the first architecture decisions (**D-01 … D-15**) in
+  [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
+
+### 🔄 Changed
 
 - 🔗 **km-api is now vendored as a git submodule** (`km-api/`, branch
-  `feat/open-unions-v0-4-0`) — the complete 0.4.0 change set (8 src/test
+  `feat/open-unions-v0-4-0`) — the complete 0.4.0 change set (10 src/test
   files + `CHANGES.md` / `README.md` / `rules.md`; **170/170 tests, `tsc`
   clean**) is committed in the clone's own `.git`, kept local and **never
   pushed or published** until the final release step. The earlier handoff
   patch file (`0001-feat-v0.4.0-...patch`) is removed — superseded by the
   submodule. Final step (D-15): push the branch → publish `km-api@0.4.0` →
   remove the submodule → `km-api: ^0.4.0` from npm.
-
-### 📝 Decisions
-
-- 🔑 Recorded the first architecture decisions (**D-01 … D-15**) in
-  [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
-
-### ✨ Changed
-
 - 🤝 **Aligned with km-api 0.4.0** (`komeilm76/km-api` — the additive
   release now lives in this repository as the `km-api/` git submodule on
   branch `feat/open-unions-v0-4-0`, committed locally and pending the final
@@ -59,6 +56,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- 🔍 Third documentation review pass (cross-audited against the km-api 0.4.0
+  submodule source and live Zod 4.6.5 probes):
+  - `z.map()` corrected to **unrepresentable** (R-614) — only `z.record()`
+    maps to `additionalProperties` (R-616); `IExamplesMap` is the real
+    km-api examples type (not `IEndpointExamples`)
+  - stale `km-api ^0.3` references corrected to `0.4.x` (Overview stack
+    table, Usage install table); `responseContentType` described with the
+    open 0.4.0 union (not the old closed-union guard)
+  - fixture examples: `role` gains `.optional()` (it is not in the Admin
+    API's `required` list, R-623); the Usage end-to-end tree now shows all
+    four operations
+  - duplicated blocks removed (Architecture module-tree `ir/`, Roadmap
+    Phase 2 bullet); changelog section markers normalized to R-174
+  - round-trip property sketch aligned with the public API (`outDir` +
+    R-111 temp dirs, no invented `tree.dir`); D-06 / 07 "manifest always
+    written" softened to "by default" (the `manifest` option exists —
+    Configuration); R-714's disambiguation invariant scoped to the endpoint
+    area (component dirs also hold `index.ts`)
+  - README project structure and 09's engine-① option pointer corrected
 - 🏛️ Deeper review against primary sources (zod.dev, km-api `0.3.3` source,
   OpenAPI specs) — second round:
   - **km-api closed unions are now the documented emission boundary (R-642,

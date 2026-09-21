@@ -118,6 +118,7 @@ zopia/
 ├── README.md                 # 🏠 This file
 ├── CHANGELOG.md              # 📜 Keep-a-Changelog history
 ├── LICENSE                   # 🔐 MIT
+├── km-api/                   # 🔗 km-api git submodule — the 0.4.0 work (D-15)
 ├── docs/                     # 📚 Project documentation (the standard)
 │   ├── README.md             #    📖 Documentation map
 │   ├── 01-overview.md        #    🧭 Overview
