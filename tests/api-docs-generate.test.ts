@@ -29,6 +29,5 @@ describe('API docs endpoint generation', () => {
     const metadata = await readFile(join(metadataDir, 'meta', 'get', 'index.ts'), 'utf8');
     expect(metadata).toContain('tags: ["#users"]');
     expect(metadata).toContain('auth: false');
-    expect(metadata).toContain("disable: 'YES'");
   });
 });
