@@ -149,7 +149,7 @@ normalize paths back to `{param}` form.
 > 📌 **Rule R-502** — generated files import **only** `zod` and `km-api`.
 > No zopia runtime is imported by generated code. Component files are
 > generated as standalone files, and exact endpoint component references can
-> import through the barrel. Nested and cyclic component imports remain pending.
+> import through the barrel. Nested component references are recursively rendered, including nested objects, arrays, compositions, nullable schemas, enums, constants, and additional-property schemas. Direct self-cycles use lazy Zod schemas; mutual cyclic component graphs remain a follow-up area.
 
 ### 📐 km-api's type surface (read from the `0.4.1` source)
 

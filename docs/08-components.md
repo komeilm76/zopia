@@ -18,7 +18,7 @@ and reusable endpoint references are part of the full rendering phase.
 > 🎯 **T-8 / T-9** — both options are **booleans, both default `false`**, and
 > `useComponentAsReference` only makes sense when `insertComponents` is `true`.
 > Component files and exact endpoint schema-reference imports are implemented;
-> nested component-reference imports and cyclic import handling remain pending.
+> nested component-reference imports are recursively supported for objects, arrays, compositions, nullable schemas, enums, constants, and additional-property schemas. Direct self-cycles use lazy schemas; mutual cyclic import handling remains a follow-up area.
 
 | ⚙️ `insertComponents` | ⚙️ `useComponentAsReference` | 📂 What is generated | 📄 What endpoint files do |
 | :---: | :---: | --- | --- |
