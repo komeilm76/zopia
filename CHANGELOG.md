@@ -142,7 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     type; Swagger 2.0 `int32/int64` primitive params pinned (with
     `ZOPIA_WARN_INT64`)
   - non-schema refs (reusable parameters/responses) inlined by the normalizer
-    (R-402 scope); 3.1 path-item `$ref` → `ZOPIA_SPEC_PATH_REF`; 3.1
+    (R-402 scope); malformed or unsupported path-item references are rejected; 3.1
     `webhooks` → warning
   - km-api cheatsheet: source-verified closed-union table, type-level-only
     `makeApiConfig`, `operationId` is not a km-api field

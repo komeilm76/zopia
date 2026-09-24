@@ -49,7 +49,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-04 | OpenAPI 3.0 — cookie params, requestBody, `nullable: true`, single `example` | ③ v3 table |
 | S-05 | OpenAPI 3.1 — `type: [t, "null"]`, `const`, numeric `exclusiveMinimum`, `prefixItems`, `examples` array | R-503 |
 | S-06 | Both dialects — `deprecated`, tags with descriptions, multiple servers | R-641 |
-| S-07 | Error inputs — invalid JSON, unknown version, missing `paths`, unknown/external `$ref`, 3.1 path-item `$ref` (`ZOPIA_SPEC_PATH_REF`) | error model (R-404) |
+| S-07 | Error inputs — invalid JSON, unknown version, missing `paths`, unknown/external/malformed/circular `$ref` | error model (R-404) |
 
 ### 🔗 Ref-graph scenarios
 
