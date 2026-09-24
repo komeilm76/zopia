@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { jsonSchemaToZod } from '../src';
 
 describe('jsonSchemaToZod', () => {
+  it('supports JSON Schema boolean schemas', () => {
+    expect(jsonSchemaToZod(true).schema.safeParse('anything').success).toBe(true);
+    expect(jsonSchemaToZod(false).schema.safeParse('anything').success).toBe(false);
+  });
   it('converts objects and preserves optional properties', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'integer' }, nickname: { type: 'string' } }, required: ['id'] });
     expect(result.warnings).toEqual([]);

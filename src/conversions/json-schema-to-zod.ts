@@ -6,7 +6,7 @@ export interface JsonSchemaToZodResult {
   warnings: string[];
 }
 
-type JsonSchema = Record<string, any>;
+type JsonSchema = Record<string, any> | boolean;
 
 /** Convert a JSON Schema value into executable Zod 4 code and a Zod schema. */
 export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?: string } = {}): JsonSchemaToZodResult {
@@ -22,6 +22,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     return ref.slice(2).split('/').map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~')).reduce<any>((value, key) => value?.[key], source);
   };
   const convert = (node: JsonSchema, resolving = new Set<string>()): { schema: z.ZodType; code: string } => {
+    if (node === true) return { schema: z.any(), code: 'z.any()' };
+    if (node === false) return { schema: z.never(), code: 'z.never()' };
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
     for (const keyword of ['not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas']) {
       if (keyword in node) warnings.push(`Unsupported JSON Schema keyword: ${keyword}`);
@@ -31,7 +33,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       if (!target) { warnings.push(`Unsupported $ref: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
       if (resolving.has(ref)) { warnings.push(`Recursive $ref cannot be eagerly materialized: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
       const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => key !== '$ref'));
-      const resolved = Object.keys(siblings).length ? { ...target, ...siblings } : target;
+      const targetAny: any = target;
+      const resolved: JsonSchema = Object.keys(siblings).length
+        ? targetAny === true ? siblings : targetAny === false ? false : { ...targetAny, ...siblings }
+        : targetAny;
       return convert(resolved, new Set(resolving).add(ref));
     }
     if (Array.isArray(node.type)) {
