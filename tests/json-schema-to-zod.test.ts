@@ -123,6 +123,10 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ enum: 'not-an-array' });
     expect(result.warnings).toContain('Invalid enum: expected an array');
   });
+  it('rejects inherited and malformed local reference targets', () => {
+    expect(jsonSchemaToZod({ $ref: '#/toString' }).warnings[0]).toContain('Unsupported $ref');
+    expect(jsonSchemaToZod({ $ref: '#/~2bad' }).warnings[0]).toContain('Unsupported $ref');
+  });
   it('reports malformed references without coercing them', () => {
     const result = jsonSchemaToZod({ $ref: 42 });
     expect(result.warnings).toContain('Invalid $ref: expected a non-empty string');

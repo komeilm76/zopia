@@ -18,8 +18,15 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   try { source = (typeof input === 'string' ? JSON.parse(input) : input) as JsonSchema; }
   catch (error) { throw new TypeError(`Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`); }
   const resolveLocalRef = (ref: string): JsonSchema | undefined => {
-    if (!ref.startsWith('#/')) return undefined;
-    return ref.slice(2).split('/').map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~')).reduce<any>((value, key) => value?.[key], source);
+    if (ref !== '#' && !ref.startsWith('#/')) return undefined;
+    if (ref === '#') return source;
+    return ref.slice(2).split('/').map((part) => {
+      if (/~(?![01])/.test(part)) return undefined;
+      return part.replace(/~1/g, '/').replace(/~0/g, '~');
+    }).reduce<any>((value, key) => {
+      if (key === undefined || value === null || (typeof value !== 'object' && typeof value !== 'function') || !Object.prototype.hasOwnProperty.call(value, key)) return undefined;
+      return value[key];
+    }, source);
   };
   const convert = (node: JsonSchema, resolving = new Set<string>()): { schema: z.ZodType; code: string } => {
     if (node === true) return { schema: z.any(), code: 'z.any()' };
