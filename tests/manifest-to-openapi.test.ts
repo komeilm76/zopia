@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { manifestToOpenApi, generateApiDocsFiles } from '../src';
+import { manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,12 @@ describe('manifest reverse conversion', () => {
     const document = result as any;
     expect(document.components.schemas.User).toEqual({ type: 'object' });
     expect(document.paths['/users'].get.responses['200'].description).toBe('ok');
+  });
+  it('loads a manifest from disk', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const file = join(directory, 'manifest.json');
+    await import('node:fs/promises').then(({ writeFile }) => writeFile(file, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, apis: [] }), 'utf8'));
+    expect((await manifestFileToOpenApi(file) as any).openapi).toBe('3.1.0');
   });
   it('restores Swagger security definitions', () => {
     const result = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'swagger-2.0', title: 'Test', version: '1' }, securitySchemes: { apiKey: { type: 'apiKey', name: 'X-Key', in: 'header' } }, apis: [] }) as any;

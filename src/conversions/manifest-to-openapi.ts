@@ -1,6 +1,16 @@
+import { readFile } from 'node:fs/promises';
+
 export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string }; mode?: string; servers?: unknown[]; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
 
 /** Reconstruct an OpenAPI document from a lossless zopia manifest. */
+/** Read a manifest JSON file and reconstruct its OpenAPI document. */
+export async function manifestFileToOpenApi(file: string): Promise<Record<string, unknown>> {
+  if (typeof file !== 'string' || !file) throw new TypeError('Manifest file path is required');
+  let parsed: unknown;
+  try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`); }
+  return manifestToOpenApi(parsed as ZopiaManifest);
+}
+
 export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unknown> {
   if (!manifest || typeof manifest !== 'object' || manifest.$schema !== 'zopia:manifest@1' || !manifest.source || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
   if (!['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new TypeError(`Unsupported manifest source kind: ${manifest.source.kind}`);
