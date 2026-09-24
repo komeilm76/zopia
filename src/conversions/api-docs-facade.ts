@@ -15,10 +15,11 @@ export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 
   if (!path.startsWith('/') || path.includes('?') || path.includes('#') || path.includes('\0') || path.includes('\\')) throw new TypeError(`Invalid API path: ${path}`);
   const rawSegments = path.split('/').filter(Boolean);
   if (rawSegments.some((segment) => /[{}]/.test(segment) && !/^\{[A-Za-z0-9._-]+\}$/.test(segment))) throw new TypeError(`Invalid API path template: ${path}`);
-  const parts: Array<{ name: string; parameter: boolean }> = rawSegments.map((segment) => ({
-    name: /^\{[A-Za-z0-9._-]+\}$/.test(segment) ? segment : propertyName(segment),
-    parameter: /^\{[A-Za-z0-9._-]+\}$/.test(segment),
-  }));
+  const parts: Array<{ name: string; parameter: boolean }> = rawSegments.map((segment) => {
+    const parameter = /^\{[A-Za-z0-9._-]+\}$/.test(segment);
+    if (parameter) propertyName(segment);
+    return { name: parameter ? segment : propertyName(segment), parameter };
+  });
   const methodName = propertyName(method);
   return [root, ...parts.map((part) => part.name), methodName].map((name) => {
     if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return `.${name}`;

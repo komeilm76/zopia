@@ -15,6 +15,7 @@ describe('API docs facade access', () => {
     expect(() => apiDocsFacadeAccess('/users', 'get', '__proto__' as any)).toThrow('Invalid facade root');
     expect(() => apiDocsFacadeAccess('/users', '../write' as any)).toThrow('Unsupported HTTP method');
     expect(() => apiDocsFacadeAccess('/constructor', 'get')).toThrow('Unsafe facade property');
+    expect(() => apiDocsFacadeAccess('/{constructor}', 'get')).toThrow('Unsafe facade property');
     expect(() => apiDocsFacadeAccess('/users/{id', 'get')).toThrow('Invalid API path template');
   });
 });
