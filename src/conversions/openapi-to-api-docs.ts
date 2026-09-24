@@ -1,4 +1,5 @@
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
+import { resolveOpenApiLocalRef } from './openapi-ref';
 
 export const OPENAPI_METHODS = ['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'] as const;
 export type OpenApiMethod = (typeof OPENAPI_METHODS)[number];
@@ -15,16 +16,19 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
   for (const path of Object.keys(document.paths)) {
     if (path.startsWith('x-')) continue;
     const item = document.paths[path];
-    if ('$ref' in item) {
-      if (typeof item.$ref !== 'string' || !item.$ref) throw new TypeError(`Invalid path-item $ref: ${path}`);
-      throw new TypeError(`Unsupported path-item $ref: ${item.$ref}`);
+    let resolvedItem: any = item;
+    if ('$ref' in resolvedItem) {
+      if (typeof resolvedItem.$ref !== 'string' || !resolvedItem.$ref) throw new TypeError(`Invalid path-item $ref: ${path}`);
+      const target = resolveOpenApiLocalRef(document, resolvedItem.$ref);
+      if (!target || typeof target !== 'object' || Array.isArray(target)) throw new TypeError(`Invalid path-item $ref: ${resolvedItem.$ref}`);
+      resolvedItem = { ...target, ...Object.fromEntries(Object.entries(resolvedItem).filter(([key]) => key !== '$ref')) };
     }
     for (const method of OPENAPI_METHODS) {
-      const operation = item[method];
+      const operation = resolvedItem[method];
       if (operation === undefined) continue;
       if (!operation || typeof operation !== 'object' || Array.isArray(operation)) throw new TypeError(`Invalid OpenAPI operation: ${method.toUpperCase()} ${path}`);
       if (operation.operationId !== undefined && (typeof operation.operationId !== 'string' || !operation.operationId.trim())) throw new TypeError(`Invalid operationId: ${method.toUpperCase()} ${path}`);
-      const pathParameters = item.parameters === undefined ? [] : item.parameters;
+      const pathParameters = resolvedItem.parameters === undefined ? [] : resolvedItem.parameters;
       if (!Array.isArray(pathParameters) || !pathParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid path parameters: ${path}`);
       const operationParameters = operation.parameters === undefined ? [] : operation.parameters;
       if (!Array.isArray(operationParameters) || !operationParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid operation parameters: ${method.toUpperCase()} ${path}`);
