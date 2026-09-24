@@ -11,7 +11,7 @@ export function deriveOperationId(path: string, method: OpenApiMethod): string {
 
 /** Collect path operations in the canonical km-api method order. */
 export function collectOpenApiOperations(input: OpenApiDocument | string): OpenApiOperation[] {
-  const { document } = normalizeOpenApiDocument(input); const operations: OpenApiOperation[] = [];
+  const { document } = normalizeOpenApiDocument(input); const operations: OpenApiOperation[] = []; const ids = new Set<string>();
   for (const path of Object.keys(document.paths)) {
     if (path.startsWith('x-')) continue;
     const item = document.paths[path];
@@ -19,7 +19,11 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
       const operation = item[method];
       if (operation === undefined) continue;
       if (!operation || typeof operation !== 'object' || Array.isArray(operation)) throw new TypeError(`Invalid OpenAPI operation: ${method.toUpperCase()} ${path}`);
-      operations.push({ path, method, operation, operationId: typeof operation.operationId === 'string' && operation.operationId.trim() ? operation.operationId : deriveOperationId(path, method) });
+      if (operation.operationId !== undefined && (typeof operation.operationId !== 'string' || !operation.operationId.trim())) throw new TypeError(`Invalid operationId: ${method.toUpperCase()} ${path}`);
+      const operationId = operation.operationId ?? deriveOperationId(path, method);
+      if (ids.has(operationId)) throw new TypeError(`Duplicate operationId: ${operationId}`);
+      ids.add(operationId);
+      operations.push({ path, method, operation, operationId });
     }
   }
   return operations;

@@ -10,6 +10,8 @@ describe('OpenAPI operation collection', () => {
   it('preserves explicit operation ids and rejects invalid operations', () => {
     expect(collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { operationId: 'createX' } } } })[0].operationId).toBe('createX');
     expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: null } } })).toThrow('Invalid OpenAPI operation');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { operationId: 1 } } } })).toThrow('Invalid operationId');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { operationId: 'same' } }, '/y': { get: { operationId: 'same' } } } })).toThrow('Duplicate operationId');
   });
   it('derives root ids deterministically', () => expect(deriveOperationId('/users', 'get')).toBe('getUsers'));
 });
