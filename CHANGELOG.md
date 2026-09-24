@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🖥️ Added initial `zopia generate` and `zopia reverse` CLI commands, with generation mode, component-reference, component, manifest, reverse `--out`, and `--help` options; the CLI now uses the project-standard Bun runtime.
 - 🔄 Added manifest-driven OpenAPI reconstruction while preserving original operation objects, plus a file-based `manifestFileToOpenApi()` API.
 - 📖 Aligned reverse-conversion documentation with the implemented manifest-based API.
-- 🔄 Added generated-manifest round-trip regression tests covering operation IDs, explicit security arrays, Swagger `basePath`, and Swagger security definitions.
+- 🔄 Added generated-manifest round-trip regression tests covering operation IDs, explicit security arrays, Swagger `basePath`, Swagger security definitions, and flat generation without a manifest.
 - 🛠️ Reverse conversion now validates manifest source kinds, restores Swagger `basePath` metadata, and restores Swagger `securityDefinitions`.
 - 📦 Added default `.zopia-manifest.json` generation with source hash, security metadata, component schemas, API file mappings, per-operation `$ref` metadata, operation overlays, and response-header overlays.
 
