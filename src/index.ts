@@ -27,3 +27,4 @@ export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
 export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
 export { extractOperationContracts, type OperationContracts } from './conversions/openapi-contracts';
 export { resolveOpenApiLocalRef } from './conversions/openapi-ref';
+export { manifestToOpenApi, type ZopiaManifest } from './conversions/manifest-to-openapi';
