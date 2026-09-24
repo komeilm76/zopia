@@ -182,7 +182,7 @@ tested — a warning that never fires in tests is a red flag, not a shrug.
 | R-123 | **Errors assert on `code`** (R-404), never on message text |
 | R-124 | **New rule ⇒ new test** — adding an R-… row to any doc requires the matching test in the same PR |
 | R-125 | **No skipped tests in main** — `it.skip` is allowed only with a linked issue and a removal date |
-| R-126 | **Golden trees typecheck** — the contract suite runs `tsc` over the golden `api_docs` trees against the local km-api: the `km-api/` submodule (branch `feat/open-unions-v0-4-0`) during development, the published `km-api@0.4.x` npm package after the final step (D-15). `makeApiConfig` is a type-level factory, so this is the gate that proves generated code is valid km-api (D-14/R-642) |
+| R-126 | **Golden trees typecheck** — the contract suite runs `tsc` over the golden `api_docs` trees against the local km-api: the `km-api@^0.4.0` submodule (published `km-api@0.4.0`) during development, the published `km-api@0.4.x` npm package after the final step (D-15). `makeApiConfig` is a type-level factory, so this is the gate that proves generated code is valid km-api (D-14/R-642) |
 
 ## 🔗 Next
 

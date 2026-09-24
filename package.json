@@ -1,0 +1,13 @@
+{
+  "name": "zopia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Type-safe OpenAPI, JSON Schema, and Zod conversion toolkit.",
+  "license": "MIT",
+  "packageManager": "bun@1.2.21",
+  "engines": { "node": ">=20" },
+  "devDependencies": {
+    "km-api": "^0.4.0",
+    "zod": "^4.6.5"
+  }
+}

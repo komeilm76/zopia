@@ -10,17 +10,13 @@ the same commit, per the [docs convention](12-standards.md#-docs-convention)).
 
 ```text
 .                           # 📦 repository root
-├── km-api/                  # 🔗 git SUBMODULE — km-api, branch feat/open-unions-v0-4-0
-│                            #    the 0.4.0 work lives committed in its own .git (local only —
-│                            #    never pushed); at the final release step the branch is pushed,
-│                            #    0.4.0 is published to npm, and this folder is removed and
-│                            #    replaced by the npm dependency (D-15)
+├── package.json              # 📦 km-api ^0.4.0 from npm
 ├── src/                      # ⚙️  zopia source (layout below)
 ├── tests/                    # 🧪  integration / round-trip suites + fixtures
 └── docs/                     # 📖  this documentation
 ```
 
-> 🔗 During development zopia resolves `km-api` from the submodule (D-15);
+> 🔗 During development zopia resolves `km-api` from the npm dependency (D-15);
 > the generated code and the test suite import the **published API surface**
 > of that branch, so swapping to the npm package at the end is lossless.
 

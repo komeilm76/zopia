@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Changed
+- 📦 Replaced the unpublished `km-api` Git submodule with the published `km-api@^0.4.0` npm dependency.
+
+
 ### ✨ Added
 
 - 📚 Complete project documentation standard under [`docs/`](docs/) covering:

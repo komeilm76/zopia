@@ -23,8 +23,7 @@ without asking questions. ✅ *That bar is the acceptance test of this phase.*
 Everything in [Targets](02-targets.md) marked ✅ 🚧:
 
 - [ ] ⚙️ Package scaffold — `package.json` (Bun-first, zero runtime deps,
-      `zod` peer + `km-api` resolved from the local submodule during dev,
-      swapped to `km-api ^0.4.0` at the final step — D-15), strict
+      `zod` peer + `km-api ^0.4.0` from npm — D-15), strict
       `tsconfig`, Vitest + Bun setup
 - [ ] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
       ([rules](06-conversions.md))
@@ -56,10 +55,8 @@ A Phase 1 release is complete when **all** of the following hold:
 4. 🧩 All four engine docs sections are implemented exactly as specified (mapping tables are the contract)
 5. 📖 Every public symbol has JSDoc; `tsc --noEmit` (strict) passes
 6. 📜 `CHANGELOG.md` v0.1.0 entry exists and `README` status banner is updated
-7. 🔗 **km-api final step** (D-15) — zopia works without problems on the local
-   submodule, then: push `km-api` branch `feat/open-unions-v0-4-0` to
-   `komeilm76/km-api` → publish `km-api@0.4.0` to npm → `git submodule deinit
-   km-api` + remove → `km-api: ^0.4.0` from the registry in `package.json` →
+7. ✅ **km-api final step** (D-15) — `km-api@0.4.0` is published and zopia
+   uses `km-api: ^0.4.0` from npm; no Git submodule or unpublished commit remains →
    full test suite green again
 
 ## 🧰 Phase 2 — Breadth (v0.2.x)

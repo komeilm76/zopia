@@ -173,11 +173,11 @@ required Zod objects. The remaining km-api gaps — **per-parameter metadata**
 (overlay / `responseOverlay`, R-635/R-754).
 
 > 🔗 **Where km-api lives.** During zopia development, km-api is a **git
-> submodule** in this repo (`km-api/`, branch `feat/open-unions-v0-4-0`) —
+> submodule** in this repo (`km-api@^0.4.0`, published `km-api@0.4.0`) —
 > the 0.4.0 change set is committed in the clone's own `.git` (kept local,
 > never pushed), with its `CHANGES.md`/`README.md`/`rules.md` updated on
 > every change. At the final release step the branch is pushed, `0.4.0` is
-> published to npm, and the submodule is removed in favour of the npm
+> published to npm, and the npm dependency is removed in favour of the npm
 > dependency (D-15, [Architecture → Module layout](04-architecture.md#-module-layout)).
 
 ### 📂 api docs
