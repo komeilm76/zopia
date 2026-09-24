@@ -78,7 +78,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | --- | --- | --- |
 | S-31 | defaults (`directory`, no components) — self-contained files (imports only `zod`/`km-api`) | R-502, defaults |
 | S-32 | `insertComponents: true` — `components/**` + barrel + inlined endpoints | R-801 |
-| S-33 | `insertComponents + useComponentAsReference` — barrel imports in endpoints | R-802, R-821 |
+| S-33 | `insertComponents + useComponentAsReference` — explicit unsupported-option error until endpoint imports are implemented | R-802, R-821 |
 | S-34 | `useComponentAsReference` alone → `ZOPIA_CONFIG_INVALID` | R-911 |
 | S-35 | manifest written & valid in all of the above (schema test) | D-06 |
 

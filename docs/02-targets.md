@@ -25,7 +25,7 @@ Vitest suite — see [Testing → Scenario matrix](11-testing.md).
 | T-6 | **Layout mode `flat`** — `api_docs/` + one directory per API + method directory + `index` file | [API docs format → flat mode](07-api-docs.md#-mode--flat) | ✅ 🚧 |
 | T-7 | **`index.ts` files are TypeScript** and fill **all practical content** of the endpoint (method, path, operationId, summary, description, tags, auth, content types, request, response, examples) using **`makeApiConfig()` from km-api** (the package's make function) | [API docs format → `index.ts` contract](07-api-docs.md#-the-indexts-contract) | ✅ 🚧 |
 | T-8 | **Option `insertComponents: boolean`** — when `true`, components are written into `api_docs` as their own schema files; **default `false`** | [Components](08-components.md) · [Configuration](09-configuration.md) | ✅ 🚧 |
-| T-9 | **Option `useComponentAsReference: boolean`** — available only when `insertComponents` is `true`; when `true`, endpoint files *import* components instead of inlining them; **default `false`** | [Components → option matrix](08-components.md) | ✅ 🚧 |
+| T-9 | **Option `useComponentAsReference: boolean`** — reserved for future endpoint imports; currently fails explicitly; **default `false`** | [Components → option matrix](08-components.md) | 🚧 |
 
 ## 🔁 Reverse-conversion targets
 
