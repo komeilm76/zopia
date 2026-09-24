@@ -39,7 +39,9 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || typeof parameter.name !== 'string' || !parameter.name) throw new TypeError(`Invalid parameter: ${ir.method} ${ir.path}`);
     if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new TypeError(`Invalid parameter.required: ${parameter.name}`);
     if (parameter.in === 'path' && parameter.required !== true) throw new TypeError(`Path parameter must be required: ${parameter.name}`);
-    return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema: parameter.schema };
+    const parameterContent = parameter.schema === undefined && parameter.content !== undefined ? firstContent(parameter.content) : undefined;
+    if (parameter.schema === undefined && parameterContent && parameterContent.schema === undefined) throw new TypeError(`Parameter requires schema or content: ${parameter.name}`);
+    return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema: parameter.schema ?? parameterContent?.schema };
   });
   const operation = ir.operation;
   let body = operation.requestBody;
