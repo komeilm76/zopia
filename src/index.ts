@@ -22,6 +22,7 @@ export {
 } from './conversions/openapi-to-api-docs';
 export { endpointFilePath, type ApiDocsMode } from './conversions/api-docs-layout';
 export { planApiDocsFiles, type ApiDocsFilePlan } from './conversions/api-docs-plan';
+export { generateApiDocsFiles, type GeneratedApiDocsFile, type GenerateApiDocsOptions } from './conversions/api-docs-generate';
 export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
 export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
 export { extractOperationContracts, type OperationContracts } from './conversions/openapi-contracts';

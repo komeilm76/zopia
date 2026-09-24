@@ -9,10 +9,11 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@types/node": "^22.20.4",
     "km-api": "^0.4.0",
-    "zod": "^4.6.5",
     "typescript": "^5.9.2",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "km-api": "^0.4.0",
