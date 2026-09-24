@@ -266,7 +266,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | parameter extras (`allowEmptyValue`, `style`, `explode`, `deprecated`, `example`) | no home in Zod/km-api → overlay entries on the operation subtree pointers (R-635) |
 | response `headers` | no home in km-api → `apis[].responseOverlay` entries (re-emitted verbatim, R-654c) |
 | 3.1 `webhooks` object | skipped + warning `ZOPIA_WARN_WEBHOOKS` (Phase 2) |
-| 3.1 path item that is a `$ref` | 🛑 `ZOPIA_SPEC_PATH_REF` (Phase 2) |
+| path item that is a local `$ref` | resolve the local JSON Pointer (including chained references); external, missing, malformed, and circular references are rejected |
 | `deprecated: true` | `deprecated: true` |
 
 > 📌 **Rule R-641** — *primary media type*: when a `content` map has several

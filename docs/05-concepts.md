@@ -59,7 +59,7 @@ Recognized by `"openapi": "3.1.x"`. Same shape as 3.0, but:
 - 🌗 Nullability via `"type": ["string", "null"]` — `nullable` is removed
 - 📸 `examples` (array) replaces `example`; `const` is allowed
 - 🧮 `exclusiveMinimum/Maximum` are **numbers** (were booleans in draft-04/07)
-- 🪝 adds `webhooks` (not paths — Phase 2, warning in Phase 1) and path items may *be* a `$ref` (`ZOPIA_SPEC_PATH_REF` in Phase 1)
+- 🪝 adds `webhooks` (not paths — Phase 2, warning in Phase 1); path-item `$ref`s are supported when they are valid local references
 - 📌 zopia treats 3.0 and 3.1 with the same normalizer + a small dialect shim
 
 ### 📐 JSON Schema

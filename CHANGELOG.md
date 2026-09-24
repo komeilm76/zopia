@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔗 Added strict local OpenAPI JSON Pointer reference handling and documentation.
 - ✅ Added validation for response status keys, descriptions, request-body content, and chained component references.
 - 📤 Added Swagger 2.0 `formData` request-contract extraction and strict field validation.
+- 🔗 Local path-item references now support chaining and circular-reference detection.
+- 🛡️ JSON Pointer resolution now rejects inherited object properties.
 - 🔀 Operation-level parameters now correctly override path-level parameters.
 
 ### 🚧 Planned

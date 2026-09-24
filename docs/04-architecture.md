@@ -268,7 +268,7 @@ export interface ZopiaError extends Error {
 | `ZOPIA_SPEC_INVALID_JSON` | engine ③ entry | input is not valid JSON | "fix the syntax at …" |
 | `ZOPIA_SPEC_UNSUPPORTED_VERSION` | `detect()` | neither `swagger: "2.0"` nor `openapi: "3.x"` | "supported: swagger 2.0, openapi 3.0/3.1" |
 | `ZOPIA_SPEC_MISSING_PATHS` | normalizers | document has no `paths` | — |
-| `ZOPIA_SPEC_PATH_REF` | normalizers | 3.1 path item is a `$ref` (the 3.1 "leading $ref" feature) | "path-item refs land in Phase 2" |
+| `ZOPIA_SPEC_PATH_REF` | normalizers | reserved for unsupported path-item reference cases | "path-item references must be valid local references" |
 | `ZOPIA_REF_NOT_FOUND` | `refs()` | `$ref` points to nothing | "check #/components/schemas/…" |
 | `ZOPIA_REF_EXTERNAL` | `refs()` | `$ref` points to another file (Phase 1) | "multi-file refs land in Phase 2" |
 | `ZOPIA_DOCS_MISSING_MANIFEST` | engine ④ | no `.zopia-manifest.json` in docs dir | "generate first, or pass …" |
