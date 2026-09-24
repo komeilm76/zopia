@@ -11,7 +11,8 @@ export interface GeneratedApiDocsFile { file: string; absolutePath: string; oper
 export interface GenerateApiDocsOptions { outputDir: string; mode?: ApiDocsMode; }
 
 function schemaCode(schema: unknown, name: string): string {
-  return jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: name }).code.replace(/^const [^=]+ = /, '').replace(/;$/, '');
+  const safeName = exportName(name);
+  return jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: safeName }).code.replace(/^const [^=]+ = /, '').replace(/;$/, '');
 }
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
 function exportName(operationId: string): string {

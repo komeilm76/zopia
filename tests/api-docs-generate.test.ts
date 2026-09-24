@@ -12,6 +12,10 @@ describe('API docs endpoint generation', () => {
     const content = await readFile(join(outputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
     expect(content).toContain("import { makeApiConfig } from 'km-api';");
     expect(content).toContain('export const getUser');
+    const numericDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/x': { get: { parameters: [{ name: '123', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'ok' } } } } } }, { outputDir: numericDir });
+    const numericContent = await readFile(join(numericDir, 'x', 'get', 'index.ts'), 'utf8');
+    expect(numericContent).toContain('"123": z.string()');
     const oddDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/x': { get: { operationId: 'get-user', responses: { '200': { description: 'ok' } } } } } }, { outputDir: oddDir });
     expect(await readFile(join(oddDir, 'x', 'get', 'index.ts'), 'utf8')).toContain('export const getUser');
