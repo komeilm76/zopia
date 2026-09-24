@@ -320,23 +320,18 @@ interface ZopiaGenerateResult {
 ## Engine ④ — api docs → OpenAPI
 
 ```ts
-/** 📂 Regenerate an OpenAPI document from an api_docs tree. */
-function apiDocsToOpenApi(docsDir: string, options?: ZopiaReverseOptions): Promise<ZopiaReverseResult>;
+/** 📦 Reconstruct an OpenAPI document from a generated zopia manifest. */
+function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unknown>;
 
-interface ZopiaReverseOptions {
-  /** 🏷️ Emitted spec version. @default '3.1' */
-  version?: '3.0' | '3.1';
-}
-
-interface ZopiaReverseResult {
-  /** 📄 The complete OpenAPI document (plain JSON object). */
-  openapi: Record<string, unknown>;
-  /** ⚠️ All warnings (R-408). */
-  warnings: ZopiaWarning[];
+interface ZopiaManifest {
+  $schema: 'zopia:manifest@1';
+  source: { kind: string; title: string; version: string };
+  components?: Array<{ name: string; schema: unknown }>;
+  apis: Array<{ path: string; method: string; sourceOperation?: Record<string, unknown> }>;
 }
 ```
 
-Pipeline: **load (manifest + imports) → extract → (engine ① per schema) → serialize**.
+The current implementation reconstructs from the manifest's preserved source operations; runtime endpoint-file imports and schema re-serialization are follow-up work.
 
 | # | Step | Rules |
 | --- | --- | --- |
