@@ -35,7 +35,7 @@ Indicates that an endpoint still exists and may still be used, but should no lon
 Type:
 
 ```ts
-deprecated?: boolean
+deprecated?: 'YES' | 'NO'
 ```
 
 ### `disable`
@@ -58,7 +58,7 @@ The implementation must preserve this distinction.
 Do not convert:
 
 ```ts
-deprecated: true
+deprecated: 'YES'
 ```
 
 into:
@@ -74,21 +74,21 @@ All of the following combinations must remain valid and independent:
 ```ts
 {
   disable: 'YES',
-  deprecated: false,
+  deprecated: 'NO',
 }
 ```
 
 ```ts
 {
   disable: 'NO',
-  deprecated: true,
+  deprecated: 'YES',
 }
 ```
 
 ```ts
 {
   disable: 'YES',
-  deprecated: true,
+  deprecated: 'YES',
 }
 ```
 
@@ -128,21 +128,21 @@ Add a reusable Zod schema for the new field, following the project’s existing 
 Preferred implementation:
 
 ```ts
-export const deprecatedSchema = z.boolean();
+export const deprecatedSchema = z.enum(['YES', 'NO']);
 ```
 
 The schema must accept:
 
 ```ts
-true
-false
+'YES'
+'NO'
 ```
 
 The schema must reject:
 
 ```ts
-'YES'
-'NO'
+true
+false
 0
 1
 null
@@ -163,7 +163,7 @@ Update the type accepted by `makeApiConfig()` so this configuration is valid:
 const api = makeApiConfig({
   method: 'GET',
   pathShape: '/users',
-  deprecated: true,
+  deprecated: 'YES',
   request: {
     body: z.any(),
     params: z.object({}),
@@ -180,7 +180,7 @@ const api = makeApiConfig({
 The field must be optional:
 
 ```ts
-deprecated?: boolean;
+deprecated?: 'YES' | 'NO';
 ```
 
 Existing configurations without `deprecated` must continue to compile and behave exactly as before.
@@ -198,7 +198,7 @@ const disabled = makeApiConfig({
   method: 'GET',
   pathShape: '/disabled',
   disable: 'YES',
-  deprecated: false,
+  deprecated: 'NO',
   request: {
     body: z.any(),
     params: z.object({}),
@@ -217,7 +217,7 @@ const deprecated = makeApiConfig({
   method: 'GET',
   pathShape: '/legacy',
   disable: 'NO',
-  deprecated: true,
+  deprecated: 'YES',
   request: {
     body: z.any(),
     params: z.object({}),
@@ -233,8 +233,8 @@ const deprecated = makeApiConfig({
 
 Verify that:
 
-- `disable: 'YES'` remains distinct from `deprecated: true`.
-- `disable: 'NO'` remains distinct from `deprecated: false`.
+- `disable: 'YES'` remains distinct from `deprecated: 'YES'`.
+- `disable: 'NO'` remains distinct from `deprecated: 'NO'`.
 - Neither field changes the other.
 - Existing `disableStatusSchema` behavior remains unchanged.
 
@@ -250,7 +250,7 @@ Example:
 const config = makeApiConfig({
   method: 'GET',
   pathShape: '/users',
-  deprecated: true,
+  deprecated: 'YES',
   request: {
     body: z.any(),
     params: z.object({}),
@@ -263,7 +263,7 @@ const config = makeApiConfig({
   },
 });
 
-expect(config.deprecated).toBe(true);
+expect(config.deprecated).toBe('YES');
 ```
 
 Also verify:
@@ -272,7 +272,7 @@ Also verify:
 const config = makeApiConfig({
   method: 'GET',
   pathShape: '/users',
-  deprecated: false,
+  deprecated: 'NO',
   request: {
     body: z.any(),
     params: z.object({}),
@@ -285,7 +285,7 @@ const config = makeApiConfig({
   },
 });
 
-expect(config.deprecated).toBe(false);
+expect(config.deprecated).toBe('NO');
 ```
 
 ---
@@ -320,15 +320,15 @@ Use the project’s existing Vitest and Zod v4 testing style.
 Add tests confirming that `deprecatedSchema` accepts:
 
 ```ts
-true
-false
+'YES'
+'NO'
 ```
 
 and rejects:
 
 ```ts
-'YES'
-'NO'
+true
+false
 0
 1
 null
@@ -341,13 +341,13 @@ undefined
 
 Add tests confirming:
 
-1. `deprecated: true` is accepted.
-2. `deprecated: false` is accepted.
+1. `deprecated: 'YES'` is accepted.
+2. `deprecated: 'NO'` is accepted.
 3. The value is preserved at runtime.
 4. Omitting `deprecated` remains valid.
 5. `disable` and `deprecated` can be used together.
-6. `disable: 'YES', deprecated: false` remains distinct.
-7. `disable: 'NO', deprecated: true` remains distinct.
+6. `disable: 'YES', deprecated: 'NO'` remains distinct.
+7. `disable: 'NO', deprecated: 'YES'` remains distinct.
 8. No automatic conversion occurs between the fields.
 
 ## Backward compatibility tests
@@ -364,7 +364,7 @@ Verify that existing configurations without `deprecated` still:
 Verify that generated declarations contain:
 
 ```ts
-deprecated?: boolean;
+deprecated?: 'YES' | 'NO';
 ```
 
 Verify that the public schema export is included in the declaration output.
@@ -377,7 +377,7 @@ Update all relevant documentation and JSDoc.
 
 Document `deprecated` as:
 
-> A boolean indicating that an endpoint is still available but should no longer be preferred and may be removed in the future.
+> A status value (`'YES'` or `'NO'`) indicating that an endpoint is still available but should no longer be preferred and may be removed in the future.
 
 Document `disable` separately as:
 
@@ -403,7 +403,7 @@ Include an example such as:
 const config = makeApiConfig({
   method: 'GET',
   pathShape: '/legacy-users',
-  deprecated: true,
+  deprecated: 'YES',
   disable: 'NO',
   request: {
     body: z.any(),
