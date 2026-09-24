@@ -24,6 +24,7 @@ describe('OpenAPI operation collection', () => {
   it('resolves local path-item references', () => {
     const result = collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { pathItems: { Shared: { get: { operationId: 'sharedGet' } } } }, paths: { '/x': { $ref: '#/components/pathItems/Shared' } } });
     expect(result[0].operationId).toBe('sharedGet');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { pathItems: { A: { $ref: '#/components/pathItems/B' }, B: { $ref: '#/components/pathItems/A' } } }, paths: { '/x': { $ref: '#/components/pathItems/A' } } })).toThrow('Circular path-item $ref');
   });
   it('derives root ids deterministically', () => expect(deriveOperationId('/users', 'get')).toBe('getUsers'));
 });

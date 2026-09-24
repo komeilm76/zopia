@@ -17,8 +17,11 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
     if (path.startsWith('x-')) continue;
     const item = document.paths[path];
     let resolvedItem: any = item;
-    if ('$ref' in resolvedItem) {
+    const seenPathRefs = new Set<string>();
+    while ('$ref' in resolvedItem) {
       if (typeof resolvedItem.$ref !== 'string' || !resolvedItem.$ref) throw new TypeError(`Invalid path-item $ref: ${path}`);
+      if (seenPathRefs.has(resolvedItem.$ref)) throw new TypeError(`Circular path-item $ref: ${resolvedItem.$ref}`);
+      seenPathRefs.add(resolvedItem.$ref);
       const target = resolveOpenApiLocalRef(document, resolvedItem.$ref);
       if (!target || typeof target !== 'object' || Array.isArray(target)) throw new TypeError(`Invalid path-item $ref: ${resolvedItem.$ref}`);
       resolvedItem = { ...target, ...Object.fromEntries(Object.entries(resolvedItem).filter(([key]) => key !== '$ref')) };
