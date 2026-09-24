@@ -28,7 +28,7 @@ describe('API docs endpoint generation', () => {
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, security: [{ apiKey: [] }], paths: { '/meta': { get: { operationId: 'meta', tags: ['#users'], security: [], deprecated: true, responses: { '200': { description: 'ok' } } } } } }, { outputDir: metadataDir });
     const metadata = await readFile(join(metadataDir, 'meta', 'get', 'index.ts'), 'utf8');
     expect(metadata).toContain('tags: ["#users"]');
-    expect(metadata).toContain('auth: false');
+    expect(metadata).toContain('auth: "NO"');
     expect(metadata).toContain("deprecated: 'YES'");
   });
 });
