@@ -11,6 +11,7 @@ type JsonSchema = Record<string, any>;
 /** Convert a JSON Schema value into executable Zod 4 code and a Zod schema. */
 export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?: string } = {}): JsonSchemaToZodResult {
   const rootName = options.rootName ?? 'schema';
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(rootName)) throw new TypeError(`Invalid rootName: ${rootName}`);
   const warnings: string[] = [];
   let source: JsonSchema;
   try { source = (typeof input === 'string' ? JSON.parse(input) : input) as JsonSchema; }
@@ -19,7 +20,15 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
     if (node.$ref) { warnings.push(`Unsupported $ref: ${node.$ref}`); return { schema: z.any(), code: 'z.any()' }; }
     if (Array.isArray(node.type)) {
-      const variants = node.type.map((type: string) => convert({ ...node, type }));
+      const variants = node.type.map((type: string) => {
+        const branch: JsonSchema = { ...node, type };
+        if (type === 'null') {
+          delete branch.format; delete branch.minLength; delete branch.maxLength;
+          delete branch.pattern; delete branch.minimum; delete branch.maximum;
+          delete branch.exclusiveMinimum; delete branch.exclusiveMaximum;
+        }
+        return convert(branch);
+      });
       if (variants.length === 1) return variants[0];
       return { schema: z.union(variants.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${variants.map((item: { code: string }) => item.code).join(', ')}])` };
     }

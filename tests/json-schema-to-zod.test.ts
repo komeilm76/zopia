@@ -13,6 +13,10 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(null).success).toBe(true);
     expect(result.schema.safeParse('a').success).toBe(false);
     expect(result.schema.safeParse('valid@example.com').success).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+  it('validates generated identifier names', () => {
+    expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'not-valid' })).toThrow('Invalid rootName');
   });
   it('preserves array uniqueness', () => {
     const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
