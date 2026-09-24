@@ -17,11 +17,16 @@ function firstContent(content: unknown): { contentType?: string; schema?: unknow
 }
 
 function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context: string): Record<string, any> {
-  if (!('$ref' in value)) return value;
-  if (typeof value.$ref !== 'string') throw new TypeError(`Invalid ${context} $ref`);
-  const resolved = resolveOpenApiLocalRef(ir.document, value.$ref);
-  if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) throw new TypeError(`Invalid resolved ${context} $ref: ${value.$ref}`);
-  return resolved as Record<string, any>;
+  let current: any = value; const seen = new Set<string>();
+  while ('$ref' in current) {
+    if (typeof current.$ref !== 'string' || !current.$ref) throw new TypeError(`Invalid ${context} $ref`);
+    if (seen.has(current.$ref)) throw new TypeError(`Circular ${context} $ref: ${current.$ref}`);
+    seen.add(current.$ref);
+    const resolved = resolveOpenApiLocalRef(ir.document, current.$ref);
+    if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) throw new TypeError(`Invalid resolved ${context} $ref: ${current.$ref}`);
+    current = resolved;
+  }
+  return current as Record<string, any>;
 }
 
 /** Extract request and response content without losing media-type metadata. */

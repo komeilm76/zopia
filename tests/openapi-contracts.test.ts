@@ -28,6 +28,10 @@ describe('OpenAPI operation contracts', () => {
     const [body] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: {}, responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(body)).toThrow('Invalid requestBody.content');
   });
+  it('resolves chained local references', () => {
+    const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { responses: { Alias: { $ref: '#/components/responses/Actual' }, Actual: { description: 'ok' } } }, paths: { '/x': { get: { responses: { '200': { $ref: '#/components/responses/Alias' } } } } } });
+    expect(extractOperationContracts(ir).responses[0].description).toBe('ok');
+  });
   it('rejects invalid response status keys', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { nope: { description: 'bad' } } } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Invalid response status');
