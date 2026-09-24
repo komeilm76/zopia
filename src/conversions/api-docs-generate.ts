@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { extractOperationContracts } from './openapi-contracts';
@@ -9,7 +10,7 @@ import type { OpenApiDocument } from './openapi';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 
 export interface GeneratedApiDocsFile { file: string; absolutePath: string; operationId: string; }
-export interface GenerateApiDocsOptions { outputDir: string; mode?: ApiDocsMode; insertComponents?: boolean; useComponentAsReference?: boolean; }
+export interface GenerateApiDocsOptions { outputDir: string; mode?: ApiDocsMode; insertComponents?: boolean; useComponentAsReference?: boolean; manifest?: boolean; }
 
 function schemaCode(schema: unknown, name: string): string {
   const safeName = exportName(name);
@@ -110,6 +111,21 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
     await mkdir(resolve(absolutePath, '..'), { recursive: true });
     await writeFile(absolutePath, renderEndpoint(plan, source), 'utf8');
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
+  }
+  if (options.manifest !== false) {
+    const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
+    const manifest = {
+      $schema: 'zopia:manifest@1', zopiaVersion: '0.0.1', mode: options.mode ?? 'directory',
+      options: { insertComponents: options.insertComponents === true, useComponentAsReference: Boolean(options.useComponentAsReference) },
+      source: { kind: source.swagger === '2.0' ? 'swagger-2.0' : source.openapi, title: source.info.title, version: source.info.version, sha256: createHash('sha256').update(JSON.stringify(source)).digest('hex') },
+      servers: source.servers ?? (source.basePath ? [source.basePath] : ['/']), tags: source.tags ?? [], securitySchemes: source.components?.securitySchemes ?? source.securityDefinitions ?? {},
+      ...(source.security === undefined ? {} : { defaultSecurity: source.security }),
+      components: Object.entries(schemas).map(([name, schema]) => ({ name, file: options.insertComponents ? `components/${name}/index.ts` : null, schema })),
+      apis: plans.map((plan) => ({ file: plan.file, path: plan.path, method: plan.method, operationId: plan.operationId, ...(Object.prototype.hasOwnProperty.call(plan.operation, 'security') ? { security: plan.operation.security } : {}) })),
+    };
+    const manifestFile = '.zopia-manifest.json'; const manifestPath = join(root, manifestFile);
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    generated.push({ file: manifestFile, absolutePath: manifestPath, operationId: 'manifest' });
   }
   return generated;
 }
