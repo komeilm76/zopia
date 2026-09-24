@@ -112,6 +112,14 @@ The facade is optional; direct imports remain the canonical file-level API. The
 facade rejects unsafe property names, malformed templates, duplicate parameters,
 and unsupported methods. The generated manifest remains authoritative (D-06).
 
+## 🧬 Operation contract extraction
+
+Before rendering an endpoint, zopia normalizes each operation into an
+intermediate representation and preserves request/response media types. The
+first content-bearing media type is emitted verbatim; malformed content and
+unresolved request/response `$ref` values are errors, never silently dropped.
+A later components phase resolves reusable references.
+
 ## 📄 The `index.ts` contract
 
 Every endpoint file has exactly this shape (T-7 — *all practical content is

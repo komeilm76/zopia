@@ -14,4 +14,8 @@ describe('OpenAPI operation contracts', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: { $ref: '#/components/requestBodies/X' }, responses: { '200': { $ref: '#/components/responses/X' } } } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Unsupported requestBody $ref');
   });
+  it('rejects malformed media content', () => {
+    const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: { content: { 'application/json': null } }, responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(ir)).toThrow('Invalid media type content');
+  });
 });

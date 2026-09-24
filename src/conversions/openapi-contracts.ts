@@ -6,9 +6,12 @@ export interface OperationContracts {
 }
 
 function firstContent(content: unknown): { contentType?: string; schema?: unknown } {
-  if (!content || typeof content !== 'object' || Array.isArray(content)) return {};
-  const [contentType, media] = Object.entries(content as Record<string, any>)[0] ?? [];
-  if (!media || typeof media !== 'object' || Array.isArray(media)) return { contentType };
+  if (content === undefined) return {};
+  if (!content || typeof content !== 'object' || Array.isArray(content)) throw new TypeError('Invalid content: expected an object');
+  const entries = Object.entries(content as Record<string, any>);
+  if (entries.length === 0) return {};
+  const [contentType, media] = entries[0];
+  if (!contentType || !media || typeof media !== 'object' || Array.isArray(media)) throw new TypeError(`Invalid media type content: ${contentType}`);
   return { contentType, schema: media.schema };
 }
 
