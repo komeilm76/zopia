@@ -116,7 +116,7 @@ export const PostSchema = z.object({
 | R-812 | 🌀 **Cycles** (e.g. `Comment.replies → Comment`) become `z.lazy(() => CommentSchema)` on the *cyclic edge only* — the file still loads (R-402) |
 | R-813 | 📦 Components imported from the barrel by endpoints never create import cycles: components never import endpoints (R-811) |
 
-## 📄 Endpoint files with `useComponentAsReference: true`
+## 📄 Planned endpoint files with `useComponentAsReference: true`
 
 ```ts
 import { z } from 'zod';

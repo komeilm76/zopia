@@ -212,7 +212,7 @@ export default getUser;
 With the default options (`insertComponents: false`), every `index.ts` imports
 **only** `zod` and `km-api` (R-502): components are inlined, repeated shapes
 are hoisted to local consts (R-403). Cross-file imports appear **only** when
-`useComponentAsReference` is `true` — see [Components](08-components.md).
+`useComponentAsReference` is `true` (planned; currently rejected) — see [Components](08-components.md).
 
 ## 📦 The manifest — `.zopia-manifest.json`
 
