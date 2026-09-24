@@ -16,6 +16,23 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   const convert = (node: JsonSchema): { schema: z.ZodType; code: string } => {
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
     if (node.$ref) { warnings.push(`Unsupported $ref: ${node.$ref}`); return { schema: z.any(), code: 'z.any()' }; }
+    if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf)) {
+      const key = Array.isArray(node.oneOf) ? 'oneOf' : 'anyOf';
+      const items = node[key].map((child: JsonSchema) => convert(child));
+      if (items.length === 0) return { schema: z.never(), code: 'z.never()' };
+      if (items.length === 1) return items[0];
+      return { schema: z.union(items.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${items.map((item: { code: string }) => item.code).join(', ')}])` };
+    }
+    if (Array.isArray(node.allOf)) {
+      const items = node.allOf.map((child: JsonSchema) => convert(child));
+      if (items.length === 0) return { schema: z.any(), code: 'z.any()' };
+      if (items.every((item: { schema: z.ZodType }) => item.schema instanceof z.ZodObject)) {
+        const schema = items.slice(1).reduce((acc: any, item: { schema: z.ZodType }) => acc.and(item.schema), items[0].schema as any);
+        return { schema, code: items.slice(1).reduce((code: string, item: { code: string }) => `${code}.and(${item.code})`, items[0].code) };
+      }
+      warnings.push('allOf is only executable for object schemas');
+      return { schema: z.any(), code: 'z.any()' };
+    }
     if (node.enum) {
       if (node.enum.length === 0) return { schema: z.never(), code: 'z.never()' };
       if (node.enum.every((v: unknown) => typeof v === 'string')) return { schema: z.enum(node.enum as [string, ...string[]]), code: `z.enum(${JSON.stringify(node.enum)})` };
@@ -40,6 +57,23 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       case 'null': result = { schema: z.null(), code: 'z.null()' }; break;
       default: warnings.push(`Unsupported JSON Schema type: ${String(node.type)}`); result = { schema: z.any(), code: 'z.any()' };
     }
+    const methods: Array<[string, unknown, (schema: any, value: any) => any]> = [
+      ['minLength', node.minLength, (s, v) => s.min(v)],
+      ['maxLength', node.maxLength, (s, v) => s.max(v)],
+      ['pattern', node.pattern, (s, v) => s.regex(new RegExp(v))],
+      ['minimum', node.minimum, (s, v) => s.min(v)],
+      ['maximum', node.maximum, (s, v) => s.max(v)],
+      ['exclusiveMinimum', node.exclusiveMinimum, (s, v) => s.gt(v)],
+      ['exclusiveMaximum', node.exclusiveMaximum, (s, v) => s.lt(v)],
+      ['minItems', node.minItems, (s, v) => s.min(v)],
+      ['maxItems', node.maxItems, (s, v) => s.max(v)],
+    ];
+    for (const [name, value, apply] of methods) {
+      if (value === undefined) continue;
+      try { result = { schema: apply(result.schema, value), code: `${result.code}.${name === 'exclusiveMinimum' ? 'gt' : name === 'exclusiveMaximum' ? 'lt' : name === 'minItems' ? 'min' : name === 'maxItems' ? 'max' : name === 'minLength' ? 'min' : name === 'maxLength' ? 'max' : name}(${JSON.stringify(value)})` }; }
+      catch { warnings.push(`Unsupported constraint: ${name}`); }
+    }
+    if (node.multipleOf !== undefined && node.type === 'number') warnings.push('multipleOf is not represented by a basic Zod method');
     if (node.default !== undefined) result = { schema: result.schema.default(node.default), code: `${result.code}.default(${JSON.stringify(node.default)})` };
     return result;
   };
