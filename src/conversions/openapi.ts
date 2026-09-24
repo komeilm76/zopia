@@ -24,6 +24,7 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
   for (const [path, item] of Object.entries(document.paths)) {
     if (!path.startsWith('/') && !path.startsWith('x-')) throw new TypeError(`Invalid OpenAPI document: path key must start with /: ${path}`);
     if (path.startsWith('x-')) continue;
+    if (/[{}]/.test(path) && !/^\/([^{}]|\{[A-Za-z0-9._-]+\})*$/.test(path)) throw new TypeError(`Invalid OpenAPI document: malformed path template: ${path}`);
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new TypeError(`Invalid OpenAPI document: path item must be an object: ${path}`);
   }
   return { document, version, title: document.info.title, versionString: document.info.version };
