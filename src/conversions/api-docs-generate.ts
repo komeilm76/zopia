@@ -89,11 +89,14 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
       if (previous) throw new TypeError(`Component export name collision: ${previous} and ${name}`);
       componentExports.set(componentExport, name);
     }
-    for (const name of names) {
+    const renderedComponents = names.map((name) => {
       if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || name.includes('\0')) throw new TypeError(`Unsafe component name: ${name}`);
+      return { name, content: renderComponent(name, schemas[name], source) };
+    });
+    for (const { name, content } of renderedComponents) {
       const file = `components/${name}/index.ts`; const absolutePath = join(root, file);
       await mkdir(resolve(absolutePath, '..'), { recursive: true });
-      await writeFile(absolutePath, renderComponent(name, schemas[name], source), 'utf8');
+      await writeFile(absolutePath, content, 'utf8');
       generated.push({ file, absolutePath, operationId: name });
     }
     const barrel = names.map((name) => `export { ${exportName(name)}Schema } from './${name}/index';`).join('\\n') + (names.length ? '\\n' : '');
