@@ -9,7 +9,7 @@ describe('API docs endpoint generation', () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
     expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts', 'components/index.ts', '.zopia-manifest.json']);
-    expect(await readFile(join(outputDir, 'components/index.ts'), 'utf8')).toContain("export { AlphaSchema } from './Alpha/index';");
+    expect(await readFile(join(outputDir, 'components/index.ts'), 'utf8')).toContain('export { AlphaSchema } from "./Alpha/index";');
     const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
     expect(manifest.source.kind).toBe('openapi-3.1');
     expect(manifest.apis).toEqual([]);
