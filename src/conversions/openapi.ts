@@ -21,5 +21,8 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
   else throw new TypeError('Unsupported OpenAPI document version; expected Swagger 2.0 or OpenAPI 3.0/3.1');
   if (!document.info || typeof document.info !== 'object' || typeof document.info.title !== 'string' || typeof document.info.version !== 'string') throw new TypeError('Invalid OpenAPI document: info.title and info.version are required');
   if (!document.paths || typeof document.paths !== 'object' || Array.isArray(document.paths)) throw new TypeError('Invalid OpenAPI document: paths must be an object');
+  for (const path of Object.keys(document.paths)) {
+    if (!path.startsWith('/') && !path.startsWith('x-')) throw new TypeError(`Invalid OpenAPI document: path key must start with /: ${path}`);
+  }
   return { document, version, title: document.info.title, versionString: document.info.version };
 }
