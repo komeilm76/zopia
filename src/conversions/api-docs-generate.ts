@@ -25,6 +25,16 @@ function collectComponentRefs(value: unknown, names = new Set<string>()): Set<st
   }
   return names;
 }
+function collectRefs(value: unknown, at = ''): Array<{ at: string; ref: string; component?: string }> {
+  const refs: Array<{ at: string; ref: string; component?: string }> = [];
+  if (Array.isArray(value)) value.forEach((child, index) => refs.push(...collectRefs(child, `${at}/${index}`)));
+  else if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {
+    const location = `${at}/${key}`;
+    if (key === '$ref' && typeof child === 'string') refs.push({ at: location, ref: child, ...(componentExport(child) ? { component: componentExport(child)!.replace(/Schema$/, '') } : {}) });
+    else refs.push(...collectRefs(child, location));
+  }
+  return refs;
+}
 function schemaCode(schema: unknown, name: string): string {
   const safeName = exportName(name);
   return jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: safeName }).code.replace(/^const [^=]+ = /, '').replace(/;$/, '');
@@ -142,7 +152,7 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
       servers: source.servers ?? (source.basePath ? [source.basePath] : ['/']), tags: source.tags ?? [], securitySchemes: source.components?.securitySchemes ?? source.securityDefinitions ?? {},
       ...(source.security === undefined ? {} : { defaultSecurity: source.security }),
       components: Object.entries(schemas).map(([name, schema]) => ({ name, file: options.insertComponents ? `components/${name}/index.ts` : null, schema })),
-      apis: plans.map((plan) => ({ file: plan.file, path: plan.path, method: plan.method, operationId: plan.operationId, ...(Object.prototype.hasOwnProperty.call(plan.operation, 'security') ? { security: plan.operation.security } : {}) })),
+      apis: plans.map((plan) => ({ file: plan.file, path: plan.path, method: plan.method, operationId: plan.operationId, refs: collectRefs(plan.operation), overlay: [], responseOverlay: [], ...(Object.prototype.hasOwnProperty.call(plan.operation, 'security') ? { security: plan.operation.security } : {}) })),
     };
     const manifestFile = '.zopia-manifest.json'; const manifestPath = join(root, manifestFile);
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
