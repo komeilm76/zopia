@@ -27,6 +27,11 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
     expect(result.schema.safeParse(['a', 'a']).success).toBe(false);
   });
+  it('enforces required keys even without property declarations', () => {
+    const result = jsonSchemaToZod({ type: 'object', required: ['id'] });
+    expect(result.schema.safeParse({}).success).toBe(false);
+    expect(result.schema.safeParse({ id: 1 }).success).toBe(true);
+  });
   it('preserves additionalProperties behavior', () => {
     const strict = jsonSchemaToZod({ type: 'object', additionalProperties: false });
     expect(strict.schema.safeParse({ extra: true }).success).toBe(false);

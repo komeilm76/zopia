@@ -75,6 +75,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       case 'object': {
         const shape: Record<string, z.ZodType> = {}; const parts: string[] = [];
         for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
+        if (Array.isArray(node.required)) for (const key of node.required) if (!(key in shape)) { shape[key] = z.unknown(); parts.push(`${JSON.stringify(key)}: z.unknown()`); }
+        if (node.patternProperties) warnings.push('patternProperties is not represented by the basic object converter');
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
         if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
         else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
