@@ -4,7 +4,7 @@ function propertyName(segment: string): string {
   const raw = segment.replace(/^\{(.*)\}$/, '$1');
   const words = raw.split(/[^A-Za-z0-9]+/).filter(Boolean);
   const name = words.map((word, index) => index === 0 ? word.charAt(0).toLowerCase() + word.slice(1) : word.charAt(0).toUpperCase() + word.slice(1)).join('');
-  if (!name) throw new TypeError(`Cannot create facade property from path segment: ${segment}`);
+  if (!name || ['__proto__', 'prototype', 'constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable'].includes(name)) throw new TypeError(`Unsafe facade property from path segment: ${segment}`);
   return name;
 }
 
