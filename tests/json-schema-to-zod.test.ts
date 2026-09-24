@@ -17,6 +17,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('validates generated identifier names', () => {
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'not-valid' })).toThrow('Invalid rootName');
+    expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'default' })).toThrow('Invalid rootName');
   });
   it('preserves array uniqueness', () => {
     const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
