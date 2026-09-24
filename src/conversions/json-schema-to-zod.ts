@@ -42,7 +42,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
           delete branch.pattern; delete branch.minimum; delete branch.maximum;
           delete branch.exclusiveMinimum; delete branch.exclusiveMaximum;
         }
-        return convert(branch);
+        return convert(branch, resolving);
       });
       if (variants.length === 1) return variants[0];
       return { schema: z.union(variants.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${variants.map((item: { code: string }) => item.code).join(', ')}])` };
