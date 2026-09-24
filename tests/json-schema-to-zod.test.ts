@@ -51,6 +51,13 @@ describe('jsonSchemaToZod', () => {
     const recursive = jsonSchemaToZod({ $defs: { Node: { type: 'object', properties: { next: { $ref: '#/$defs/Node' } } } }, $ref: '#/$defs/Node' });
     expect(recursive.warnings[0]).toContain('Recursive $ref');
   });
+  it('warns for unsupported applicator keywords', () => {
+    const result = jsonSchemaToZod({ type: 'object', not: { required: ['id'] }, minProperties: 1 });
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      'Unsupported JSON Schema keyword: not',
+      'Unsupported JSON Schema keyword: minProperties',
+    ]));
+  });
   it('reports unsupported references without failing', () => {
     const result = jsonSchemaToZod({ $ref: 'https://example.com/schema.json' }, { rootName: 'user' });
     expect(result.code).toBe('const user = z.any();');
