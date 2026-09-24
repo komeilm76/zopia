@@ -9,6 +9,9 @@ describe('zodToJsonSchema', () => {
   it('supports OpenAPI 3.0 and explicit dialect output', () => {
     expect(zodToJsonSchema(z.string(), { target: 'openapi-3.0', $schema: true })).toEqual({ type: 'string', '$schema': 'http://json-schema.org/draft-07/schema#' });
   });
+  it('adds the explicit dialect for OpenAPI 3.1 too', () => {
+    expect(zodToJsonSchema(z.string(), { target: 'openapi-3.1', $schema: true })).toHaveProperty('$schema', 'http://json-schema.org/draft-07/schema#');
+  });
   it('supports input mode', () => {
     expect(zodToJsonSchema(z.object({ value: z.string().default('x') }), { io: 'input' }).required).toBeUndefined();
   });

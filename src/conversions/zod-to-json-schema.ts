@@ -27,7 +27,7 @@ export function zodToJsonSchema(
 
   // Zod omits the dialect for OpenAPI targets. `$schema: true` is an explicit
   // zopia convenience and uses the OpenAPI-compatible draft-07 dialect.
-  if (target === 'openapi-3.0' && options.$schema === true && !('$schema' in result)) {
+  if ((target === 'openapi-3.0' || target === 'openapi-3.1') && options.$schema === true && !('$schema' in result)) {
     result.$schema = 'http://json-schema.org/draft-07/schema#';
   }
   if (options.$schema === false) delete result.$schema;
