@@ -10,10 +10,25 @@
   },
   "devDependencies": {
     "km-api": "^0.4.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.9"
   },
   "peerDependencies": {
     "km-api": "^0.4.0",
     "zod": "^4.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc --noEmit"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
   }
 }
