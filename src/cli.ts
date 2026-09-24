@@ -12,9 +12,10 @@ async function main(argv: string[]): Promise<void> {
     if (!output) usage();
     const modeIndex = argv.indexOf('--mode'); const mode = modeIndex >= 0 ? argv[modeIndex + 1] as 'directory' | 'flat' : undefined;
     const insertComponents = argv.includes('--insert-components');
+    const useComponentAsReference = argv.includes('--use-component-as-reference');
     const manifest = argv.includes('--no-manifest') ? false : true;
     if (modeIndex >= 0 && mode !== 'directory' && mode !== 'flat') throw new Error('Invalid --mode; expected directory or flat');
-    await generateApiDocsFiles(await readFile(input, 'utf8'), { outputDir: output, mode, insertComponents, manifest });
+    await generateApiDocsFiles(await readFile(input, 'utf8'), { outputDir: output, mode, insertComponents, useComponentAsReference, manifest });
     return;
   }
   if (command === 'reverse') {
