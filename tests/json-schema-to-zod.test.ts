@@ -39,6 +39,8 @@ describe('jsonSchemaToZod', () => {
     expect(objects.schema.safeParse([{ a: 1, b: 2 }, { b: 2, a: 1 }]).success).toBe(false);
     const nullable = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: ['string', 'null'] } });
     expect(nullable.schema.safeParse([null, null]).success).toBe(false);
+    const tuple = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }], uniqueItems: true });
+    expect(tuple.schema.safeParse(['x', 1]).success).toBe(true);
   });
   it('enforces required keys even without property declarations', () => {
     const result = jsonSchemaToZod({ type: 'object', required: ['id'] });
