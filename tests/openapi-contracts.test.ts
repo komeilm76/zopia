@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { buildOpenApiOperationIR, extractOperationContracts } from '../src';
 
 describe('OpenAPI operation contracts', () => {
+  it('extracts Swagger body parameters', () => {
+    const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], paths: { '/x': { post: { parameters: [{ in: 'body', name: 'payload', required: true, schema: { type: 'object' } }], responses: { '200': { description: 'ok' } } } } } });
+    expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'object' }, required: true });
+  });
   it('extracts Swagger response schemas too', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { produces: ['application/json'], responses: { '200': { description: 'ok', schema: { type: 'string' } } } } } } });
     expect(extractOperationContracts(ir).responses[0].schema).toEqual({ type: 'string' });

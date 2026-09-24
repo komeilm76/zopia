@@ -33,7 +33,15 @@ function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context:
 /** Extract request and response content without losing media-type metadata. */
 export function extractOperationContracts(ir: OpenApiOperationIR): OperationContracts {
   const operation = ir.operation;
-  const body = operation.requestBody;
+  let body = operation.requestBody;
+  if (body === undefined && ir.document.swagger === '2.0' && Array.isArray(operation.parameters)) {
+    const bodyParameter = operation.parameters.find((parameter: any) => parameter && parameter.in === 'body');
+    if (bodyParameter) {
+      if (typeof bodyParameter !== 'object' || !bodyParameter.schema) throw new TypeError(`Invalid Swagger body parameter: ${ir.method} ${ir.path}`);
+      const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
+      body = { content: { [typeof consumes[0] === 'string' && consumes[0] ? consumes[0] : 'application/json']: { schema: bodyParameter.schema } }, required: bodyParameter.required === true };
+    }
+  }
   const requestBody = body === undefined ? undefined : (() => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError(`Invalid requestBody: ${ir.method} ${ir.path}`);
     const bodyObject = resolveRef(body, ir, 'requestBody');
