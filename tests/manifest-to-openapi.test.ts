@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { manifestToOpenApi } from '../src';
+import { manifestToOpenApi, generateApiDocsFiles } from '../src';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('manifest reverse conversion', () => {
   it('reconstructs the document frame and lossless operations', () => {
@@ -8,5 +11,13 @@ describe('manifest reverse conversion', () => {
     const document = result as any;
     expect(document.components.schemas.User).toEqual({ type: 'object' });
     expect(document.paths['/users'].get.responses['200'].description).toBe('ok');
+  });
+  it('round-trips a generated manifest without losing the operation', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Round trip', version: '1' }, paths: { '/users': { get: { operationId: 'listUsers', security: [], responses: { '200': { description: 'ok' } } } } } }, { outputDir });
+    const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
+    const result = manifestToOpenApi(manifest) as any;
+    expect(result.paths['/users'].get.operationId).toBe('listUsers');
+    expect(result.paths['/users'].get.security).toEqual([]);
   });
 });
