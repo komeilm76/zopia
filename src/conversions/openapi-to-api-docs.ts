@@ -28,6 +28,16 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
       if (!Array.isArray(pathParameters) || !pathParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid path parameters: ${path}`);
       const operationParameters = operation.parameters === undefined ? [] : operation.parameters;
       if (!Array.isArray(operationParameters) || !operationParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid operation parameters: ${method.toUpperCase()} ${path}`);
+      const validateUnique = (parameters: any[], label: string) => {
+        const seen = new Set<string>();
+        for (const parameter of parameters) {
+          const key = `${String(parameter.in)}:${String(parameter.name)}`;
+          if (seen.has(key)) throw new TypeError(`Duplicate ${label} parameter: ${key}`);
+          seen.add(key);
+        }
+      };
+      validateUnique(pathParameters, 'path-level');
+      validateUnique(operationParameters, 'operation-level');
       const mergedParameters = [...pathParameters];
       for (const parameter of operationParameters) {
         const index = mergedParameters.findIndex((candidate: any) => candidate.name === parameter.name && candidate.in === parameter.in);
