@@ -29,6 +29,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   const responses = operation.responses;
   if (!responses || typeof responses !== 'object' || Array.isArray(responses)) throw new TypeError(`Invalid responses: ${ir.method} ${ir.path}`);
   return { requestBody, responses: Object.entries(responses).map(([status, value]) => {
+    if (status !== 'default' && !/^[1-5](?:\d{2}|XX)$/.test(status)) throw new TypeError(`Invalid response status: ${status}`);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`Invalid response ${status}: ${ir.method} ${ir.path}`);
     const response = value as Record<string, any>;
     if ('$ref' in response) throw new TypeError(`Unsupported response $ref: ${response.$ref}`);
