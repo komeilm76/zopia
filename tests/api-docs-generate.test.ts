@@ -52,6 +52,12 @@ describe('API docs endpoint generation', () => {
     expect(content).toContain('z.literal(true)');
     expect(content).toContain('z.nullable(z.string())');
   });
+  it('renders additional property component references', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Directory: { type: 'object', additionalProperties: { $ref: '#/components/schemas/User' } } } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Directory', 'index.ts'), 'utf8');
+    expect(content).toContain('.catchall(UserSchema)');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
