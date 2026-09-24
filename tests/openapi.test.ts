@@ -16,7 +16,7 @@ describe('normalizeOpenApiDocument', () => {
     expect(() => normalizeOpenApiDocument({ openapi: '3.2.0', info: {}, paths: {} })).toThrow('Unsupported OpenAPI document version');
     expect(() => normalizeOpenApiDocument({ openapi: '3.1.0', info: { title: 'x', version: '1' } })).toThrow('paths must be an object');
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { users: {} } })).toThrow('path key must start with /');
-    expect(normalizeOpenApiDocument({ ...base('3.1.0'), paths: { 'x-note': {} } }).version).toBe('3.1');
+    expect(normalizeOpenApiDocument({ ...base('3.1.0'), paths: { 'x-note': 'allowed extension' } }).version).toBe('3.1');
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users': null } })).toThrow('path item must be an object');
   });
 });

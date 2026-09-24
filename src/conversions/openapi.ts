@@ -23,6 +23,7 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
   if (!document.paths || typeof document.paths !== 'object' || Array.isArray(document.paths)) throw new TypeError('Invalid OpenAPI document: paths must be an object');
   for (const [path, item] of Object.entries(document.paths)) {
     if (!path.startsWith('/') && !path.startsWith('x-')) throw new TypeError(`Invalid OpenAPI document: path key must start with /: ${path}`);
+    if (path.startsWith('x-')) continue;
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new TypeError(`Invalid OpenAPI document: path item must be an object: ${path}`);
   }
   return { document, version, title: document.info.title, versionString: document.info.version };
