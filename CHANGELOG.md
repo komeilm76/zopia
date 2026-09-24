@@ -14,8 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🔄 Changed
-- 📦 Replaced the unpublished `km-api` Git submodule with the published `km-api@^0.4.0` npm dependency.
+### 🚧 Planned
+- 🚀 Phase 1 implementation: conversion engines, API-doc generation, reverse conversion, CLI, and tests.
+
+## [0.0.1] - 2026-09-24
+
+### ✅ Released
+- 📚 Published the Phase 0 documentation and standards baseline.
+- 📦 Switched to the published `km-api@^0.4.0` npm dependency.
+- 🧭 Established the Phase 1 public API and implementation contract.
 
 
 ### ✨ Added
