@@ -15,9 +15,14 @@ export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 
   if (!path.startsWith('/') || path.includes('?') || path.includes('#') || path.includes('\0') || path.includes('\\')) throw new TypeError(`Invalid API path: ${path}`);
   const rawSegments = path.split('/').filter(Boolean);
   if (rawSegments.some((segment) => /[{}]/.test(segment) && !/^\{[A-Za-z0-9._-]+\}$/.test(segment))) throw new TypeError(`Invalid API path template: ${path}`);
+  const parameterNames = new Set<string>();
   const parts: Array<{ name: string; parameter: boolean }> = rawSegments.map((segment) => {
     const parameter = /^\{[A-Za-z0-9._-]+\}$/.test(segment);
-    if (parameter) propertyName(segment);
+    if (parameter) {
+      const normalized = propertyName(segment);
+      if (parameterNames.has(normalized)) throw new TypeError(`Duplicate path parameter: ${normalized}`);
+      parameterNames.add(normalized);
+    }
     return { name: parameter ? segment : propertyName(segment), parameter };
   });
   const methodName = propertyName(method);
