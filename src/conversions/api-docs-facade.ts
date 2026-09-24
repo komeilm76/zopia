@@ -1,4 +1,4 @@
-import type { OpenApiMethod } from './openapi-to-api-docs';
+import { OPENAPI_METHODS, type OpenApiMethod } from './openapi-to-api-docs';
 
 function propertyName(segment: string): string {
   const raw = segment.replace(/^\{(.*)\}$/, '$1');
@@ -11,6 +11,7 @@ function propertyName(segment: string): string {
 /** Return the ergonomic dot-access path for an endpoint facade. */
 export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 'apiDocs'): string {
   if (!/^[$A-Za-z_][$A-Za-z0-9_]*$/.test(root)) throw new TypeError(`Invalid facade root: ${root}`);
+  if (!(OPENAPI_METHODS as readonly string[]).includes(method)) throw new TypeError(`Unsupported HTTP method: ${String(method)}`);
   if (!path.startsWith('/') || path.includes('?') || path.includes('#')) throw new TypeError(`Invalid API path: ${path}`);
   const segments = path.split('/').filter(Boolean).map((segment) => propertyName(segment));
   const methodName = propertyName(method);
