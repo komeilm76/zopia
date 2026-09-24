@@ -25,6 +25,9 @@
     "test:watch": "vitest",
     "build": "tsc --noEmit"
   },
+  "bin": {
+    "zopia": "./src/cli.ts"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
