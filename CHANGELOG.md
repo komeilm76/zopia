@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧩 Added initial component-file and sorted component-barrel generation with `insertComponents`.
 - 🛡️ Component generation now preserves OpenAPI 3.1 boolean schemas instead of converting them to unconstrained schemas.
 - 🧩 Component generation validates names and renders all component contents before writing files, preventing partial output from validation/conversion failures.
-- 🧩 `useComponentAsReference` now imports exact endpoint component schema references through the component barrel; component alias files, self-references, and direct object-property references now emit component imports/lazy schemas.
+- 🧩 `useComponentAsReference` now imports exact endpoint component schema references through the component barrel; component alias files, self-references, direct object-property references, and direct array-item references now emit component imports/lazy schemas.
 - 📚 Updated component documentation to distinguish implemented exact imports from pending nested/cyclic imports.
 - 📦 Component generation results now include the generated `components/index.ts` barrel.
 
