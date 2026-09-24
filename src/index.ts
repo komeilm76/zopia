@@ -13,3 +13,10 @@ export {
   type OpenApiDocument,
   type OpenApiVersion,
 } from './conversions/openapi';
+export {
+  collectOpenApiOperations,
+  deriveOperationId,
+  OPENAPI_METHODS,
+  type OpenApiMethod,
+  type OpenApiOperation,
+} from './conversions/openapi-to-api-docs';
