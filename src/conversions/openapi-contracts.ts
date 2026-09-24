@@ -34,7 +34,7 @@ function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context:
 
 /** Extract request and response content without losing media-type metadata. */
 export function extractOperationContracts(ir: OpenApiOperationIR): OperationContracts {
-  const parameters = ir.parameters.filter((raw) => raw.in !== 'body').map((raw) => {
+  const parameters = ir.parameters.filter((raw) => raw.in !== 'body' && raw.in !== 'formData').map((raw) => {
     const parameter = resolveRef(raw, ir, 'parameter');
     if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || typeof parameter.name !== 'string' || !parameter.name) throw new TypeError(`Invalid parameter: ${ir.method} ${ir.path}`);
     if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new TypeError(`Invalid parameter.required: ${parameter.name}`);
@@ -53,11 +53,19 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   let body = operation.requestBody;
   if (body === undefined && ir.document.swagger === '2.0') {
     const bodyParameter = ir.parameters.find((parameter: any) => parameter && parameter.in === 'body');
+    const formParameters = ir.parameters.filter((parameter: any) => parameter && parameter.in === 'formData');
+    if (bodyParameter && formParameters.length) throw new TypeError(`Swagger operation cannot combine body and formData parameters: ${ir.method} ${ir.path}`);
     if (bodyParameter) {
       if (typeof bodyParameter !== 'object' || !bodyParameter.schema) throw new TypeError(`Invalid Swagger body parameter: ${ir.method} ${ir.path}`);
       if (bodyParameter.required !== undefined && typeof bodyParameter.required !== 'boolean') throw new TypeError(`Invalid Swagger body parameter required: ${ir.method} ${ir.path}`);
       const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
       body = { content: { [typeof consumes[0] === 'string' && consumes[0] ? consumes[0] : 'application/json']: { schema: bodyParameter.schema } }, required: bodyParameter.required === true };
+    } else if (formParameters.length) {
+      const properties: Record<string, any> = {}; const required: string[] = [];
+      for (const parameter of formParameters) { if (typeof parameter.name !== 'string' || !parameter.name || !parameter.type) throw new TypeError(`Invalid Swagger formData parameter: ${ir.method} ${ir.path}`); properties[parameter.name] = { type: parameter.type === 'file' ? 'string' : parameter.type, ...(parameter.type === 'file' ? { format: 'binary' } : parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) }; if (parameter.required === true) required.push(parameter.name); }
+      const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
+      const contentType = consumes.find((value: unknown) => value === 'multipart/form-data' || value === 'application/x-www-form-urlencoded') ?? (formParameters.some((parameter: any) => parameter.type === 'file') ? 'multipart/form-data' : 'application/x-www-form-urlencoded');
+      body = { content: { [contentType]: { schema: { type: 'object', properties, ...(required.length ? { required } : {}) } } }, required: required.length > 0 };
     }
   }
   const requestBody = body === undefined ? undefined : (() => {

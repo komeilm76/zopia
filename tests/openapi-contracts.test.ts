@@ -10,6 +10,10 @@ describe('OpenAPI operation contracts', () => {
     const [file] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'upload', type: 'file' }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(file).parameters[0].schema).toEqual({ type: 'string', format: 'binary' });
   });
+  it('extracts Swagger formData parameters', () => {
+    const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/upload': { post: { consumes: ['multipart/form-data'], parameters: [{ in: 'formData', name: 'file', type: 'file', required: true }], responses: { '200': { description: 'ok' } } } } } });
+    expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'multipart/form-data', schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } }, required: ['file'] }, required: true });
+  });
   it('extracts Swagger body parameters', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], paths: { '/x': { parameters: [{ in: 'body', name: 'payload', required: true, schema: { type: 'object' } }], post: { responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'object' }, required: true });
