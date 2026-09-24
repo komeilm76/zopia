@@ -89,6 +89,29 @@ api_docs/
 > 💡 Because flat names can collide *in principle*, **engine ④ relies on the
 > manifest, never on tree shape**, in both modes (D-06).
 
+## 🧭 Optional ergonomic facade
+
+In addition to direct file imports, generated API docs may expose a nested facade:
+
+```ts
+import apiDocs from './api_docs';
+
+apiDocs.applicant.exame.all["{id}"].get({ id: 'exam-123' });
+```
+
+Ordinary path segments use normalized camel-case properties. Path parameters are
+kept in explicit bracket notation, so they cannot be confused with ordinary path
+segments:
+
+```text
+/applicant/{applicantId}/exame/{examId}
+→ apiDocs.applicant["{applicantId}"].exame["{examId}"].get
+```
+
+The facade is optional; direct imports remain the canonical file-level API. The
+facade rejects unsafe property names, malformed templates, duplicate parameters,
+and unsupported methods. The generated manifest remains authoritative (D-06).
+
 ## 📄 The `index.ts` contract
 
 Every endpoint file has exactly this shape (T-7 — *all practical content is

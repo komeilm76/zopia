@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
 
 ### 🔄 Changed
+- 📖 Documented the optional ergonomic facade and explicit bracket notation for path parameters.
 
 - 🔗 **km-api is now vendored as a git submodule** (`km-api/`, branch
   `feat/open-unions-v0-4-0`) — the complete 0.4.0 change set (10 src/test
