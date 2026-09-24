@@ -5,7 +5,7 @@ import { extractOperationContracts } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
 import { planApiDocsFiles } from './api-docs-plan';
 import type { ApiDocsMode } from './api-docs-layout';
-import type { OpenApiDocument } from './openapi';
+import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 
 export interface GeneratedApiDocsFile { file: string; absolutePath: string; operationId: string; }
@@ -75,7 +75,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument): string {
 /** Generate the planned endpoint files on disk. Existing generated files are overwritten. */
 export async function generateApiDocsFiles(input: OpenApiDocument | string, options: GenerateApiDocsOptions): Promise<GeneratedApiDocsFile[]> {
   if (!options || typeof options.outputDir !== 'string' || !options.outputDir) throw new TypeError('outputDir is required');
-  const source = typeof input === 'string' ? JSON.parse(input) : input;
+  const source = normalizeOpenApiDocument(input).document;
   if (options.useComponentAsReference && !options.insertComponents) throw new TypeError('useComponentAsReference requires insertComponents');
   if (options.useComponentAsReference) throw new TypeError('useComponentAsReference endpoint imports are not implemented yet');
   const plans = planApiDocsFiles(source, options.mode ?? 'directory');
@@ -100,7 +100,7 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
       await writeFile(absolutePath, content, 'utf8');
       generated.push({ file, absolutePath, operationId: name });
     }
-    const barrel = names.map((name) => `export { ${exportName(name)}Schema } from './${name}/index';`).join('\\n') + (names.length ? '\\n' : '');
+    const barrel = names.map((name) => `export { ${exportName(name)}Schema } from './${name}/index';`).join('\n') + (names.length ? '\n' : '');
     const barrelFile = 'components/index.ts';
     const barrelPath = join(root, barrelFile); await mkdir(resolve(barrelPath, '..'), { recursive: true }); await writeFile(barrelPath, barrel, 'utf8');
     generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: 'components' });

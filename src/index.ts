@@ -27,3 +27,11 @@ export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
 export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
 export { extractOperationContracts, type OperationContracts } from './conversions/openapi-contracts';
 export { resolveOpenApiLocalRef } from './conversions/openapi-ref';
+export {
+  openApiToApiDocs,
+  apiDocsToOpenApi,
+  type OpenApiToApiDocsOptions,
+  type OpenApiToApiDocsResult,
+  type ApiDocsToOpenApiOptions,
+  type ApiDocsToOpenApiResult,
+} from './conversions/public-api';

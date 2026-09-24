@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🛡️ Fixed reverse conversion to reject tampered manifests, unsafe file paths, and missing generated files; corrected document loading for the public generation API.
+- 🐛 Fixed component barrel files to emit real newlines, normalized direct generator inputs consistently, and ensured empty API trees still create their output directory.
+- 🚀 Added the public `openApiToApiDocs()` and `apiDocsToOpenApi()` engines with deterministic manifests and a minimal `generate`/`reverse` CLI.
+
 - ⬆️ Updated the km-api dependency and peer dependency to `^0.4.1`; generated deprecated OpenAPI operations now emit `deprecated: 'YES'`.
 - 📖 Corrected reverse-conversion documentation to keep `deprecated` separate from `disable`.
 - 🔐 Generated endpoint auth metadata now uses km-api's required `'YES' | 'NO'` values.
