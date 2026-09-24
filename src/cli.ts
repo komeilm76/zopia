@@ -6,7 +6,7 @@ import { manifestFileToOpenApi } from './conversions/manifest-to-openapi';
 function usage(): never { throw new Error('Usage: zopia generate <spec.json> <output-dir> [options] | zopia reverse <manifest.json> [--out file]'); }
 
 async function main(argv: string[]): Promise<void> {
-  if (argv.includes('--help') || argv.includes('-h')) { console.log('Usage: zopia generate <spec.json> <output-dir> [--mode directory|flat] [--insert-components] [--no-manifest]'); console.log('       zopia reverse <manifest.json> [--out file]'); return; }
+  if (argv.includes('--help') || argv.includes('-h')) { console.log('Usage: zopia generate <spec.json> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]'); console.log('       zopia reverse <manifest.json> [--out file]'); return; }
   const [command, input, output] = argv;
   if (!command || !input) usage();
   if (command === 'generate') {
