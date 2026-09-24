@@ -101,7 +101,9 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
       generated.push({ file, absolutePath, operationId: name });
     }
     const barrel = names.map((name) => `export { ${exportName(name)}Schema } from './${name}/index';`).join('\\n') + (names.length ? '\\n' : '');
-    const barrelPath = join(root, 'components/index.ts'); await mkdir(resolve(barrelPath, '..'), { recursive: true }); await writeFile(barrelPath, barrel, 'utf8');
+    const barrelFile = 'components/index.ts';
+    const barrelPath = join(root, barrelFile); await mkdir(resolve(barrelPath, '..'), { recursive: true }); await writeFile(barrelPath, barrel, 'utf8');
+    generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: 'components' });
   }
   for (const plan of plans) {
     const absolutePath = join(root, plan.file);
