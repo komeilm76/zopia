@@ -95,13 +95,13 @@ const user = getUser.makeBody(undefined); // type-safe: no body on GET
 
 ```text
 zopia generate <spec.json> <output-dir>   # ③ OpenAPI → api docs
-zopia reverse  <manifest.json>             # ④ manifest → OpenAPI
+zopia reverse  <manifest.json> [--out openapi.json] # ④ manifest → OpenAPI
 ```
 
 | 🚩 Command | 📝 What it does | 💡 Example |
 | --- | --- | --- |
 | `zopia generate` | generates the endpoint tree and manifest | `zopia generate swagger.json api_docs` |
-| `zopia reverse` | writes the reconstructed OpenAPI document to stdout | `zopia reverse api_docs/.zopia-manifest.json` |
+| `zopia reverse` | writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
 
 Exit codes: `0` success · `1` user error (bad input/options — message on
 stderr, hint included) · `2` internal error (should never happen — report it).

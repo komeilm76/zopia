@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { generateApiDocsFiles } from './conversions/api-docs-generate';
 import { manifestFileToOpenApi } from './conversions/manifest-to-openapi';
 
@@ -20,7 +20,10 @@ async function main(argv: string[]): Promise<void> {
   }
   if (command === 'reverse') {
     const document = await manifestFileToOpenApi(input);
-    process.stdout.write(`${JSON.stringify(document, null, 2)}\n`);
+    const outIndex = argv.indexOf('--out'); const out = outIndex >= 0 ? argv[outIndex + 1] : undefined;
+    if (outIndex >= 0 && !out) throw new Error('--out requires a file path');
+    const content = `${JSON.stringify(document, null, 2)}\n`;
+    if (out) await writeFile(out, content, 'utf8'); else process.stdout.write(content);
     return;
   }
   usage();
