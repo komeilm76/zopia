@@ -41,6 +41,8 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ $defs: { User: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } }, $ref: '#/$defs/User' });
     expect(result.warnings).toEqual([]);
     expect(result.schema.safeParse({ name: 'Ada' }).success).toBe(true);
+    const sibling = jsonSchemaToZod({ $defs: { Value: { type: 'string' } }, $ref: '#/$defs/Value', minLength: 3 });
+    expect(sibling.schema.safeParse('ab').success).toBe(false);
     const recursive = jsonSchemaToZod({ $defs: { Node: { type: 'object', properties: { next: { $ref: '#/$defs/Node' } } } }, $ref: '#/$defs/Node' });
     expect(recursive.warnings[0]).toContain('Recursive $ref');
   });

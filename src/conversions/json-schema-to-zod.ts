@@ -27,7 +27,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const ref = String(node.$ref); const target = resolveLocalRef(ref);
       if (!target) { warnings.push(`Unsupported $ref: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
       if (resolving.has(ref)) { warnings.push(`Recursive $ref cannot be eagerly materialized: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
-      return convert(target, new Set(resolving).add(ref));
+      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => key !== '$ref'));
+      const resolved = Object.keys(siblings).length ? { ...target, ...siblings } : target;
+      return convert(resolved, new Set(resolving).add(ref));
     }
     if (Array.isArray(node.type)) {
       const variants = node.type.map((type: string) => {
