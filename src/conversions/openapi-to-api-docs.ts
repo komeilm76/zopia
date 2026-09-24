@@ -15,6 +15,7 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
   for (const path of Object.keys(document.paths)) {
     if (path.startsWith('x-')) continue;
     const item = document.paths[path];
+    if (item.$ref && typeof item.$ref === 'string') throw new TypeError(`Unsupported path-item $ref: ${item.$ref}`);
     for (const method of OPENAPI_METHODS) {
       const operation = item[method];
       if (operation === undefined) continue;
