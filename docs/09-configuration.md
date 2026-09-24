@@ -36,7 +36,7 @@ interface ZopiaGenerateOptions {
 | `outDir` | `string` | `'api_docs'` | relative or absolute; created if missing; **never deleted recursively without this exact dir** (safety R-406) |
 | `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](07-api-docs.md) |
 | `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` |
-| `useComponentAsReference` | `boolean` | `false` | T-9 — imports in endpoint files; **requires** `insertComponents: true` |
+| `useComponentAsReference` | `boolean` | `false` | T-9 — reserved for endpoint imports; currently fails explicitly until imports are implemented; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only |
 
 ### ✅ Validation rules
