@@ -147,7 +147,7 @@ export function openApiToApiDocs(
 2. 📜 CHANGELOG: [Unreleased] → [x.y.z] - YYYY-MM-DD
 3. 🏷️ git tag  v0.1.0
 4. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
-   the published `km-api@0.4.0` dependency is installed, D-15)
+   the published `km-api@0.4.1` dependency is installed, D-15)
 5. 📝 README status banner updated to the new phase
 ```
 
@@ -156,7 +156,7 @@ export function openApiToApiDocs(
 | 📦 Dep | 🏷️ Kind | 📝 Rule |
 | --- | --- | --- |
 | `zod` `^4` | peer + dev | generated code needs it; tests need it |
-| `km-api` `^0.4` (0.4.x) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** published npm package `km-api@^0.4.0` (D-15) |
+| `km-api` `^0.4` (0.4.x) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** published npm package `km-api@^0.4.1` (D-15) |
 | *(nothing else at runtime)* | — | **zero runtime dependencies** in Phase 1 (D-11); every new runtime dep needs a D-… decision |
 
 ## 🔑 Key decisions
@@ -179,8 +179,8 @@ export function openApiToApiDocs(
 | **D-11** | 📦 zero runtime dependencies (Phase 1) | `zod` + `km-api` are peers of the *generated* code; a small surface = small attack area (P-6) |
 | **D-12** | ⚠️ unsupported keywords never fail silently — warning + nearest approximation + `// @zopia:warn` marker + manifest record | "pure, safe, clean" means *visible* loss; the reverse conversion restores the original verbatim from the manifest |
 | **D-13** | 📝 Phase 1 input is JSON only (YAML, external refs, server variables → Phase 2) | keeps the v0.1.0 contract tight; every deferral is listed in [Roadmap](03-roadmap.md) with a date-like horizon |
-| **D-14** | 📐 zopia **targets km-api ≥ 0.4.0** — the output contract is "the generated tree **typechecks** against km-api 0.4.x" (enforced by the golden-tree test, R-126). km-api 0.4.0's open type surface (8 methods incl. `trace`, any custom/`default` status code, any MIME type, `operationId`) means every practical API fact is emitted **as code**; the remaining km-api gaps (per-parameter metadata, response `headers`) are preserved in the manifest (overlay / `responseOverlay`, R-635/R-754) | `makeApiConfig` is a type-level factory (no runtime validation) — the typecheck *is* the contract. km-api 0.4.0 was designed with zopia in mind (komeilm76/km-api); re-verify km-api's type surface against its source on every km-api bump |
-| **D-15** | 📦 **km-api is consumed from npm** — zopia depends on the published `km-api@^0.4.0`; no Git submodule or unpublished commit is required. | reproducible fresh clones and published dependency resolution |
+| **D-14** | 📐 zopia **targets km-api ≥ 0.4.1** — the output contract is "the generated tree **typechecks** against km-api 0.4.x" (enforced by the golden-tree test, R-126). km-api 0.4.1's open type surface (8 methods incl. `trace`, any custom/`default` status code, any MIME type, `operationId`) means every practical API fact is emitted **as code**; the remaining km-api gaps (per-parameter metadata, response `headers`) are preserved in the manifest (overlay / `responseOverlay`, R-635/R-754) | `makeApiConfig` is a type-level factory (no runtime validation) — the typecheck *is* the contract. km-api 0.4.1 was designed with zopia in mind (komeilm76/km-api); re-verify km-api's type surface against its source on every km-api bump |
+| **D-15** | 📦 **km-api is consumed from npm** — zopia depends on the published `km-api@^0.4.1`; no Git submodule or unpublished commit is required. | reproducible fresh clones and published dependency resolution |
 
 ## 🔗 Back to
 

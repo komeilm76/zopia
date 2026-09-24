@@ -118,7 +118,7 @@ zopia/
 ├── README.md                 # 🏠 This file
 ├── CHANGELOG.md              # 📜 Keep-a-Changelog history
 ├── LICENSE                   # 🔐 MIT
-├── package.json              # 📦 npm dependency on km-api ^0.4.0
+├── package.json              # 📦 npm dependency on km-api ^0.4.1
 ├── docs/                     # 📚 Project documentation (the standard)
 │   ├── README.md             #    📖 Documentation map
 │   ├── 01-overview.md        #    🧭 Overview

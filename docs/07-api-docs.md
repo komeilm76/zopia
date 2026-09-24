@@ -56,7 +56,7 @@ api_docs/
 | # | Invariant |
 | --- | --- |
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
-| R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `head`, `options`, `patch`, `trace` (km-api ≥ 0.4.0) |
+| R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `head`, `options`, `patch`, `trace` (km-api ≥ 0.4.1) |
 | R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
 | R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): within the endpoint area (outside `components/`, whose component dirs also hold an `index.ts`) the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
@@ -194,12 +194,12 @@ export default getUser;
 | any `security` requirement | `auth: 'YES'` (else `'NO'` — always emitted explicitly) | R-731 |
 | `request.body` | `request.body`; *no body* → `z.any()` | R-731 |
 | `request.params / query / headers / cookies` | `request.params / query / headers / cookies` — always `z.object(…)` (km-api requires all five) | R-731 |
-| `requestContentType` | `requestContentType` — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
-| `responseContentType` | `responseContentType` (from the first content-bearing response) — emitted verbatim (km-api 0.4.0 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
-| `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — **zopia's own marker**, deliberately not `z.object({})` (the shape km-api's README examples use for 204 — both typecheck, response values accept any Zod schema): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614) so it emits **no `content` at all**; a real `z.object({})` stays a schema. Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.0); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
-| `deprecated` | `disable: 'YES'` | R-731 |
+| `requestContentType` | `requestContentType` — emitted verbatim (km-api 0.4.1 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
+| `responseContentType` | `responseContentType` (from the first content-bearing response) — emitted verbatim (km-api 0.4.1 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
+| `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — **zopia's own marker**, deliberately not `z.object({})` (the shape km-api's README examples use for 204 — both typecheck, response values accept any Zod schema): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614) so it emits **no `content` at all**; a real `z.object({})` stays a schema. Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.1); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
+| `deprecated: true` | `deprecated: 'YES'` (km-api ≥ 0.4.1); omitted when false | R-731 |
 | `examples` | `examples` — km-api's `request` / `response` maps of `IExamplesMap` | R-731 |
-| `operationId` | the config's `operationId` field (km-api ≥ 0.4.0) **and** the export identifier (see Naming below) | R-732 |
+| `operationId` | the config's `operationId` field (km-api ≥ 0.4.1) **and** the export identifier (see Naming below) | R-732 |
 
 > 📌 **Rule R-732** — the export identifier is the `operationId` when present
 > (camelCased); otherwise derived deterministically: **method + PascalCase of
@@ -316,7 +316,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 > Objects keyed by status code (or `default`); engine ④ re-emits them verbatim
 > (R-654c), so the boundary is a *code* convenience, never a data loss.
 > Everything else km-api can express — incl. `trace` operations, custom status
-> codes, `default` responses, and arbitrary media types (km-api ≥ 0.4.0, R-642)
+> codes, `default` responses, and arbitrary media types (km-api ≥ 0.4.1, R-642)
 > — lives in the generated code.
 
 ## 🏷️ Naming conventions (fixed)

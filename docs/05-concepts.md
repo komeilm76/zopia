@@ -151,18 +151,18 @@ normalize paths back to `{param}` form.
 > unless `useComponentAsReference` is on — even then, only local files are
 > imported).
 
-### 📐 km-api's type surface (read from the `0.4.0` source)
+### 📐 km-api's type surface (read from the `0.4.1` source)
 
 `makeApiConfig` is a **type-level factory** — it does no runtime validation, so
 the generated tree's contract is that it **typechecks** against km-api
-≥ 0.4.0 (D-14; the golden-tree contract test enforces this, R-126):
+≥ 0.4.1 (D-14; the golden-tree contract test enforces this, R-126):
 
-| 🧩 Field | 📏 Accepts (km-api 0.4.0) |
+| 🧩 Field | 📏 Accepts (km-api 0.4.1) |
 | --- | --- |
 | `method` (`IMethod`) | all **8** standard methods — `get/post/put/delete/head/options/patch/trace` (each case-insensitive: `GET`, `Get`, …) |
 | `response` keys | standard status codes (number or string form), **any custom numeric code** (`419`, `499`, `512`, …) and the **`default`** key |
 | `responseContentType` / `requestContentType` | **any** MIME type (known values still autocompleted) |
-| `operationId` | any string — a real km-api field in 0.4.0; zopia emits it and reuses it as the export identifier (R-732) |
+| `operationId` | any string — a real km-api field in 0.4.1; zopia emits it and reuses it as the export identifier (R-732) |
 
 Other fixed shapes (source-verified): `ITags` = strings **prefixed with `#`**;
 `IPath` = string starting with `/`; `auth`/`disable` = `'YES' | 'NO'`;
@@ -172,7 +172,7 @@ required Zod objects. The remaining km-api gaps — **per-parameter metadata**
 `headers`** — have no home in km-api; zopia preserves them in the manifest
 (overlay / `responseOverlay`, R-635/R-754).
 
-> 🔗 **Where km-api lives.** zopia consumes the published `km-api@^0.4.0`
+> 🔗 **Where km-api lives.** zopia consumes the published `km-api@^0.4.1`
 > npm package. No Git submodule or unpublished commit is required (D-15).
 
 ### 📂 api docs
