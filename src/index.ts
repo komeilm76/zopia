@@ -20,3 +20,4 @@ export {
   type OpenApiMethod,
   type OpenApiOperation,
 } from './conversions/openapi-to-api-docs';
+export { endpointFilePath, type ApiDocsMode } from './conversions/api-docs-layout';
