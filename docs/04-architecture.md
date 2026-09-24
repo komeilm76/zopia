@@ -210,7 +210,7 @@ flowchart LR
   Comment["💬 Comment"] -->|"$.ref #/components/schemas/Comment"| Comment
 ```
 
-**Algorithm** (implemented in `refs.ts`):
+**Algorithm** (implemented by the local-reference resolvers in `src/conversions/openapi-ref.ts` and the conversion modules):
 
 1. 🧾 **Collect** — walk the IR; record every `$ref` string and its location.
 2. 🗺️ **Build** — graph `G = (components, edges)`.
