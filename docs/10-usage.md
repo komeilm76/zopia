@@ -94,14 +94,14 @@ const user = getUser.makeBody(undefined); // type-safe: no body on GET
 > by the [Configuration → CLI mapping](09-configuration.md#-cli--options-mapping).
 
 ```text
-zopia generate <spec.json> [options]   # ③ OpenAPI → api docs
-zopia reverse  <docs-dir>  [options]   # ④ api docs → OpenAPI
+zopia generate <spec.json> <output-dir>   # ③ OpenAPI → api docs
+zopia reverse  <manifest.json>             # ④ manifest → OpenAPI
 ```
 
 | 🚩 Command | 📝 What it does | 💡 Example |
 | --- | --- | --- |
-| `zopia generate` | generates the `api_docs` tree | `zopia generate swagger.json --mode flat` |
-| `zopia reverse` | regenerates an OpenAPI file (default `openapi.json`) | `zopia reverse api_docs --version 3.0 --out openapi.json` |
+| `zopia generate` | generates the endpoint tree and manifest | `zopia generate swagger.json api_docs` |
+| `zopia reverse` | writes the reconstructed OpenAPI document to stdout | `zopia reverse api_docs/.zopia-manifest.json` |
 
 Exit codes: `0` success · `1` user error (bad input/options — message on
 stderr, hint included) · `2` internal error (should never happen — report it).
