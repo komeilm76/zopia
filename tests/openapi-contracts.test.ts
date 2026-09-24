@@ -22,6 +22,12 @@ describe('OpenAPI operation contracts', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: { required: 'yes' }, responses: { '200': { description: 1 } } } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Invalid requestBody.required');
   });
+  it('rejects empty responses and body without content', () => {
+    const [empty] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: {} } } } });
+    expect(() => extractOperationContracts(empty)).toThrow('Invalid responses');
+    const [body] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: {}, responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(body)).toThrow('Invalid requestBody.content');
+  });
   it('rejects invalid response status keys', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { nope: { description: 'bad' } } } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Invalid response status');

@@ -23,11 +23,12 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError(`Invalid requestBody: ${ir.method} ${ir.path}`);
     if ('$ref' in body) throw new TypeError(`Unsupported requestBody $ref: ${body.$ref}`);
     if (body.required !== undefined && typeof body.required !== 'boolean') throw new TypeError(`Invalid requestBody.required: ${ir.method} ${ir.path}`);
+    if (body.content === undefined) throw new TypeError(`Invalid requestBody.content: ${ir.method} ${ir.path}`);
     const media = firstContent(body.content);
     return { ...media, contentType: media.contentType ?? 'application/json', required: body.required === true };
   })();
   const responses = operation.responses;
-  if (!responses || typeof responses !== 'object' || Array.isArray(responses)) throw new TypeError(`Invalid responses: ${ir.method} ${ir.path}`);
+  if (!responses || typeof responses !== 'object' || Array.isArray(responses) || Object.keys(responses).length === 0) throw new TypeError(`Invalid responses: ${ir.method} ${ir.path}`);
   return { requestBody, responses: Object.entries(responses).map(([status, value]) => {
     if (status !== 'default' && !/^[1-5](?:\d{2}|XX)$/.test(status)) throw new TypeError(`Invalid response status: ${status}`);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`Invalid response ${status}: ${ir.method} ${ir.path}`);
