@@ -48,8 +48,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (status !== 'default' && !/^[1-5](?:\d{2}|XX)$/.test(status)) throw new TypeError(`Invalid response status: ${status}`);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`Invalid response ${status}: ${ir.method} ${ir.path}`);
     const response = resolveRef(value as Record<string, any>, ir, 'response');
-    if (response.description !== undefined && typeof response.description !== 'string') throw new TypeError(`Invalid response description: ${status}`);
+    if (typeof response.description !== 'string' || response.description.trim() === '') throw new TypeError(`Invalid response description: ${status}`);
     const media = firstContent(response.content);
-    return { status, description: response.description ?? '', ...media };
+    return { status, description: response.description, ...media };
   }) };
 }
