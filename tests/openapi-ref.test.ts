@@ -10,5 +10,6 @@ describe('OpenAPI local references', () => {
   it('rejects external and unresolved references', () => {
     expect(() => resolveOpenApiLocalRef(doc, 'other.json#/User')).toThrow('Only local');
     expect(() => resolveOpenApiLocalRef(doc, '#/components/schemas/Missing')).toThrow('Unresolved');
+    expect(() => resolveOpenApiLocalRef(doc, '#/components/~2bad')).toThrow('Invalid JSON Pointer escape');
   });
 });

@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔄 Changed
 - 📚 Updated the roadmap and dependency standards to reflect the already-published `km-api@0.4.0` npm dependency.
 - 🛡️ Added validation
-- 🧬 Added validated OpenAPI operation contract extraction for request/response media types. for malformed schemas, unsafe paths, references, identifiers, operation IDs, and facade properties.
+- 🧬 Added validated OpenAPI operation contract extraction for request/response media types.
+- 🔗 Added strict local OpenAPI JSON Pointer reference handling and documentation. for malformed schemas, unsafe paths, references, identifiers, operation IDs, and facade properties.
 
 ### 🚧 Planned
 - 🚀 Continue Phase 1 with full endpoint rendering, components, manifests, reverse conversion, CLI, and remaining tests.

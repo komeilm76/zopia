@@ -5,6 +5,14 @@ A spec keeps DRY with **components** — named, reusable schemas referenced via
 Components can reference *other* components, and even themselves (cycles).
 This document defines how zopia treats them in the generated tree.
 
+## 🔗 Local references
+
+OpenAPI local JSON Pointer references are resolved only when their target exists
+in the same document. The resolver supports `#` for the document root and the
+standard `~1` and `~0` pointer escapes. External references and invalid pointer
+escapes are rejected explicitly rather than silently dropped. Component files
+and reusable endpoint references are part of the full rendering phase.
+
 ## ⚙️ The two options
 
 > 🎯 **T-8 / T-9** — both options are **booleans, both default `false`**, and
