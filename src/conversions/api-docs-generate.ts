@@ -39,6 +39,8 @@ function renderEndpoint(operation: any, source: OpenApiDocument): string {
     const media = raw && typeof raw === 'object' && (raw as any).content ? Object.values((raw as any).content)[0] as any : undefined;
     if (media?.example !== undefined) responseExamples[status] = { default: { value: media.example } };
     if (media?.examples && typeof media.examples === 'object') responseExamples[status] = media.examples;
+    const legacyExamples = raw && typeof raw === 'object' ? (raw as any).examples : undefined;
+    if (legacyExamples && typeof legacyExamples === 'object') responseExamples[status] = Object.fromEntries(Object.entries(legacyExamples).map(([contentType, value]) => [contentType, { value }]));
   }
   const examples = Object.keys(requestExamples).length || Object.keys(responseExamples).length ? `examples: ${JSON.stringify({ ...(Object.keys(requestExamples).length ? { request: requestExamples } : {}), ...(Object.keys(responseExamples).length ? { response: responseExamples } : {}) })},` : '';
   const opId = operation.operationId;

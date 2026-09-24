@@ -32,5 +32,8 @@ describe('API docs endpoint generation', () => {
     expect(metadata).toContain('tags: ["#users"]');
     expect(metadata).toContain('auth: "NO"');
     expect(metadata).toContain("deprecated: 'YES'");
+    const swaggerDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Test', version: '1' }, paths: { '/legacy': { get: { responses: { '200': { description: 'ok', examples: { 'application/json': { id: 'legacy' } } } } } } } }, { outputDir: swaggerDir });
+    expect(await readFile(join(swaggerDir, 'legacy', 'get', 'index.ts'), 'utf8')).toContain('legacy');
   });
 });
