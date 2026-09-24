@@ -28,8 +28,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     for (const keyword of ['not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas']) {
       if (keyword in node) warnings.push(`Unsupported JSON Schema keyword: ${keyword}`);
     }
-    if (node.$ref) {
-      const ref = String(node.$ref); const target = resolveLocalRef(ref);
+    if ('$ref' in node) {
+      if (typeof node.$ref !== 'string' || node.$ref.length === 0) { warnings.push('Invalid $ref: expected a non-empty string'); return { schema: z.any(), code: 'z.any()' }; }
+      const ref = node.$ref; const target = resolveLocalRef(ref);
       if (!target) { warnings.push(`Unsupported $ref: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
       if (resolving.has(ref)) { warnings.push(`Recursive $ref cannot be eagerly materialized: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
       const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => key !== '$ref'));

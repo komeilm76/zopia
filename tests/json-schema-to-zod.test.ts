@@ -103,6 +103,10 @@ describe('jsonSchemaToZod', () => {
       'Unsupported JSON Schema keyword: not',
     ]));
   });
+  it('reports malformed references without coercing them', () => {
+    const result = jsonSchemaToZod({ $ref: 42 });
+    expect(result.warnings).toContain('Invalid $ref: expected a non-empty string');
+  });
   it('reports unsupported references without failing', () => {
     const result = jsonSchemaToZod({ $ref: 'https://example.com/schema.json' }, { rootName: 'user' });
     expect(result.code).toBe('const user = z.any();');
