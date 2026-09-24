@@ -10,7 +10,7 @@ function propertyName(segment: string): string {
 
 /** Return the ergonomic dot-access path for an endpoint facade. */
 export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 'apiDocs'): string {
-  if (!/^[$A-Za-z_][$A-Za-z0-9_]*$/.test(root)) throw new TypeError(`Invalid facade root: ${root}`);
+  if (!/^[$A-Za-z_][$A-Za-z0-9_]*$/.test(root) || ['__proto__', 'prototype', 'constructor', 'eval', 'arguments'].includes(root)) throw new TypeError(`Invalid facade root: ${root}`);
   if (!(OPENAPI_METHODS as readonly string[]).includes(method)) throw new TypeError(`Unsupported HTTP method: ${String(method)}`);
   if (!path.startsWith('/') || path.includes('?') || path.includes('#')) throw new TypeError(`Invalid API path: ${path}`);
   const rawSegments = path.split('/').filter(Boolean);
