@@ -122,7 +122,8 @@ stderr, hint included) · `2` internal error (should never happen — report it)
 import { openApiToApiDocs, ZopiaError } from 'zopia';
 
 try {
-  await openApiToApiDocs('swagger.json', { useComponentAsReference: true });
+  // useComponentAsReference is reserved until endpoint imports are implemented
+  await openApiToApiDocs('swagger.json', { insertComponents: true });
 } catch (e) {
   if (e instanceof ZopiaError) {
     console.error(e.code); // 🆔 'ZOPIA_CONFIG_INVALID'

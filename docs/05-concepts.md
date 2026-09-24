@@ -147,9 +147,9 @@ needs them at generation time, and engine ④ uses `makeOpenApiPathShape()` to
 normalize paths back to `{param}` form.
 
 > 📌 **Rule R-502** — generated files import **only** `zod` and `km-api`.
-> No zopia runtime is imported by generated code (the tree is self-contained
-> unless `useComponentAsReference` is on — even then, only local files are
-> imported).
+> No zopia runtime is imported by generated code. Component files are
+> currently generated as standalone files; endpoint component imports are not
+> implemented yet, so `useComponentAsReference: true` fails explicitly.
 
 ### 📐 km-api's type surface (read from the `0.4.1` source)
 

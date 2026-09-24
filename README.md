@@ -83,7 +83,7 @@ import {
 await openApiToApiDocs('swagger.json', {
   mode: 'directory',               // 'directory' (default) | 'flat'
   insertComponents: false,         // emit components/**          (default false)
-  useComponentAsReference: false,  // import them in endpoints    (default false)
+  useComponentAsReference: false,  // reserved until endpoint imports are implemented
 });
 // └─ api_docs/admin/users/{id}/get/index.ts  →  makeApiConfig({ method: 'GET', pathShape: '/admin/users/{id}', … })
 
