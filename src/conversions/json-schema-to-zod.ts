@@ -53,15 +53,17 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       if (variants.length === 1) return variants[0];
       return { schema: z.union(variants.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${variants.map((item: { code: string }) => item.code).join(', ')}])` };
     }
-    if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf)) {
-      const key = Array.isArray(node.oneOf) ? 'oneOf' : 'anyOf';
+    if ('oneOf' in node || 'anyOf' in node) {
+      const key = 'oneOf' in node ? 'oneOf' : 'anyOf';
+      if (!Array.isArray(node[key])) { warnings.push(`Invalid ${key}: expected an array`); return { schema: z.any(), code: 'z.any()' }; }
       if (key === 'oneOf') warnings.push('oneOf is approximated by z.union and does not enforce exclusivity');
       const items = node[key].map((child: JsonSchema) => convert(child, resolving));
       if (items.length === 0) return { schema: z.never(), code: 'z.never()' };
       if (items.length === 1) return items[0];
       return { schema: z.union(items.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${items.map((item: { code: string }) => item.code).join(', ')}])` };
     }
-    if (Array.isArray(node.allOf)) {
+    if ('allOf' in node) {
+      if (!Array.isArray(node.allOf)) { warnings.push('Invalid allOf: expected an array'); return { schema: z.any(), code: 'z.any()' }; }
       const items = node.allOf.map((child: JsonSchema) => convert(child, resolving));
       if (items.length === 0) return { schema: z.any(), code: 'z.any()' };
       if (items.every((item: { schema: z.ZodType }) => item.schema instanceof z.ZodObject)) {

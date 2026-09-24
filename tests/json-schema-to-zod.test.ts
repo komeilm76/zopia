@@ -103,6 +103,10 @@ describe('jsonSchemaToZod', () => {
       'Unsupported JSON Schema keyword: not',
     ]));
   });
+  it('reports malformed combinators without throwing', () => {
+    expect(jsonSchemaToZod({ oneOf: 'bad' }).warnings).toContain('Invalid oneOf: expected an array');
+    expect(jsonSchemaToZod({ allOf: {} }).warnings).toContain('Invalid allOf: expected an array');
+  });
   it('reports malformed enum values without throwing', () => {
     const result = jsonSchemaToZod({ enum: 'not-an-array' });
     expect(result.warnings).toContain('Invalid enum: expected an array');
