@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧩 Component generation validates names and renders all component contents before writing files, preventing partial output from validation/conversion failures.
 - ⚠️ `useComponentAsReference` now fails explicitly instead of silently generating inline endpoints until endpoint imports are implemented.
 - 📚 Documented the current component-import limitation and explicit failure behavior across the README, concepts, usage, configuration, targets, and testing guides.
+- 📦 Component generation results now include the generated `components/index.ts` barrel.
 
 - 🏗️ Added filesystem generation for endpoint `index.ts` files from the validated API-doc plan.
 - 🧾 Generated endpoint exports and schema helper names now sanitize non-identifier and reserved names into valid TypeScript names.
