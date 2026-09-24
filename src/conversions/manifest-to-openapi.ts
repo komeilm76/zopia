@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string }; mode?: string; servers?: unknown[]; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
+export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string }; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
 
 /** Reconstruct an OpenAPI document from a lossless zopia manifest. */
 /** Read a manifest JSON file and reconstruct its OpenAPI document. */
@@ -20,6 +20,7 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
     : { openapi: manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0', info: { title: manifest.source.title, version: manifest.source.version }, paths: {} };
   if (manifest.servers?.length && !isSwagger) document.servers = manifest.servers;
   if (manifest.servers?.length && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
+  if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; }
   if (manifest.tags?.length) document.tags = manifest.tags;
   if (manifest.securitySchemes) {
     if (isSwagger) document.securityDefinitions = manifest.securitySchemes;

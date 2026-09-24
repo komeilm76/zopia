@@ -20,9 +20,11 @@ describe('manifest reverse conversion', () => {
   });
   it('round-trips Swagger basePath and security definitions', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy', version: '1' }, basePath: '/api', securityDefinitions: { apiKey: { type: 'apiKey', name: 'X-Key', in: 'header' } }, paths: { '/users': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir });
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy', version: '1' }, basePath: '/api', host: 'api.example.com', schemes: ['https'], securityDefinitions: { apiKey: { type: 'apiKey', name: 'X-Key', in: 'header' } }, paths: { '/users': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir });
     const result = manifestToOpenApi(JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'))) as any;
     expect(result.basePath).toBe('/api');
+    expect(result.host).toBe('api.example.com');
+    expect(result.schemes).toEqual(['https']);
     expect(result.securityDefinitions.apiKey.name).toBe('X-Key');
   });
   it('restores Swagger security definitions', () => {
