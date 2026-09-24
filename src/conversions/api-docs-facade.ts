@@ -12,7 +12,7 @@ function propertyName(segment: string): string {
 export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 'apiDocs'): string {
   if (!/^[$A-Za-z_][$A-Za-z0-9_]*$/.test(root) || ['__proto__', 'prototype', 'constructor', 'eval', 'arguments'].includes(root)) throw new TypeError(`Invalid facade root: ${root}`);
   if (!(OPENAPI_METHODS as readonly string[]).includes(method)) throw new TypeError(`Unsupported HTTP method: ${String(method)}`);
-  if (!path.startsWith('/') || path.includes('?') || path.includes('#')) throw new TypeError(`Invalid API path: ${path}`);
+  if (!path.startsWith('/') || path.includes('?') || path.includes('#') || path.includes('\0') || path.includes('\\')) throw new TypeError(`Invalid API path: ${path}`);
   const rawSegments = path.split('/').filter(Boolean);
   if (rawSegments.some((segment) => /[{}]/.test(segment) && !/^\{[A-Za-z0-9._-]+\}$/.test(segment))) throw new TypeError(`Invalid API path template: ${path}`);
   const segments = rawSegments.map((segment) => propertyName(segment));
