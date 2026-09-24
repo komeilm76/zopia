@@ -7,3 +7,9 @@ export {
   jsonSchemaToZod,
   type JsonSchemaToZodResult,
 } from './conversions/json-schema-to-zod';
+export {
+  normalizeOpenApiDocument,
+  type NormalizedOpenApiDocument,
+  type OpenApiDocument,
+  type OpenApiVersion,
+} from './conversions/openapi';
