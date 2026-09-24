@@ -86,6 +86,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (typeof response.description !== 'string' || response.description.trim() === '') throw new TypeError(`Invalid response description: ${status}`);
     const media = firstContent(response.content);
     const schema = media.schema === undefined && response.schema !== undefined ? { schema: response.schema } : {};
-    return { status, description: response.description, ...media, ...schema };
+    const swaggerProduces = ir.document.swagger === '2.0' ? (Array.isArray(response.produces) ? response.produces : Array.isArray(operation.produces) ? operation.produces : Array.isArray(ir.document.produces) ? ir.document.produces : []) : [];
+    const contentType = media.contentType ?? (typeof swaggerProduces[0] === 'string' ? swaggerProduces[0] : undefined);
+    return { status, description: response.description, ...media, ...schema, ...(contentType ? { contentType } : {}) };
   }) };
 }
