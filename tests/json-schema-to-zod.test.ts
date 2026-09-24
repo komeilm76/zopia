@@ -109,7 +109,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('reports malformed object keywords without throwing', () => {
     expect(jsonSchemaToZod({ type: 'object', properties: [] }).warnings).toContain('Invalid properties: expected an object');
-    expect(jsonSchemaToZod({ type: 'object', required: 'id' }).warnings).toContain('Invalid required: expected an array');
+    expect(jsonSchemaToZod({ type: 'object', required: 'id' }).warnings).toContain('Invalid required: expected an array of strings');
   });
   it('reports malformed combinators without throwing', () => {
     expect(jsonSchemaToZod({ oneOf: 'bad' }).warnings).toContain('Invalid oneOf: expected an array');

@@ -89,7 +89,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     switch (node.type) {
       case 'object': {
         if (node.properties !== undefined && (!node.properties || typeof node.properties !== 'object' || Array.isArray(node.properties))) { warnings.push('Invalid properties: expected an object'); result = { schema: z.object({}).passthrough(), code: 'z.object({}).passthrough()' }; break; }
-        if (node.required !== undefined && !Array.isArray(node.required)) warnings.push('Invalid required: expected an array');
+        if (node.required !== undefined && (!Array.isArray(node.required) || !node.required.every((key: unknown) => typeof key === 'string'))) warnings.push('Invalid required: expected an array of strings');
         const shape: Record<string, z.ZodType> = {}; const parts: string[] = [];
         for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
         if (Array.isArray(node.required)) for (const key of node.required) if (!(key in shape)) { shape[key] = z.unknown(); parts.push(`${JSON.stringify(key)}: z.unknown()`); }
