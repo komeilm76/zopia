@@ -42,8 +42,10 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (parameter.content !== undefined && parameter.schema !== undefined) throw new TypeError(`Parameter cannot define both schema and content: ${parameter.name}`);
     if (parameter.content !== undefined && (!parameter.content || typeof parameter.content !== 'object' || Array.isArray(parameter.content) || Object.keys(parameter.content).length !== 1)) throw new TypeError(`Parameter content must contain exactly one media type: ${parameter.name}`);
     const parameterContent = parameter.schema === undefined && parameter.content !== undefined ? firstContent(parameter.content) : undefined;
-    if (parameter.schema === undefined && parameterContent && parameterContent.schema === undefined) throw new TypeError(`Parameter requires schema or content: ${parameter.name}`);
-    return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema: parameter.schema ?? parameterContent?.schema };
+    const swaggerSchema = ir.document.swagger === '2.0' && parameter.type ? { type: parameter.type, ...(parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) } : undefined;
+    const schema = parameter.schema ?? parameterContent?.schema ?? swaggerSchema;
+    if (schema === undefined) throw new TypeError(`Parameter requires schema or content: ${parameter.name}`);
+    return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema };
   });
   const operation = ir.operation;
   let body = operation.requestBody;
