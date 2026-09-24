@@ -19,7 +19,7 @@ function exportName(operationId: string): string {
   const parts = operationId.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
   let name = parts.map((part, index) => index === 0 ? part : part[0].toUpperCase() + part.slice(1)).join('') || 'endpoint';
   if (!/^[A-Za-z_$]/.test(name)) name = `endpoint${name}`;
-  if (['class', 'const', 'default', 'function', 'import', 'let', 'new', 'return', 'var'].includes(name)) name = `${name}Endpoint`;
+  if (['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield'].includes(name)) name = `${name}Endpoint`;
   return name;
 }
 function renderEndpoint(operation: any, source: OpenApiDocument): string {

@@ -19,6 +19,9 @@ describe('API docs endpoint generation', () => {
     const oddDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/x': { get: { operationId: 'get-user', responses: { '200': { description: 'ok' } } } } } }, { outputDir: oddDir });
     expect(await readFile(join(oddDir, 'x', 'get', 'index.ts'), 'utf8')).toContain('export const getUser');
+    const reservedDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/reserved': { get: { operationId: 'await', responses: { '200': { description: 'ok' } } } } } }, { outputDir: reservedDir });
+    expect(await readFile(join(reservedDir, 'reserved', 'get', 'index.ts'), 'utf8')).toContain('export const awaitEndpoint');
     expect(content).toContain('pathShape: "/users/{id}"');
     expect(content).toContain('responseContentType');
   });
