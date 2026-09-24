@@ -44,7 +44,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const parameterContent = parameter.schema === undefined && parameter.content !== undefined ? firstContent(parameter.content) : undefined;
     const swaggerTypes = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'file']);
     if (ir.document.swagger === '2.0' && parameter.type !== undefined && (!swaggerTypes.has(parameter.type) || (parameter.type === 'array' && !parameter.items))) throw new TypeError(`Invalid Swagger parameter type: ${parameter.name}`);
-    const swaggerSchema = ir.document.swagger === '2.0' && parameter.type ? { type: parameter.type, ...(parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) } : undefined;
+    const swaggerSchema = ir.document.swagger === '2.0' && parameter.type ? { type: parameter.type === 'file' ? 'string' : parameter.type, ...(parameter.type === 'file' ? { format: 'binary' } : parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) } : undefined;
     const schema = parameter.schema ?? parameterContent?.schema ?? swaggerSchema;
     if (schema === undefined) throw new TypeError(`Parameter requires schema or content: ${parameter.name}`);
     return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema };

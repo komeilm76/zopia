@@ -7,6 +7,8 @@ describe('OpenAPI operation contracts', () => {
     expect(extractOperationContracts(ir).parameters[0].schema).toEqual({ type: 'integer', format: 'int32' });
     const [invalid] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'values', type: 'array' }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(invalid)).toThrow('Invalid Swagger parameter type');
+    const [file] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'upload', type: 'file' }], responses: { '200': { description: 'ok' } } } } } });
+    expect(extractOperationContracts(file).parameters[0].schema).toEqual({ type: 'string', format: 'binary' });
   });
   it('extracts Swagger body parameters', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], paths: { '/x': { parameters: [{ in: 'body', name: 'payload', required: true, schema: { type: 'object' } }], post: { responses: { '200': { description: 'ok' } } } } } });
