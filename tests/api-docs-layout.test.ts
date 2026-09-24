@@ -12,5 +12,6 @@ describe('API docs layout', () => {
     expect(() => endpointFilePath('/users\\secret', 'get')).toThrow('Unsafe API path segment');
     expect(() => endpointFilePath('/C:drive', 'get')).toThrow('Unsafe API path segment');
     expect(() => endpointFilePath('/users', 'get', 'unknown' as any)).toThrow('Unsupported API docs mode');
+    expect(() => endpointFilePath('/users', '../write' as any)).toThrow('Unsupported HTTP method');
   });
 });
