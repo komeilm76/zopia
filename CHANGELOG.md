@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 🏗️ Added filesystem generation for endpoint `index.ts` files from the validated API-doc plan.
 - 🧾 Generated endpoint exports and schema helper names now sanitize non-identifier and reserved names into valid TypeScript names.
+- 🏷️ Generated endpoint metadata now preserves normalized tags and explicit security overrides.
 
 ### ✨ Added
 - ⚙️ Started Phase 1 with Zod/JSON Schema conversion, OpenAPI normalization, operation collection, API-doc layout planning, and the optional ergonomic facade.
