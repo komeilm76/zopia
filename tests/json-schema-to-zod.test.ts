@@ -103,6 +103,10 @@ describe('jsonSchemaToZod', () => {
       'Unsupported JSON Schema keyword: not',
     ]));
   });
+  it('reports malformed enum values without throwing', () => {
+    const result = jsonSchemaToZod({ enum: 'not-an-array' });
+    expect(result.warnings).toContain('Invalid enum: expected an array');
+  });
   it('reports malformed references without coercing them', () => {
     const result = jsonSchemaToZod({ $ref: 42 });
     expect(result.warnings).toContain('Invalid $ref: expected a non-empty string');

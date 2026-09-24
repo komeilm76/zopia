@@ -71,13 +71,14 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       warnings.push('allOf is only executable for object schemas');
       return { schema: z.any(), code: 'z.any()' };
     }
-    if (node.enum) {
+    if ('enum' in node) {
+      if (!Array.isArray(node.enum)) { warnings.push('Invalid enum: expected an array'); return { schema: z.any(), code: 'z.any()' }; }
       if (node.enum.length === 0) return { schema: z.never(), code: 'z.never()' };
       if (node.enum.every((v: unknown) => typeof v === 'string')) return { schema: z.enum(node.enum as [string, ...string[]]), code: `z.enum(${JSON.stringify(node.enum)})` };
       const values = node.enum.map((v: unknown) => JSON.stringify(v)).join(', ');
       const literals = node.enum.map((v: unknown) => z.literal(v as any));
       if (literals.length === 1) return { schema: literals[0], code: `z.literal(${values})` };
-      return { schema: z.union(literals as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${node.enum.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])` };
+      return { schema: z.union(literals as unknown as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${node.enum.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])` };
     }
     if ('const' in node) return { schema: z.literal(node.const), code: `z.literal(${JSON.stringify(node.const)})` };
     let result: { schema: z.ZodType; code: string };
