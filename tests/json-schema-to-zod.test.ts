@@ -29,6 +29,8 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse([1, 'x']).success).toBe(false);
     expect(result.warnings).toEqual([]);
     expect(result.schema.safeParse(['x', 1, true]).success).toBe(true);
+    const closed = jsonSchemaToZod({ type: 'array', items: [{ type: 'string' }], additionalItems: false });
+    expect(closed.schema.safeParse(['x', 1]).success).toBe(false);
   });
   it('preserves array uniqueness', () => {
     const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });

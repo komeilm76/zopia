@@ -95,7 +95,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
           if (tuple.length) {
             let tupleSchema: any = z.tuple(schemas as [z.ZodType, ...z.ZodType[]]); let tupleCode = `z.tuple([${codes.join(', ')}])`;
             if (node.items && !Array.isArray(node.items) && node.items !== false) { const rest = convert(node.items as JsonSchema, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
-            else if (node.items !== false && node.prefixItems) { tupleSchema = tupleSchema.rest(z.any()); tupleCode += '.rest(z.any())'; }
+            else if (node.additionalItems && typeof node.additionalItems === 'object') { const rest = convert(node.additionalItems as JsonSchema, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
+            else if (node.items !== false && node.additionalItems !== false && node.prefixItems) { tupleSchema = tupleSchema.rest(z.any()); tupleCode += '.rest(z.any())'; }
             result = { schema: tupleSchema, code: tupleCode };
           } else result = { schema: z.array(z.any()), code: 'z.array(z.any())' };
         } else { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; }
