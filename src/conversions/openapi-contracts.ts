@@ -24,7 +24,8 @@ function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context:
     seen.add(current.$ref);
     const resolved = resolveOpenApiLocalRef(ir.document, current.$ref);
     if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) throw new TypeError(`Invalid resolved ${context} $ref: ${current.$ref}`);
-    current = resolved;
+    const siblings = Object.fromEntries(Object.entries(current).filter(([key]) => key !== '$ref'));
+    current = Object.keys(siblings).length ? { ...(resolved as Record<string, any>), ...siblings } : resolved;
   }
   return current as Record<string, any>;
 }

@@ -31,6 +31,8 @@ describe('OpenAPI operation contracts', () => {
   it('resolves chained local references', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { responses: { Alias: { $ref: '#/components/responses/Actual' }, Actual: { description: 'ok' } } }, paths: { '/x': { get: { responses: { '200': { $ref: '#/components/responses/Alias' } } } } } });
     expect(extractOperationContracts(ir).responses[0].description).toBe('ok');
+    const [withSibling] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { responses: { Actual: { description: 'component' } } }, paths: { '/x': { get: { responses: { '200': { $ref: '#/components/responses/Actual', description: 'operation' } } } } } });
+    expect(extractOperationContracts(withSibling).responses[0].description).toBe('operation');
   });
   it('rejects invalid response status keys', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { nope: { description: 'bad' } } } } } });
