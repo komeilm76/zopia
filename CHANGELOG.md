@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📖 Corrected reverse-conversion documentation to keep `deprecated` separate from `disable`.
 - 🔐 Generated endpoint auth metadata now uses km-api's required `'YES' | 'NO'` values.
 - 🧪 Endpoint generation now preserves OpenAPI request and response examples in km-api's examples structure, including Swagger 2.0 response examples and local `$ref` targets.
+- 📖 Corrected conversion documentation to describe km-api auth as `'YES' | 'NO'` rather than a boolean.
 
 - 🏗️ Added filesystem generation for endpoint `index.ts` files from the validated API-doc plan.
 - 🧾 Generated endpoint exports and schema helper names now sanitize non-identifier and reserved names into valid TypeScript names.
