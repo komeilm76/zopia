@@ -23,7 +23,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   };
   const convert = (node: JsonSchema, resolving = new Set<string>()): { schema: z.ZodType; code: string } => {
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
-    for (const keyword of ['not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas', 'contains', 'prefixItems', 'minProperties', 'maxProperties']) {
+    for (const keyword of ['not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas', 'dependentRequired', 'dependentSchemas']) {
       if (keyword in node) warnings.push(`Unsupported JSON Schema keyword: ${keyword}`);
     }
     if (node.$ref) {
@@ -86,7 +86,16 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         else { objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()'; }
         result = { schema: objectSchema, code: objectCode }; break;
       }
-      case 'array': { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; break; }
+      case 'array': {
+        if (Array.isArray(node.prefixItems) || Array.isArray(node.items)) {
+          const tupleNodes = (Array.isArray(node.prefixItems) ? node.prefixItems : node.items) as JsonSchema[];
+          const tuple = tupleNodes.map((item) => convert(item, resolving));
+          const schemas = tuple.map((item) => item.schema);
+          const codes = tuple.map((item) => item.code);
+          result = tuple.length ? { schema: z.tuple(schemas as [z.ZodType, ...z.ZodType[]]), code: `z.tuple([${codes.join(', ')}])` } : { schema: z.array(z.any()), code: 'z.array(z.any())' };
+        } else { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; }
+        break;
+      }
       case 'string': result = { schema: z.string(), code: 'z.string()' }; break;
       case 'number': result = { schema: z.number(), code: 'z.number()' }; break;
       case 'integer': result = { schema: z.number().int(), code: 'z.number().int()' }; break;
@@ -107,7 +116,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       else warnings.push(`Unsupported format: ${node.format}`);
     }
     if (node.uniqueItems === true && node.type === 'array') {
-      result = { schema: z.array((result.schema as any).element).refine((items: unknown[]) => new Set(items.map((item) => JSON.stringify(item)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
+      result = { schema: z.array((result.schema as any).element).refine((items: any[]) => new Set(items.map((item: any) => JSON.stringify(item, Object.keys(item).sort())).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, Object.keys(item).sort()))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
     }
     const methods: Array<[string, unknown, (schema: any, value: any) => any]> = [
       ['minLength', node.minLength, (s, v) => s.min(v)],
@@ -126,6 +135,15 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       catch { warnings.push(`Unsupported constraint: ${name}`); }
     }
     if (node.multipleOf !== undefined && node.type === 'number') warnings.push('multipleOf is not represented by a basic Zod method');
+    if (node.type === 'object' && (node.minProperties !== undefined || node.maxProperties !== undefined)) {
+      const min = node.minProperties; const max = node.maxProperties;
+      result = { schema: result.schema.refine((value: any) => Object.keys(value).length >= (min ?? 0) && (max === undefined || Object.keys(value).length <= max)), code: `${result.code}.refine((value) => Object.keys(value).length >= ${min ?? 0}${max === undefined ? '' : ` && Object.keys(value).length <= ${max}`})` };
+    }
+    if (node.type === 'array' && node.contains) {
+      const contained = convert(node.contains as JsonSchema, resolving);
+      const min = node.minContains ?? 1; const max = node.maxContains;
+      result = { schema: result.schema.refine((items: any) => { const count = items.filter((item: any) => contained.schema.safeParse(item).success).length; return count >= min && (max === undefined || count <= max); }), code: `${result.code}.refine((items) => { const count = items.filter((item) => ${contained.code}.safeParse(item).success).length; return count >= ${min}${max === undefined ? '' : ` && count <= ${max}`}; })` };
+    }
     if (node.default !== undefined) result = { schema: result.schema.default(node.default), code: `${result.code}.default(${JSON.stringify(node.default)})` };
     return result;
   };
