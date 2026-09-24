@@ -24,6 +24,13 @@ describe('API docs endpoint generation', () => {
     const content = await readFile(join(outputDir, 'components', 'User Profile', 'index.ts'), 'utf8');
     expect(content).toContain('from "../User/index"');
   });
+  it('imports direct nested array component references', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Users: { type: 'array', items: { $ref: '#/components/schemas/User' } } } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Users', 'index.ts'), 'utf8');
+    expect(content).toContain('import { UserSchema } from "../User/index";');
+    expect(content).toContain('z.array(UserSchema)');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
