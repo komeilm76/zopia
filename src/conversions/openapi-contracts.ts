@@ -39,6 +39,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || typeof parameter.name !== 'string' || !parameter.name) throw new TypeError(`Invalid parameter: ${ir.method} ${ir.path}`);
     if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new TypeError(`Invalid parameter.required: ${parameter.name}`);
     if (parameter.in === 'path' && parameter.required !== true) throw new TypeError(`Path parameter must be required: ${parameter.name}`);
+    if (parameter.content !== undefined && parameter.schema !== undefined) throw new TypeError(`Parameter cannot define both schema and content: ${parameter.name}`);
+    if (parameter.content !== undefined && (!parameter.content || typeof parameter.content !== 'object' || Array.isArray(parameter.content) || Object.keys(parameter.content).length !== 1)) throw new TypeError(`Parameter content must contain exactly one media type: ${parameter.name}`);
     const parameterContent = parameter.schema === undefined && parameter.content !== undefined ? firstContent(parameter.content) : undefined;
     if (parameter.schema === undefined && parameterContent && parameterContent.schema === undefined) throw new TypeError(`Parameter requires schema or content: ${parameter.name}`);
     return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema: parameter.schema ?? parameterContent?.schema };

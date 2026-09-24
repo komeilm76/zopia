@@ -11,6 +11,8 @@ describe('OpenAPI operation contracts', () => {
   it('extracts OpenAPI parameter content schemas', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ name: 'filter', in: 'query', content: { 'application/json': { schema: { type: 'object' } } } }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).parameters[0].schema).toEqual({ type: 'object' });
+    const [invalid] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ name: 'filter', in: 'query', schema: { type: 'string' }, content: { 'application/json': {} } }], responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(invalid)).toThrow('both schema and content');
   });
   it('extracts Swagger response schemas too', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { produces: ['application/json'], responses: { '200': { description: 'ok', schema: { type: 'string' } } } } } } });
