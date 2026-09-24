@@ -1,7 +1,9 @@
 import type { OpenApiOperationIR } from './openapi-ir';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 
+export interface OperationParameter { name: string; in: 'path' | 'query' | 'header' | 'cookie'; required: boolean; schema?: unknown; }
 export interface OperationContracts {
+  parameters: OperationParameter[];
   requestBody?: { contentType: string; schema?: unknown; required: boolean };
   responses: Array<{ status: string; description: string; contentType?: string; schema?: unknown }>;
 }
@@ -32,6 +34,13 @@ function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context:
 
 /** Extract request and response content without losing media-type metadata. */
 export function extractOperationContracts(ir: OpenApiOperationIR): OperationContracts {
+  const parameters = ir.parameters.filter((raw) => raw.in !== 'body').map((raw) => {
+    const parameter = resolveRef(raw, ir, 'parameter');
+    if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || typeof parameter.name !== 'string' || !parameter.name) throw new TypeError(`Invalid parameter: ${ir.method} ${ir.path}`);
+    if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new TypeError(`Invalid parameter.required: ${parameter.name}`);
+    if (parameter.in === 'path' && parameter.required !== true) throw new TypeError(`Path parameter must be required: ${parameter.name}`);
+    return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema: parameter.schema };
+  });
   const operation = ir.operation;
   let body = operation.requestBody;
   if (body === undefined && ir.document.swagger === '2.0' && Array.isArray(operation.parameters)) {
@@ -53,7 +62,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   })();
   const responses = operation.responses;
   if (!responses || typeof responses !== 'object' || Array.isArray(responses) || Object.keys(responses).length === 0) throw new TypeError(`Invalid responses: ${ir.method} ${ir.path}`);
-  return { requestBody, responses: Object.entries(responses).map(([status, value]) => {
+  return { parameters, requestBody, responses: Object.entries(responses).map(([status, value]) => {
     if (status !== 'default' && !/^[1-5](?:\d{2}|XX)$/.test(status)) throw new TypeError(`Invalid response status: ${status}`);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`Invalid response ${status}: ${ir.method} ${ir.path}`);
     const response = resolveRef(value as Record<string, any>, ir, 'response');
