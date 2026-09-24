@@ -18,6 +18,11 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   const convert = (node: JsonSchema): { schema: z.ZodType; code: string } => {
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
     if (node.$ref) { warnings.push(`Unsupported $ref: ${node.$ref}`); return { schema: z.any(), code: 'z.any()' }; }
+    if (Array.isArray(node.type)) {
+      const variants = node.type.map((type: string) => convert({ ...node, type }));
+      if (variants.length === 1) return variants[0];
+      return { schema: z.union(variants.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${variants.map((item: { code: string }) => item.code).join(', ')}])` };
+    }
     if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf)) {
       const key = Array.isArray(node.oneOf) ? 'oneOf' : 'anyOf';
       const items = node[key].map((child: JsonSchema) => convert(child));
@@ -48,7 +53,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     switch (node.type) {
       case 'object': {
         const shape: Record<string, z.ZodType> = {}; const parts: string[] = [];
-        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema); const required = (node.required ?? []).includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
+        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
         if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
         else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
@@ -61,6 +66,21 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       case 'boolean': result = { schema: z.boolean(), code: 'z.boolean()' }; break;
       case 'null': result = { schema: z.null(), code: 'z.null()' }; break;
       default: warnings.push(`Unsupported JSON Schema type: ${String(node.type)}`); result = { schema: z.any(), code: 'z.any()' };
+    }
+    if (node.format && node.type === 'string') {
+      const formats: Record<string, { schema: (s: any) => any; code: string }> = {
+        email: { schema: (s) => s.email(), code: 'email()' },
+        uuid: { schema: (s) => s.uuid(), code: 'uuid()' },
+        uri: { schema: (s) => s.url(), code: 'url()' },
+        'date-time': { schema: (s) => s.datetime(), code: 'datetime()' },
+        date: { schema: (s) => s.date(), code: 'date()' },
+      };
+      const format = formats[node.format];
+      if (format) { try { result = { schema: format.schema(result.schema), code: `${result.code}.${format.code}` }; } catch { warnings.push(`Unsupported format: ${node.format}`); } }
+      else warnings.push(`Unsupported format: ${node.format}`);
+    }
+    if (node.uniqueItems === true && node.type === 'array') {
+      result = { schema: z.array((result.schema as any).element).refine((items: unknown[]) => new Set(items.map((item) => JSON.stringify(item)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
     }
     const methods: Array<[string, unknown, (schema: any, value: any) => any]> = [
       ['minLength', node.minLength, (s, v) => s.min(v)],

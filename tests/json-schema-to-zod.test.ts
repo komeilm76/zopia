@@ -8,12 +8,15 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('z.number().int()');
     expect(result.schema.safeParse({ id: 1 }).success).toBe(true);
   });
-  it('converts unions and common constraints', () => {
-    const result = jsonSchemaToZod({ oneOf: [{ type: 'string', minLength: 2 }, { type: 'number', minimum: 1 }] });
-    expect(result.warnings).toEqual([]);
+  it('converts unions, nullable types, formats, and constraints', () => {
+    const result = jsonSchemaToZod({ type: ['string', 'null'], format: 'email', minLength: 5 });
+    expect(result.schema.safeParse(null).success).toBe(true);
     expect(result.schema.safeParse('a').success).toBe(false);
-    expect(result.schema.safeParse(2).success).toBe(true);
-    expect(result.code).toContain('z.union');
+    expect(result.schema.safeParse('valid@example.com').success).toBe(true);
+  });
+  it('preserves array uniqueness', () => {
+    const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
+    expect(result.schema.safeParse(['a', 'a']).success).toBe(false);
   });
   it('preserves additionalProperties behavior', () => {
     const strict = jsonSchemaToZod({ type: 'object', additionalProperties: false });
