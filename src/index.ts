@@ -23,3 +23,4 @@ export {
 export { endpointFilePath, type ApiDocsMode } from './conversions/api-docs-layout';
 export { planApiDocsFiles, type ApiDocsFilePlan } from './conversions/api-docs-plan';
 export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
+export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
