@@ -74,6 +74,15 @@ function exportName(operationId: string): string {
 }
 function renderNestedSchema(value: unknown, name: string, imports: Map<string, string>, stack = new Set<string>()): string {
   const object = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : undefined;
+  if (object?.const !== undefined) return `z.literal(${JSON.stringify(object.const)})`;
+  if (Array.isArray(object?.enum)) {
+    const values = object.enum;
+    return values.every((value: unknown) => typeof value === 'string') ? `z.enum(${JSON.stringify(values)})` : `z.union([${values.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])`;
+  }
+  if (object?.nullable === true) {
+    const withoutNullable = { ...object }; delete withoutNullable.nullable;
+    return `z.nullable(${renderNestedSchema(withoutNullable, name, imports, stack)})`;
+  }
   const target = componentTarget(object?.$ref);
   if (target) {
     const ref = `${exportName(target)}Schema`;

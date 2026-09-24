@@ -44,6 +44,14 @@ describe('API docs endpoint generation', () => {
     const content = await readFile(join(outputDir, 'components', 'Account', 'index.ts'), 'utf8');
     expect(content).toContain('z.union([UserSchema, AdminSchema])');
   });
+  it('renders nested enum, const, and nullable schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Profile: { type: 'object', properties: { role: { enum: ['admin', 'user'] }, active: { const: true }, nickname: { type: 'string', nullable: true } } } } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Profile', 'index.ts'), 'utf8');
+    expect(content).toContain('z.enum(["admin","user"])');
+    expect(content).toContain('z.literal(true)');
+    expect(content).toContain('z.nullable(z.string())');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
