@@ -117,7 +117,7 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
     const manifest = {
       $schema: 'zopia:manifest@1', zopiaVersion: '0.0.1', mode: options.mode ?? 'directory',
       options: { insertComponents: options.insertComponents === true, useComponentAsReference: Boolean(options.useComponentAsReference) },
-      source: { kind: source.swagger === '2.0' ? 'swagger-2.0' : source.openapi, title: source.info.title, version: source.info.version, sha256: createHash('sha256').update(JSON.stringify(source)).digest('hex') },
+      source: { kind: source.swagger === '2.0' ? 'swagger-2.0' : /^3\.0/.test(source.openapi) ? 'openapi-3.0' : 'openapi-3.1', title: source.info.title, version: source.info.version, sha256: createHash('sha256').update(JSON.stringify(source)).digest('hex') },
       servers: source.servers ?? (source.basePath ? [source.basePath] : ['/']), tags: source.tags ?? [], securitySchemes: source.components?.securitySchemes ?? source.securityDefinitions ?? {},
       ...(source.security === undefined ? {} : { defaultSecurity: source.security }),
       components: Object.entries(schemas).map(([name, schema]) => ({ name, file: options.insertComponents ? `components/${name}/index.ts` : null, schema })),
