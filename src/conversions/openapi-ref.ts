@@ -7,7 +7,10 @@ export function resolveOpenApiLocalRef(document: OpenApiDocument, ref: string): 
   const value = ref === '#' ? document : ref.slice(2).split('/').map((part) => {
     if (/~(?![01])/.test(part)) throw new TypeError(`Invalid JSON Pointer escape in OpenAPI reference: ${ref}`);
     return part.replace(/~1/g, '/').replace(/~0/g, '~');
-  }).reduce<any>((current, key) => current?.[key], document);
+  }).reduce<any>((current, key) => {
+    if (current === null || (typeof current !== 'object' && typeof current !== 'function') || !Object.prototype.hasOwnProperty.call(current, key)) return undefined;
+    return current[key];
+  }, document);
   if (value === undefined) throw new ReferenceError(`Unresolved OpenAPI reference: ${ref}`);
   return value;
 }

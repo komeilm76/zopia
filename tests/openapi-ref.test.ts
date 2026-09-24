@@ -7,6 +7,9 @@ describe('OpenAPI local references', () => {
     expect(resolveOpenApiLocalRef(doc, '#/components/schemas/User')).toEqual({ type: 'object' });
     expect(resolveOpenApiLocalRef(doc, '#')).toBe(doc);
   });
+  it('does not resolve inherited properties', () => {
+    expect(() => resolveOpenApiLocalRef(doc, '#/toString')).toThrow('Unresolved OpenAPI reference');
+  });
   it('rejects external and unresolved references', () => {
     expect(() => resolveOpenApiLocalRef(doc, 'other.json#/User')).toThrow('Only local');
     expect(() => resolveOpenApiLocalRef(doc, '#/components/schemas/Missing')).toThrow('Unresolved');
