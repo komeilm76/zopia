@@ -12,5 +12,7 @@ describe('OpenAPI operation IR', () => {
   });
   it('rejects malformed metadata', () => {
     expect(() => buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { tags: ['ok', 1] } } } })).toThrow('Invalid operation tags');
+    expect(() => buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { deprecated: 'yes' } } } })).toThrow('Invalid deprecated flag');
+    expect(() => buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { security: [{ bearer: [1] }] } } } })).toThrow('Invalid security requirements');
   });
 });
