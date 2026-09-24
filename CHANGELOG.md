@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧩 Component generation validates names and renders all component contents before writing files, preventing partial output from validation/conversion failures.
 - 🧩 `useComponentAsReference` now imports exact endpoint component schema references through the component barrel; component alias files, self-references, direct object-property references, and direct array-item references now emit safely quoted imports while preserving original component directory names.
 - 🧪 Added regression coverage for nested array component imports and safe quoting of their generated paths.
-- 🧩 Object components now import direct array-item references used by nested properties and recursively render nested object/array reference trees, including lazy root schemas for direct self-cycles, nested `oneOf`/`anyOf`/`allOf` compositions, nullable schemas, enums, and constants.
+- 🧩 Object components now import direct array-item references used by nested properties and recursively render nested object/array reference trees, additional-property schemas, lazy root schemas for direct self-cycles, nested `oneOf`/`anyOf`/`allOf` compositions, nullable schemas, enums, and constants.
 - 📚 Updated component documentation to distinguish implemented exact imports from pending nested/cyclic imports.
 - 📦 Component generation results now include the generated `components/index.ts` barrel.
 
