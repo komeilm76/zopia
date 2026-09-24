@@ -43,8 +43,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   });
   const operation = ir.operation;
   let body = operation.requestBody;
-  if (body === undefined && ir.document.swagger === '2.0' && Array.isArray(operation.parameters)) {
-    const bodyParameter = operation.parameters.find((parameter: any) => parameter && parameter.in === 'body');
+  if (body === undefined && ir.document.swagger === '2.0') {
+    const bodyParameter = ir.parameters.find((parameter: any) => parameter && parameter.in === 'body');
     if (bodyParameter) {
       if (typeof bodyParameter !== 'object' || !bodyParameter.schema) throw new TypeError(`Invalid Swagger body parameter: ${ir.method} ${ir.path}`);
       const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
