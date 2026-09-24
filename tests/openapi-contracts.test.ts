@@ -18,4 +18,8 @@ describe('OpenAPI operation contracts', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: { content: { 'application/json': null } }, responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Invalid media type content');
   });
+  it('rejects invalid request and response metadata', () => {
+    const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: { required: 'yes' }, responses: { '200': { description: 1 } } } } } });
+    expect(() => extractOperationContracts(ir)).toThrow('Invalid requestBody.required');
+  });
 });

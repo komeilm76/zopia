@@ -22,6 +22,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   const requestBody = body === undefined ? undefined : (() => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError(`Invalid requestBody: ${ir.method} ${ir.path}`);
     if ('$ref' in body) throw new TypeError(`Unsupported requestBody $ref: ${body.$ref}`);
+    if (body.required !== undefined && typeof body.required !== 'boolean') throw new TypeError(`Invalid requestBody.required: ${ir.method} ${ir.path}`);
     const media = firstContent(body.content);
     return { ...media, contentType: media.contentType ?? 'application/json', required: body.required === true };
   })();
@@ -31,7 +32,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`Invalid response ${status}: ${ir.method} ${ir.path}`);
     const response = value as Record<string, any>;
     if ('$ref' in response) throw new TypeError(`Unsupported response $ref: ${response.$ref}`);
+    if (response.description !== undefined && typeof response.description !== 'string') throw new TypeError(`Invalid response description: ${status}`);
     const media = firstContent(response.content);
-    return { status, description: typeof response.description === 'string' ? response.description : '', ...media };
+    return { status, description: response.description ?? '', ...media };
   }) };
 }
