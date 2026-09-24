@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🖥️ The npm CLI now invokes a Node-compatible wrapper that launches the TypeScript CLI through Bun instead of asking Node to execute TypeScript directly.
+
 - ⬆️ Updated the km-api dependency and peer dependency to `^0.4.1`; generated deprecated OpenAPI operations now emit `deprecated: 'YES'`.
 - 📖 Corrected reverse-conversion documentation to keep `deprecated` separate from `disable`.
 - 🔐 Generated endpoint auth metadata now uses km-api's required `'YES' | 'NO'` values.
