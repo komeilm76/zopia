@@ -157,7 +157,7 @@ export function openApiToApiDocs(
 | 📦 Dep | 🏷️ Kind | 📝 Rule |
 | --- | --- | --- |
 | `zod` `^4` | peer + dev | generated code needs it; tests need it |
-| `km-api` `^0.4` (0.4.x) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** local npm dependency `km-api@^0.4.0` (published `km-api@0.4.0`) during development → published `0.4.0` from npm after the final step (D-15) |
+| `km-api` `^0.4` (0.4.x) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** published npm package `km-api@^0.4.0` (D-15) |
 | *(nothing else at runtime)* | — | **zero runtime dependencies** in Phase 1 (D-11); every new runtime dep needs a D-… decision |
 
 ## 🔑 Key decisions

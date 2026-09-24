@@ -172,13 +172,8 @@ required Zod objects. The remaining km-api gaps — **per-parameter metadata**
 `headers`** — have no home in km-api; zopia preserves them in the manifest
 (overlay / `responseOverlay`, R-635/R-754).
 
-> 🔗 **Where km-api lives.** During zopia development, km-api is a **git
-> submodule** in this repo (`km-api@^0.4.0`, published `km-api@0.4.0`) —
-> the 0.4.0 change set is committed in the clone's own `.git` (kept local,
-> never pushed), with its `CHANGES.md`/`README.md`/`rules.md` updated on
-> every change. At the final release step the branch is pushed, `0.4.0` is
-> published to npm, and the npm dependency is removed in favour of the npm
-> dependency (D-15, [Architecture → Module layout](04-architecture.md#-module-layout)).
+> 🔗 **Where km-api lives.** zopia consumes the published `km-api@^0.4.0`
+> npm package. No Git submodule or unpublished commit is required (D-15).
 
 ### 📂 api docs
 
