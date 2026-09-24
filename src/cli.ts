@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { readFile, writeFile } from 'node:fs/promises';
 import { generateApiDocsFiles } from './conversions/api-docs-generate';
 import { manifestFileToOpenApi } from './conversions/manifest-to-openapi';
