@@ -7,7 +7,7 @@ import { generateApiDocsFiles } from '../src';
 describe('API docs endpoint generation', () => {
   it('generates component files and a sorted barrel', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: { type: 'string' }, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
+    const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
     expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts']);
     expect(await readFile(join(outputDir, 'components/index.ts'), 'utf8')).toContain("export { AlphaSchema } from './Alpha/index';");
   });
