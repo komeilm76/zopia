@@ -23,7 +23,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   };
   const convert = (node: JsonSchema, resolving = new Set<string>()): { schema: z.ZodType; code: string } => {
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
-    for (const keyword of ['not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas', 'dependentRequired', 'dependentSchemas']) {
+    for (const keyword of ['not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas']) {
       if (keyword in node) warnings.push(`Unsupported JSON Schema keyword: ${keyword}`);
     }
     if (node.$ref) {
@@ -92,7 +92,12 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
           const tuple = tupleNodes.map((item) => convert(item, resolving));
           const schemas = tuple.map((item) => item.schema);
           const codes = tuple.map((item) => item.code);
-          result = tuple.length ? { schema: z.tuple(schemas as [z.ZodType, ...z.ZodType[]]), code: `z.tuple([${codes.join(', ')}])` } : { schema: z.array(z.any()), code: 'z.array(z.any())' };
+          if (tuple.length) {
+            let tupleSchema: any = z.tuple(schemas as [z.ZodType, ...z.ZodType[]]); let tupleCode = `z.tuple([${codes.join(', ')}])`;
+            if (node.items && !Array.isArray(node.items) && node.items !== false) { const rest = convert(node.items as JsonSchema, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
+            else if (node.items !== false && node.prefixItems) { tupleSchema = tupleSchema.rest(z.any()); tupleCode += '.rest(z.any())'; }
+            result = { schema: tupleSchema, code: tupleCode };
+          } else result = { schema: z.array(z.any()), code: 'z.array(z.any())' };
         } else { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; }
         break;
       }
@@ -116,7 +121,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       else warnings.push(`Unsupported format: ${node.format}`);
     }
     if (node.uniqueItems === true && node.type === 'array') {
-      result = { schema: z.array((result.schema as any).element).refine((items: any[]) => new Set(items.map((item: any) => JSON.stringify(item, Object.keys(item).sort())).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, Object.keys(item).sort()))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
+      result = { schema: z.array((result.schema as any).element).refine((items: any[]) => new Set(items.map((item: any) => JSON.stringify(item, item !== null && typeof item === 'object' ? Object.keys(item).sort() : undefined)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, item !== null && typeof item === 'object' ? Object.keys(item).sort() : undefined))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
     }
     const methods: Array<[string, unknown, (schema: any, value: any) => any]> = [
       ['minLength', node.minLength, (s, v) => s.min(v)],

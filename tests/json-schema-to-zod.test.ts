@@ -28,12 +28,15 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(['x', 1]).success).toBe(true);
     expect(result.schema.safeParse([1, 'x']).success).toBe(false);
     expect(result.warnings).toEqual([]);
+    expect(result.schema.safeParse(['x', 1, true]).success).toBe(true);
   });
   it('preserves array uniqueness', () => {
     const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
     expect(result.schema.safeParse(['a', 'a']).success).toBe(false);
     const objects = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'object' } });
     expect(objects.schema.safeParse([{ a: 1, b: 2 }, { b: 2, a: 1 }]).success).toBe(false);
+    const nullable = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: ['string', 'null'] } });
+    expect(nullable.schema.safeParse([null, null]).success).toBe(false);
   });
   it('enforces required keys even without property declarations', () => {
     const result = jsonSchemaToZod({ type: 'object', required: ['id'] });
