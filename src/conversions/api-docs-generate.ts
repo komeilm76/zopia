@@ -39,10 +39,16 @@ function schemaCode(schema: unknown, name: string): string {
   const safeName = exportName(name);
   return jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: safeName }).code.replace(/^const [^=]+ = /, '').replace(/;$/, '');
 }
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`).join(',')}}`;
-  return JSON.stringify(value);
+function stableStringify(value: unknown, seen = new Set<object>()): string {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) throw new TypeError('Cannot hash a circular OpenAPI document');
+    seen.add(value); const result = `[${value.map((item) => stableStringify(item, seen)).join(',')}]`; seen.delete(value); return result;
+  }
+  if (value && typeof value === 'object') {
+    if (seen.has(value)) throw new TypeError('Cannot hash a circular OpenAPI document');
+    seen.add(value); const result = `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key], seen)}`).join(',')}}`; seen.delete(value); return result;
+  }
+  const result = JSON.stringify(value); if (result === undefined) throw new TypeError('Cannot hash an unsupported OpenAPI value'); return result;
 }
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
 function resolveObject(value: unknown, source: OpenApiDocument): any {

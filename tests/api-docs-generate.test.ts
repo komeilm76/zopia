@@ -25,6 +25,11 @@ describe('API docs endpoint generation', () => {
     expect(content).toContain("import { UserSchema } from '../../components/index';");
     expect(content).toContain('200: UserSchema');
   });
+  it('rejects circular input before writing a manifest', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const input: any = { openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {} }; input.self = input;
+    await expect(generateApiDocsFiles(input, { outputDir })).rejects.toThrow('circular OpenAPI document');
+  });
   it('writes a complete endpoint file', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users/{id}': { get: { operationId: 'getUser', summary: 'Get user', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object' }, example: { id: 'u1' } } } } } } } } }, { outputDir });
