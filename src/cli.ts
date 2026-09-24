@@ -10,7 +10,11 @@ async function main(argv: string[]): Promise<void> {
   if (!command || !input) usage();
   if (command === 'generate') {
     if (!output) usage();
-    await generateApiDocsFiles(await readFile(input, 'utf8'), { outputDir: output });
+    const modeIndex = argv.indexOf('--mode'); const mode = modeIndex >= 0 ? argv[modeIndex + 1] as 'directory' | 'flat' : undefined;
+    const insertComponents = argv.includes('--insert-components');
+    const manifest = argv.includes('--no-manifest') ? false : true;
+    if (modeIndex >= 0 && mode !== 'directory' && mode !== 'flat') throw new Error('Invalid --mode; expected directory or flat');
+    await generateApiDocsFiles(await readFile(input, 'utf8'), { outputDir: output, mode, insertComponents, manifest });
     return;
   }
   if (command === 'reverse') {
