@@ -148,8 +148,8 @@ normalize paths back to `{param}` form.
 
 > 📌 **Rule R-502** — generated files import **only** `zod` and `km-api`.
 > No zopia runtime is imported by generated code. Component files are
-> currently generated as standalone files; endpoint component imports are not
-> implemented yet, so `useComponentAsReference: true` fails explicitly.
+> generated as standalone files, and exact endpoint component references can
+> import through the barrel. Nested and cyclic component imports remain pending.
 
 ### 📐 km-api's type surface (read from the `0.4.1` source)
 

@@ -14,8 +14,14 @@ describe('API docs endpoint generation', () => {
     const reorderedDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {}, info: { version: '1', title: 'Test' }, openapi: '3.1.0' }, { outputDir: reorderedDir, insertComponents: true });
     expect(JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')).source.sha256).toBe(JSON.parse(await readFile(join(reorderedDir, '.zopia-manifest.json'), 'utf8')).source.sha256);
-    await expect(generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {} }, { outputDir, insertComponents: true, useComponentAsReference: true })).rejects.toThrow('endpoint imports are not implemented yet');
     await expect(generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { 'A-B': { type: 'string' }, AB: { type: 'string' } } }, paths: {} }, { outputDir, insertComponents: true })).rejects.toThrow('Component export name collision');
+  });
+  it('imports exact component response references', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    const content = await readFile(join(outputDir, 'users', 'get', 'index.ts'), 'utf8');
+    expect(content).toContain("import { UserSchema } from '../../components/index';");
+    expect(content).toContain('200: UserSchema');
   });
   it('writes a complete endpoint file', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
