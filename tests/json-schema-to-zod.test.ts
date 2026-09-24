@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { jsonSchemaToZod } from '../src';
 
 describe('jsonSchemaToZod', () => {
+  it('reports malformed type arrays without throwing', () => {
+    expect(jsonSchemaToZod({ type: [] }).warnings).toContain('Invalid type: expected a non-empty array of strings');
+    expect(jsonSchemaToZod({ type: [1] }).warnings).toContain('Invalid type: expected a non-empty array of strings');
+  });
   it('supports JSON Schema boolean schemas', () => {
     expect(jsonSchemaToZod(true).schema.safeParse('anything').success).toBe(true);
     expect(jsonSchemaToZod(false).schema.safeParse('anything').success).toBe(false);
