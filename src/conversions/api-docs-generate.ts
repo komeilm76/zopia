@@ -6,6 +6,7 @@ import { jsonSchemaToZod } from './json-schema-to-zod';
 import { planApiDocsFiles } from './api-docs-plan';
 import type { ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
+import { resolveOpenApiLocalRef } from './openapi-ref';
 
 export interface GeneratedApiDocsFile { file: string; absolutePath: string; operationId: string; }
 export interface GenerateApiDocsOptions { outputDir: string; mode?: ApiDocsMode; }
@@ -15,6 +16,17 @@ function schemaCode(schema: unknown, name: string): string {
   return jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: safeName }).code.replace(/^const [^=]+ = /, '').replace(/;$/, '');
 }
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
+function resolveObject(value: unknown, source: OpenApiDocument): any {
+  let current = value; const seen = new Set<string>();
+  while (current && typeof current === 'object' && !Array.isArray(current) && '$ref' in current) {
+    const ref = (current as any).$ref;
+    if (typeof ref !== 'string' || seen.has(ref)) return current;
+    seen.add(ref); const target = resolveOpenApiLocalRef(source, ref);
+    if (!target || typeof target !== 'object' || Array.isArray(target)) return current;
+    current = { ...(target as any), ...Object.fromEntries(Object.entries(current as any).filter(([key]) => key !== '$ref')) };
+  }
+  return current;
+}
 function exportName(operationId: string): string {
   const parts = operationId.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
   let name = parts.map((part, index) => index === 0 ? part : part[0].toUpperCase() + part.slice(1)).join('') || 'endpoint';
@@ -31,11 +43,13 @@ function renderEndpoint(operation: any, source: OpenApiDocument): string {
   const response = contracts.responses.map((r) => `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : schemaCode(r.schema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`).join(', ');
   const responseContentType = contracts.responses.find((r) => r.contentType)?.contentType;
   const requestExamples: Record<string, unknown> = {};
-  const requestMedia = operation.operation.requestBody?.content ? Object.values(operation.operation.requestBody.content as Record<string, any>)[0] as any : undefined;
+  const requestBody = resolveObject(operation.operation.requestBody, source);
+  const requestMedia = requestBody?.content ? Object.values(requestBody.content as Record<string, any>)[0] as any : undefined;
   if (requestMedia?.example !== undefined) requestExamples.default = { value: requestMedia.example };
   if (requestMedia?.examples && typeof requestMedia.examples === 'object') Object.assign(requestExamples, requestMedia.examples);
   const responseExamples: Record<string, unknown> = {};
-  for (const [status, raw] of Object.entries(operation.operation.responses ?? {})) {
+  for (const [status, value] of Object.entries(operation.operation.responses ?? {})) {
+    const raw = resolveObject(value, source);
     const media = raw && typeof raw === 'object' && (raw as any).content ? Object.values((raw as any).content)[0] as any : undefined;
     if (media?.example !== undefined) responseExamples[status] = { default: { value: media.example } };
     if (media?.examples && typeof media.examples === 'object') responseExamples[status] = media.examples;
