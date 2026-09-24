@@ -66,6 +66,15 @@ describe('jsonSchemaToZod', () => {
     const recursive = jsonSchemaToZod({ $defs: { Node: { type: 'object', properties: { next: { $ref: '#/$defs/Node' } } } }, $ref: '#/$defs/Node' });
     expect(recursive.warnings[0]).toContain('Recursive $ref');
   });
+  it('rejects all items when items is false', () => {
+    const result = jsonSchemaToZod({ type: 'array', items: false });
+    expect(result.schema.safeParse([]).success).toBe(true);
+    expect(result.schema.safeParse([1]).success).toBe(false);
+  });
+  it('warns when contains bounds have no contains schema', () => {
+    const result = jsonSchemaToZod({ type: 'array', minContains: 1 });
+    expect(result.warnings).toContain('minContains/maxContains require contains and were ignored');
+  });
   it('enforces contains and contains bounds', () => {
     const result = jsonSchemaToZod({ type: 'array', contains: { type: 'number' }, minContains: 2, maxContains: 2 });
     expect(result.schema.safeParse([1, 'x', 2]).success).toBe(true);

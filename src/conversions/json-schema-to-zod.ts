@@ -87,6 +87,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         result = { schema: objectSchema, code: objectCode }; break;
       }
       case 'array': {
+        if (node.items === false && !Array.isArray(node.prefixItems)) { result = { schema: z.tuple([]), code: 'z.tuple([])' }; break; }
         if (Array.isArray(node.prefixItems) || Array.isArray(node.items)) {
           const tupleNodes = (Array.isArray(node.prefixItems) ? node.prefixItems : node.items) as JsonSchema[];
           const tuple = tupleNodes.map((item) => convert(item, resolving));
@@ -141,6 +142,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       catch { warnings.push(`Unsupported constraint: ${name}`); }
     }
     if (node.multipleOf !== undefined && node.type === 'number') warnings.push('multipleOf is not represented by a basic Zod method');
+    if (node.contains === undefined && (node.minContains !== undefined || node.maxContains !== undefined)) warnings.push('minContains/maxContains require contains and were ignored');
+    if (node.additionalItems !== undefined && !Array.isArray(node.items) && !Array.isArray(node.prefixItems)) warnings.push('additionalItems applies only to tuple schemas and was ignored');
     if (node.type === 'object' && (node.minProperties !== undefined || node.maxProperties !== undefined)) {
       const min = node.minProperties; const max = node.maxProperties;
       result = { schema: result.schema.refine((value: any) => Object.keys(value).length >= (min ?? 0) && (max === undefined || Object.keys(value).length <= max)), code: `${result.code}.refine((value) => Object.keys(value).length >= ${min ?? 0}${max === undefined ? '' : ` && Object.keys(value).length <= ${max}`})` };
