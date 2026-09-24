@@ -10,6 +10,7 @@ describe('API docs endpoint generation', () => {
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
     expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts']);
     expect(await readFile(join(outputDir, 'components/index.ts'), 'utf8')).toContain("export { AlphaSchema } from './Alpha/index';");
+    await expect(generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {} }, { outputDir, insertComponents: true, useComponentAsReference: true })).rejects.toThrow('endpoint imports are not implemented yet');
     await expect(generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { 'A-B': { type: 'string' }, AB: { type: 'string' } } }, paths: {} }, { outputDir, insertComponents: true })).rejects.toThrow('Component export name collision');
   });
   it('writes a complete endpoint file', async () => {

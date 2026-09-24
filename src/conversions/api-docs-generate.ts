@@ -77,6 +77,7 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
   if (!options || typeof options.outputDir !== 'string' || !options.outputDir) throw new TypeError('outputDir is required');
   const source = typeof input === 'string' ? JSON.parse(input) : input;
   if (options.useComponentAsReference && !options.insertComponents) throw new TypeError('useComponentAsReference requires insertComponents');
+  if (options.useComponentAsReference) throw new TypeError('useComponentAsReference endpoint imports are not implemented yet');
   const plans = planApiDocsFiles(source, options.mode ?? 'directory');
   const root = resolve(options.outputDir); const generated: GeneratedApiDocsFile[] = [];
   if (options.insertComponents) {

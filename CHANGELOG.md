@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧩 Added initial component-file and sorted component-barrel generation with `insertComponents`.
 - 🛡️ Component generation now preserves OpenAPI 3.1 boolean schemas instead of converting them to unconstrained schemas.
 - 🧩 Component generation validates names and renders all component contents before writing files, preventing partial output from validation/conversion failures.
+- ⚠️ `useComponentAsReference` now fails explicitly instead of silently generating inline endpoints until endpoint imports are implemented.
 
 - 🏗️ Added filesystem generation for endpoint `index.ts` files from the validated API-doc plan.
 - 🧾 Generated endpoint exports and schema helper names now sanitize non-identifier and reserved names into valid TypeScript names.
