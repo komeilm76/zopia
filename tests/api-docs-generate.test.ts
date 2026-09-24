@@ -5,6 +5,12 @@ import { join } from 'node:path';
 import { generateApiDocsFiles } from '../src';
 
 describe('API docs endpoint generation', () => {
+  it('generates component files and a sorted barrel', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: { type: 'string' }, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
+    expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts']);
+    expect(await readFile(join(outputDir, 'components/index.ts'), 'utf8')).toContain("export { AlphaSchema } from './Alpha/index';");
+  });
   it('writes a complete endpoint file', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users/{id}': { get: { operationId: 'getUser', summary: 'Get user', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object' }, example: { id: 'u1' } } } } } } } } }, { outputDir });
