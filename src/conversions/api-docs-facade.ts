@@ -15,7 +15,7 @@ export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 
   if (!path.startsWith('/') || path.includes('?') || path.includes('#') || path.includes('\0') || path.includes('\\')) throw new TypeError(`Invalid API path: ${path}`);
   const rawSegments = path.split('/').filter(Boolean);
   if (rawSegments.some((segment) => /[{}]/.test(segment) && !/^\{[A-Za-z0-9._-]+\}$/.test(segment))) throw new TypeError(`Invalid API path template: ${path}`);
-  const segments = rawSegments.map((segment) => propertyName(segment));
+  const segments = rawSegments.flatMap((segment) => /^\{[A-Za-z0-9._-]+\}$/.test(segment) ? ['params', propertyName(segment)] : [propertyName(segment)]);
   const methodName = propertyName(method);
   return [root, ...segments, methodName].map((name) => {
     if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return `.${name}`;
