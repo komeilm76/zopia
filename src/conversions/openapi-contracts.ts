@@ -51,6 +51,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const response = resolveRef(value as Record<string, any>, ir, 'response');
     if (typeof response.description !== 'string' || response.description.trim() === '') throw new TypeError(`Invalid response description: ${status}`);
     const media = firstContent(response.content);
-    return { status, description: response.description, ...media };
+    const schema = media.schema === undefined && response.schema !== undefined ? { schema: response.schema } : {};
+    return { status, description: response.description, ...media, ...schema };
   }) };
 }
