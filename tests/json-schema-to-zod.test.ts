@@ -15,6 +15,16 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(2).success).toBe(true);
     expect(result.code).toContain('z.union');
   });
+  it('preserves additionalProperties behavior', () => {
+    const strict = jsonSchemaToZod({ type: 'object', additionalProperties: false });
+    expect(strict.schema.safeParse({ extra: true }).success).toBe(false);
+    const open = jsonSchemaToZod({ type: 'object', additionalProperties: { type: 'string' } });
+    expect(open.schema.safeParse({ extra: 'ok' }).success).toBe(true);
+    expect(open.schema.safeParse({ extra: 1 }).success).toBe(false);
+  });
+  it('rejects malformed JSON input clearly', () => {
+    expect(() => jsonSchemaToZod('{bad')).toThrow('Invalid JSON Schema input');
+  });
   it('reports unsupported references without failing', () => {
     const result = jsonSchemaToZod({ $ref: '#/$defs/User' }, { rootName: 'user' });
     expect(result.code).toBe('const user = z.any();');

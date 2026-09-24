@@ -11,8 +11,10 @@ type JsonSchema = Record<string, any>;
 /** Convert a JSON Schema value into executable Zod 4 code and a Zod schema. */
 export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?: string } = {}): JsonSchemaToZodResult {
   const rootName = options.rootName ?? 'schema';
-  const source = typeof input === 'string' ? JSON.parse(input) : input;
   const warnings: string[] = [];
+  let source: JsonSchema;
+  try { source = (typeof input === 'string' ? JSON.parse(input) : input) as JsonSchema; }
+  catch (error) { throw new TypeError(`Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`); }
   const convert = (node: JsonSchema): { schema: z.ZodType; code: string } => {
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
     if (node.$ref) { warnings.push(`Unsupported $ref: ${node.$ref}`); return { schema: z.any(), code: 'z.any()' }; }
@@ -47,7 +49,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       case 'object': {
         const shape: Record<string, z.ZodType> = {}; const parts: string[] = [];
         for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema); const required = (node.required ?? []).includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
-        result = { schema: z.object(shape), code: `z.object({ ${parts.join(', ')} })` }; break;
+        let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
+        if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
+        else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
+        result = { schema: objectSchema, code: objectCode }; break;
       }
       case 'array': { const item = convert((node.items ?? {}) as JsonSchema); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; break; }
       case 'string': result = { schema: z.string(), code: 'z.string()' }; break;
