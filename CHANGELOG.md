@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🚧 Planned
 - 🧩 Continue Phase 1 with component-file generation and component imports.
 - 🗂️ Add CLI commands, round-trip fixtures, and final release validation.
-- 🔄 Added manifest-driven OpenAPI reconstruction while preserving original operation objects.
+- 🔄 Added manifest-driven OpenAPI reconstruction while preserving original operation objects, plus a file-based `manifestFileToOpenApi()` API.
 - 📖 Aligned reverse-conversion documentation with the implemented manifest-based API.
 - 🔄 Added a generated-manifest round-trip regression test covering operation IDs and explicit security arrays.
 - 🛠️ Reverse conversion now validates manifest source kinds, restores Swagger `basePath` metadata, and restores Swagger `securityDefinitions`.
