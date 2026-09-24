@@ -6,11 +6,13 @@ import { join } from 'node:path';
 
 describe('manifest reverse conversion', () => {
   it('reconstructs the document frame and lossless operations', () => {
-    const result = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, infoOverlay: { contact: { name: 'Team' } }, components: [{ name: 'User', schema: { type: 'object' } }], apis: [{ path: '/users', method: 'get', operationId: 'getUsers', sourceOperation: { operationId: 'getUsers', responses: { '200': { description: 'ok' } } } }] });
+    const result = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, infoOverlay: { contact: { name: 'Team' } }, documentOverlay: { externalDocs: { url: 'https://example.com' }, 'x-vendor': true }, components: [{ name: 'User', schema: { type: 'object' } }], apis: [{ path: '/users', method: 'get', operationId: 'getUsers', sourceOperation: { operationId: 'getUsers', responses: { '200': { description: 'ok' } } } }] });
     expect(result.openapi).toBe('3.1.0');
     const document = result as any;
     expect(document.components.schemas.User).toEqual({ type: 'object' });
     expect(document.info.contact).toEqual({ name: 'Team' });
+    expect(document.externalDocs.url).toBe('https://example.com');
+    expect(document['x-vendor']).toBe(true);
     expect(document.paths['/users'].get.responses['200'].description).toBe('ok');
   });
   it('loads a manifest from disk', async () => {

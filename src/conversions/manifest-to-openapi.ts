@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
+export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
 
 /** Reconstruct an OpenAPI document from a lossless zopia manifest. */
 /** Read a manifest JSON file and reconstruct its OpenAPI document. */
@@ -19,6 +19,7 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
     ? { swagger: '2.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} }
     : { openapi: manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} };
   if (manifest.infoOverlay) Object.assign(document.info, manifest.infoOverlay);
+  if (manifest.documentOverlay) Object.assign(document, manifest.documentOverlay);
   if (manifest.servers?.length && !isSwagger) document.servers = manifest.servers;
   if (manifest.servers?.length && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
   if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes?.length) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces?.length) document.produces = manifest.swaggerProduces; }
