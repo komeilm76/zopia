@@ -55,9 +55,9 @@ A Phase 1 release is complete when **all** of the following hold:
 4. 🧩 All four engine docs sections are implemented exactly as specified (mapping tables are the contract)
 5. 📖 Every public symbol has JSDoc; `tsc --noEmit` (strict) passes
 6. 📜 `CHANGELOG.md` v0.1.0 entry exists and `README` status banner is updated
-7. ✅ **km-api final step** (D-15) — `km-api@0.4.0` is published and zopia
-   uses `km-api: ^0.4.0` from npm; no Git submodule or unpublished commit remains →
-   full test suite green again
+7. ✅ **km-api dependency gate** (D-15) — `km-api@0.4.0` is published and zopia
+   uses `km-api: ^0.4.0` from npm; no Git submodule or unpublished commit remains.
+   The dependency must remain installed and type-checkable throughout Phase 1.
 
 ## 🧰 Phase 2 — Breadth (v0.2.x)
 

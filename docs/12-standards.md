@@ -147,8 +147,7 @@ export function openApiToApiDocs(
 2. 📜 CHANGELOG: [Unreleased] → [x.y.z] - YYYY-MM-DD
 3. 🏷️ git tag  v0.1.0
 4. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
-   at publish time the installed npm dependency has already been replaced by the
-   published km-api 0.4.0, D-15)
+   the published `km-api@0.4.0` dependency is installed, D-15)
 5. 📝 README status banner updated to the new phase
 ```
 

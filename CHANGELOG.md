@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⚙️ Started Phase 1 with Zod/JSON Schema conversion, OpenAPI normalization, operation collection, API-doc layout planning, and the optional ergonomic facade.
 
 ### 🔄 Changed
+- 📚 Updated the roadmap and dependency standards to reflect the already-published `km-api@0.4.0` npm dependency.
 - 🛡️ Added validation for malformed schemas, unsafe paths, references, identifiers, operation IDs, and facade properties.
 
 ### 🚧 Planned
