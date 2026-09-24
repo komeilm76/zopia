@@ -30,6 +30,12 @@ describe('API docs endpoint generation', () => {
     const input: any = { openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {} }; input.self = input;
     await expect(generateApiDocsFiles(input, { outputDir })).rejects.toThrow('circular OpenAPI document');
   });
+  it('supports flat generation without a manifest', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir, mode: 'flat', manifest: false });
+    expect(files[0].file).toBe('users/get/index.ts');
+    await expect(readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')).rejects.toThrow();
+  });
   it('writes a complete endpoint file', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users/{id}': { get: { operationId: 'getUser', summary: 'Get user', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object' }, example: { id: 'u1' } } } } } } } } }, { outputDir });
