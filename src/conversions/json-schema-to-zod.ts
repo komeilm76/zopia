@@ -65,7 +65,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const values = node.enum.map((v: unknown) => JSON.stringify(v)).join(', ');
       const literals = node.enum.map((v: unknown) => z.literal(v as any));
       if (literals.length === 1) return { schema: literals[0], code: `z.literal(${values})` };
-      return { schema: z.union(literals as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${values}].map((value) => z.literal(value)))` };
+      return { schema: z.union(literals as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${node.enum.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])` };
     }
     if ('const' in node) return { schema: z.literal(node.const), code: `z.literal(${JSON.stringify(node.const)})` };
     let result: { schema: z.ZodType; code: string };

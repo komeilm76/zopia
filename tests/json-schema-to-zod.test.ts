@@ -8,6 +8,10 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('z.number().int()');
     expect(result.schema.safeParse({ id: 1 }).success).toBe(true);
   });
+  it('emits compilable code for non-string enums', () => {
+    const result = jsonSchemaToZod({ enum: [1, 2, null] });
+    expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
+  });
   it('converts unions, nullable types, formats, and constraints', () => {
     const result = jsonSchemaToZod({ type: ['string', 'null'], format: 'email', minLength: 5 });
     expect(result.schema.safeParse(null).success).toBe(true);
