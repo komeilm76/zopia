@@ -15,9 +15,12 @@ export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 
   if (!path.startsWith('/') || path.includes('?') || path.includes('#') || path.includes('\0') || path.includes('\\')) throw new TypeError(`Invalid API path: ${path}`);
   const rawSegments = path.split('/').filter(Boolean);
   if (rawSegments.some((segment) => /[{}]/.test(segment) && !/^\{[A-Za-z0-9._-]+\}$/.test(segment))) throw new TypeError(`Invalid API path template: ${path}`);
-  const segments = rawSegments.flatMap((segment) => /^\{[A-Za-z0-9._-]+\}$/.test(segment) ? ['params', propertyName(segment)] : [propertyName(segment)]);
+  const parts: Array<{ name: string; parameter: boolean }> = rawSegments.map((segment) => ({
+    name: /^\{[A-Za-z0-9._-]+\}$/.test(segment) ? segment : propertyName(segment),
+    parameter: /^\{[A-Za-z0-9._-]+\}$/.test(segment),
+  }));
   const methodName = propertyName(method);
-  return [root, ...segments, methodName].map((name) => {
+  return [root, ...parts.map((part) => part.name), methodName].map((name) => {
     if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return `.${name}`;
     return `[${JSON.stringify(name)}]`;
   }).join('').replace(/^\./, '');
