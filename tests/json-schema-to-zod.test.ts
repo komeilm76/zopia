@@ -33,6 +33,8 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ id: 1 }).success).toBe(true);
   });
   it('preserves additionalProperties behavior', () => {
+    const defaultOpen = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'number' } } });
+    expect(defaultOpen.schema.safeParse({ extra: true }).success).toBe(true);
     const strict = jsonSchemaToZod({ type: 'object', additionalProperties: false });
     expect(strict.schema.safeParse({ extra: true }).success).toBe(false);
     const open = jsonSchemaToZod({ type: 'object', additionalProperties: { type: 'string' } });

@@ -83,6 +83,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
         if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
         else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
+        else { objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()'; }
         result = { schema: objectSchema, code: objectCode }; break;
       }
       case 'array': { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; break; }
