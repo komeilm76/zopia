@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧩 Continue Phase 1 with component-file generation and component imports.
 - 🗂️ Add reverse conversion, CLI commands, round-trip fixtures, and final release validation.
 - 📦 Added default `.zopia-manifest.json` generation with source hash, security metadata, component schemas, and API file mappings.
+- 🔒 Synchronized the lockfile peer dependency range with `km-api: ^0.4.1`.
 
 ## [0.0.1] - 2026-09-24
 
