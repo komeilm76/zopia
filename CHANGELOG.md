@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📦 Added default `.zopia-manifest.json` generation with source hash, security metadata, component schemas, and API file mappings.
 - 🔒 Synchronized the lockfile peer dependency range with `km-api: ^0.4.1`.
 - 🗂️ Manifest source kinds now normalize versioned OpenAPI values to `openapi-3.0` or `openapi-3.1`.
+- 🔐 Manifest source hashes now use canonical key ordering, avoiding false changes when JSON property order differs.
 
 ## [0.0.1] - 2026-09-24
 
