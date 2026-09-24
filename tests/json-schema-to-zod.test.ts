@@ -32,8 +32,15 @@ describe('jsonSchemaToZod', () => {
   it('rejects malformed JSON input clearly', () => {
     expect(() => jsonSchemaToZod('{bad')).toThrow('Invalid JSON Schema input');
   });
+  it('resolves local definitions and warns on recursive references', () => {
+    const result = jsonSchemaToZod({ $defs: { User: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } }, $ref: '#/$defs/User' });
+    expect(result.warnings).toEqual([]);
+    expect(result.schema.safeParse({ name: 'Ada' }).success).toBe(true);
+    const recursive = jsonSchemaToZod({ $defs: { Node: { type: 'object', properties: { next: { $ref: '#/$defs/Node' } } } }, $ref: '#/$defs/Node' });
+    expect(recursive.warnings[0]).toContain('Recursive $ref');
+  });
   it('reports unsupported references without failing', () => {
-    const result = jsonSchemaToZod({ $ref: '#/$defs/User' }, { rootName: 'user' });
+    const result = jsonSchemaToZod({ $ref: 'https://example.com/schema.json' }, { rootName: 'user' });
     expect(result.code).toBe('const user = z.any();');
     expect(result.warnings).toHaveLength(1);
   });

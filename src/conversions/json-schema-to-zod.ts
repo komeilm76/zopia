@@ -16,9 +16,18 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   let source: JsonSchema;
   try { source = (typeof input === 'string' ? JSON.parse(input) : input) as JsonSchema; }
   catch (error) { throw new TypeError(`Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`); }
-  const convert = (node: JsonSchema): { schema: z.ZodType; code: string } => {
+  const resolveLocalRef = (ref: string): JsonSchema | undefined => {
+    if (!ref.startsWith('#/')) return undefined;
+    return ref.slice(2).split('/').map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~')).reduce<any>((value, key) => value?.[key], source);
+  };
+  const convert = (node: JsonSchema, resolving = new Set<string>()): { schema: z.ZodType; code: string } => {
     if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
-    if (node.$ref) { warnings.push(`Unsupported $ref: ${node.$ref}`); return { schema: z.any(), code: 'z.any()' }; }
+    if (node.$ref) {
+      const ref = String(node.$ref); const target = resolveLocalRef(ref);
+      if (!target) { warnings.push(`Unsupported $ref: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
+      if (resolving.has(ref)) { warnings.push(`Recursive $ref cannot be eagerly materialized: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
+      return convert(target, new Set(resolving).add(ref));
+    }
     if (Array.isArray(node.type)) {
       const variants = node.type.map((type: string) => {
         const branch: JsonSchema = { ...node, type };
@@ -34,13 +43,13 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     }
     if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf)) {
       const key = Array.isArray(node.oneOf) ? 'oneOf' : 'anyOf';
-      const items = node[key].map((child: JsonSchema) => convert(child));
+      const items = node[key].map((child: JsonSchema) => convert(child, resolving));
       if (items.length === 0) return { schema: z.never(), code: 'z.never()' };
       if (items.length === 1) return items[0];
       return { schema: z.union(items.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${items.map((item: { code: string }) => item.code).join(', ')}])` };
     }
     if (Array.isArray(node.allOf)) {
-      const items = node.allOf.map((child: JsonSchema) => convert(child));
+      const items = node.allOf.map((child: JsonSchema) => convert(child, resolving));
       if (items.length === 0) return { schema: z.any(), code: 'z.any()' };
       if (items.every((item: { schema: z.ZodType }) => item.schema instanceof z.ZodObject)) {
         const schema = items.slice(1).reduce((acc: any, item: { schema: z.ZodType }) => acc.and(item.schema), items[0].schema as any);
@@ -62,13 +71,13 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     switch (node.type) {
       case 'object': {
         const shape: Record<string, z.ZodType> = {}; const parts: string[] = [];
-        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
+        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`${JSON.stringify(key)}: ${required ? item.code : `${item.code}.optional()`}`); }
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
         if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
-        else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
+        else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
         result = { schema: objectSchema, code: objectCode }; break;
       }
-      case 'array': { const item = convert((node.items ?? {}) as JsonSchema); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; break; }
+      case 'array': { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; break; }
       case 'string': result = { schema: z.string(), code: 'z.string()' }; break;
       case 'number': result = { schema: z.number(), code: 'z.number()' }; break;
       case 'integer': result = { schema: z.number().int(), code: 'z.number().int()' }; break;
