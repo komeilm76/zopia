@@ -80,6 +80,14 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     imports.set(ref, target);
     return ref;
   }
+  if (Array.isArray(object?.oneOf) || Array.isArray(object?.anyOf)) {
+    const choices = (object.oneOf ?? object.anyOf).map((child: unknown, index: number) => renderNestedSchema(child, `${name}Choice${index}`, imports));
+    return `z.union([${choices.join(', ')}])`;
+  }
+  if (Array.isArray(object?.allOf)) {
+    const choices = object.allOf.map((child: unknown, index: number) => renderNestedSchema(child, `${name}Part${index}`, imports));
+    return choices.length === 0 ? 'z.never()' : choices.slice(1).reduce((left: string, right: string) => `z.intersection(${left}, ${right})`, choices[0]);
+  }
   if (object?.type === 'array' && object.items !== undefined) return `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack)})`;
   if (object?.type === 'object' && object.properties && typeof object.properties === 'object') {
     const required = new Set(Array.isArray(object.required) ? object.required : []);

@@ -38,6 +38,12 @@ describe('API docs endpoint generation', () => {
     expect(content).toContain('z.array(UserSchema)');
     expect(content).toContain('z.object({');
   });
+  it('renders nested composition references', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Admin: { type: 'object' }, Account: { type: 'object', properties: { actor: { oneOf: [{ $ref: '#/components/schemas/User' }, { $ref: '#/components/schemas/Admin' }] } } } } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Account', 'index.ts'), 'utf8');
+    expect(content).toContain('z.union([UserSchema, AdminSchema])');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
