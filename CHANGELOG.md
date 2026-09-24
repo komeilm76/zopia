@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔄 Added manifest-driven OpenAPI reconstruction while preserving original operation objects, plus a file-based `manifestFileToOpenApi()` API.
 - 📖 Aligned reverse-conversion documentation with the implemented manifest-based API.
 - 🔄 Added generated-manifest round-trip regression tests covering operation IDs, explicit security arrays, Swagger `basePath`, Swagger security definitions, and flat generation without a manifest.
-- 🛠️ Reverse conversion now validates manifest source kinds, restores Swagger `basePath`, `host`, `schemes`, and `securityDefinitions` metadata.
+- 🛠️ Reverse conversion now validates manifest source kinds and restores Swagger `basePath`, `host`, `schemes`, `consumes`, `produces`, and `securityDefinitions` metadata.
 - 📦 Added default `.zopia-manifest.json` generation with source hash, security metadata, component schemas, API file mappings, per-operation `$ref` metadata, operation overlays, and response-header overlays.
 
 - 🔒 Synchronized the lockfile peer dependency range with `km-api: ^0.4.1`.
