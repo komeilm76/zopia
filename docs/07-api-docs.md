@@ -1,6 +1,8 @@
 # 📄 API Docs Format
 
 The **api docs** are zopia's main artifact: an `api_docs/` directory where
+
+Path-level parameters are merged with operation-level parameters; an operation-level declaration with the same `name` and `in` overrides the path-level declaration.
 every endpoint becomes an `index.ts` file built with `makeApiConfig()` from
 **km-api** (the make function), validated by **Zod v4** schemas. This document
 is the *output contract* — layout, naming, file format, and the manifest.

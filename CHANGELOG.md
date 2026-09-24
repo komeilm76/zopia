@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧬 Added validated OpenAPI operation contract extraction for request/response media types.
 - 🔗 Added strict local OpenAPI JSON Pointer reference handling and documentation.
 - ✅ Added validation for response status keys, descriptions, request-body content, and chained component references.
+- 🔀 Operation-level parameters now correctly override path-level parameters.
 
 ### 🚧 Planned
 - 🚀 Continue Phase 1 with full endpoint rendering, components, manifests, reverse conversion, CLI, and remaining tests.
