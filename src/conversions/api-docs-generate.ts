@@ -88,6 +88,8 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
       const previous = componentExports.get(componentExport);
       if (previous) throw new TypeError(`Component export name collision: ${previous} and ${name}`);
       componentExports.set(componentExport, name);
+    }
+    for (const name of names) {
       if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || name.includes('\0')) throw new TypeError(`Unsafe component name: ${name}`);
       const file = `components/${name}/index.ts`; const absolutePath = join(root, file);
       await mkdir(resolve(absolutePath, '..'), { recursive: true });
