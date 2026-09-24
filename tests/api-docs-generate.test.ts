@@ -24,5 +24,10 @@ describe('API docs endpoint generation', () => {
     expect(await readFile(join(reservedDir, 'reserved', 'get', 'index.ts'), 'utf8')).toContain('export const awaitEndpoint');
     expect(content).toContain('pathShape: "/users/{id}"');
     expect(content).toContain('responseContentType');
+    const metadataDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, security: [{ apiKey: [] }], paths: { '/meta': { get: { operationId: 'meta', tags: ['#users'], security: [], responses: { '200': { description: 'ok' } } } } } }, { outputDir: metadataDir });
+    const metadata = await readFile(join(metadataDir, 'meta', 'get', 'index.ts'), 'utf8');
+    expect(metadata).toContain('tags: ["#users"]');
+    expect(metadata).toContain('auth: false');
   });
 });
