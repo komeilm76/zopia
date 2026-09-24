@@ -6,7 +6,7 @@ export type ApiDocsMode = 'directory' | 'flat';
 export function endpointFilePath(path: string, method: OpenApiMethod, mode: ApiDocsMode = 'directory'): string {
   if (!path.startsWith('/')) throw new TypeError(`API path must start with /: ${path}`);
   const segments = path.split('/').filter(Boolean);
-  if (segments.some((segment) => segment === '.' || segment === '..' || segment.includes('\0'))) throw new TypeError(`Unsafe API path segment: ${path}`);
+  if (segments.some((segment) => segment === '.' || segment === '..' || segment.includes('\0') || segment.includes('\\') || segment.includes(':'))) throw new TypeError(`Unsafe API path segment: ${path}`);
   if (mode === 'flat') {
     const base = segments.join('-') || 'root';
     return `${base}/${method}/index.ts`;
