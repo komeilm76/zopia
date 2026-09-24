@@ -107,6 +107,10 @@ describe('jsonSchemaToZod', () => {
       'Unsupported JSON Schema keyword: not',
     ]));
   });
+  it('handles prototype-like property names safely', () => {
+    const result = jsonSchemaToZod({ type: 'object', properties: { __proto__: { type: 'string' }, constructor: { type: 'number' } }, required: ['__proto__', 'constructor'] });
+    expect(result.schema.safeParse({ ['__proto__']: 'x', constructor: 1 }).success).toBe(true);
+  });
   it('reports malformed object keywords without throwing', () => {
     expect(jsonSchemaToZod({ type: 'object', properties: [] }).warnings).toContain('Invalid properties: expected an object');
     expect(jsonSchemaToZod({ type: 'object', required: 'id' }).warnings).toContain('Invalid required: expected an array of strings');
