@@ -2,7 +2,7 @@ import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 
 export const OPENAPI_METHODS = ['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'] as const;
 export type OpenApiMethod = (typeof OPENAPI_METHODS)[number];
-export interface OpenApiOperation { path: string; method: OpenApiMethod; operation: Record<string, any>; operationId: string; }
+export interface OpenApiOperation { path: string; method: OpenApiMethod; operation: Record<string, any>; operationId: string; parameters: any[]; }
 
 function pascalPath(path: string): string {
   return path.split('/').filter(Boolean).map((segment) => segment.replace(/[{}]/g, '').split(/[^A-Za-z0-9]+/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('')).join('') || 'Root';
@@ -24,10 +24,14 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
       if (operation === undefined) continue;
       if (!operation || typeof operation !== 'object' || Array.isArray(operation)) throw new TypeError(`Invalid OpenAPI operation: ${method.toUpperCase()} ${path}`);
       if (operation.operationId !== undefined && (typeof operation.operationId !== 'string' || !operation.operationId.trim())) throw new TypeError(`Invalid operationId: ${method.toUpperCase()} ${path}`);
+      const pathParameters = item.parameters === undefined ? [] : item.parameters;
+      if (!Array.isArray(pathParameters) || !pathParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid path parameters: ${path}`);
+      const operationParameters = operation.parameters === undefined ? [] : operation.parameters;
+      if (!Array.isArray(operationParameters) || !operationParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid operation parameters: ${method.toUpperCase()} ${path}`);
       const operationId = operation.operationId ?? deriveOperationId(path, method);
       if (ids.has(operationId)) throw new TypeError(`Duplicate operationId: ${operationId}`);
       ids.add(operationId);
-      operations.push({ path, method, operation, operationId });
+      operations.push({ path, method, operation, operationId, parameters: [...pathParameters, ...operationParameters] });
     }
   }
   return operations;
