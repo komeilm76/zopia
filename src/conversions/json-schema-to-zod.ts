@@ -41,7 +41,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       return convert(resolved, new Set(resolving).add(ref));
     }
     if (Array.isArray(node.type)) {
-      if (node.type.length === 0 || !node.type.every((type: unknown) => typeof type === 'string')) { warnings.push('Invalid type: expected a non-empty array of strings'); return { schema: z.any(), code: 'z.any()' }; }
+      const allowedTypes = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);
+      if (node.type.length === 0 || !node.type.every((type: unknown) => typeof type === 'string' && allowedTypes.has(type))) { warnings.push('Invalid type: expected a non-empty array of valid JSON Schema type names'); return { schema: z.any(), code: 'z.any()' }; }
       const variants = node.type.map((type: string) => {
         const branch: JsonSchema = { ...node, type };
         if (type === 'null') {

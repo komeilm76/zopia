@@ -3,8 +3,8 @@ import { jsonSchemaToZod } from '../src';
 
 describe('jsonSchemaToZod', () => {
   it('reports malformed type arrays without throwing', () => {
-    expect(jsonSchemaToZod({ type: [] }).warnings).toContain('Invalid type: expected a non-empty array of strings');
-    expect(jsonSchemaToZod({ type: [1] }).warnings).toContain('Invalid type: expected a non-empty array of strings');
+    expect(jsonSchemaToZod({ type: [] }).warnings).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
+    expect(jsonSchemaToZod({ type: [1] }).warnings).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
   });
   it('supports JSON Schema boolean schemas', () => {
     expect(jsonSchemaToZod(true).schema.safeParse('anything').success).toBe(true);
