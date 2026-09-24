@@ -16,6 +16,11 @@ function schemaCode(schema: unknown, name: string): string {
   const safeName = exportName(name);
   return jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: safeName }).code.replace(/^const [^=]+ = /, '').replace(/;$/, '');
 }
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
 function resolveObject(value: unknown, source: OpenApiDocument): any {
   let current = value; const seen = new Set<string>();
@@ -117,7 +122,7 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
     const manifest = {
       $schema: 'zopia:manifest@1', zopiaVersion: '0.0.1', mode: options.mode ?? 'directory',
       options: { insertComponents: options.insertComponents === true, useComponentAsReference: Boolean(options.useComponentAsReference) },
-      source: { kind: source.swagger === '2.0' ? 'swagger-2.0' : /^3\.0/.test(source.openapi) ? 'openapi-3.0' : 'openapi-3.1', title: source.info.title, version: source.info.version, sha256: createHash('sha256').update(JSON.stringify(source)).digest('hex') },
+      source: { kind: source.swagger === '2.0' ? 'swagger-2.0' : /^3\.0/.test(source.openapi) ? 'openapi-3.0' : 'openapi-3.1', title: source.info.title, version: source.info.version, sha256: createHash('sha256').update(stableStringify(source)).digest('hex') },
       servers: source.servers ?? (source.basePath ? [source.basePath] : ['/']), tags: source.tags ?? [], securitySchemes: source.components?.securitySchemes ?? source.securityDefinitions ?? {},
       ...(source.security === undefined ? {} : { defaultSecurity: source.security }),
       components: Object.entries(schemas).map(([name, schema]) => ({ name, file: options.insertComponents ? `components/${name}/index.ts` : null, schema })),
