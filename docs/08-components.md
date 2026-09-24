@@ -17,6 +17,8 @@ and reusable endpoint references are part of the full rendering phase.
 
 > 🎯 **T-8 / T-9** — both options are **booleans, both default `false`**, and
 > `useComponentAsReference` only makes sense when `insertComponents` is `true`.
+> Component files are currently implemented; endpoint imports are not yet
+> implemented and fail explicitly rather than silently inlining schemas.
 
 | ⚙️ `insertComponents` | ⚙️ `useComponentAsReference` | 📂 What is generated | 📄 What endpoint files do |
 | :---: | :---: | --- | --- |
