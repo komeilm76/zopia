@@ -14,8 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+- ⚙️ Started Phase 1 with Zod/JSON Schema conversion, OpenAPI normalization, operation collection, API-doc layout planning, and the optional ergonomic facade.
+
+### 🔄 Changed
+- 🛡️ Added validation for malformed schemas, unsafe paths, references, identifiers, operation IDs, and facade properties.
+
 ### 🚧 Planned
-- 🚀 Phase 1 implementation: conversion engines, API-doc generation, reverse conversion, CLI, and tests.
+- 🚀 Continue Phase 1 with full endpoint rendering, components, manifests, reverse conversion, CLI, and remaining tests.
 
 ## [0.0.1] - 2026-09-24
 
