@@ -12,6 +12,7 @@ export interface OpenApiOperationIR {
   deprecated: boolean;
   security?: unknown[];
   operation: Record<string, any>;
+  document: OpenApiDocument;
 }
 
 function security(value: unknown, context: string): unknown[] | undefined {
@@ -45,6 +46,7 @@ export function buildOpenApiOperationIR(input: OpenApiDocument | string): OpenAp
       deprecated: operation.deprecated === true,
       security: Object.prototype.hasOwnProperty.call(operation, 'security') ? security(operation.security, `${entry.method.toUpperCase()} ${entry.path}`) : security(document.security, 'document'),
       operation,
+      document,
     };
   });
 }

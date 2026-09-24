@@ -1,4 +1,5 @@
 import type { OpenApiOperationIR } from './openapi-ir';
+import { resolveOpenApiLocalRef } from './openapi-ref';
 
 export interface OperationContracts {
   requestBody?: { contentType: string; schema?: unknown; required: boolean };
@@ -15,25 +16,32 @@ function firstContent(content: unknown): { contentType?: string; schema?: unknow
   return { contentType, schema: media.schema };
 }
 
+function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context: string): Record<string, any> {
+  if (!('$ref' in value)) return value;
+  if (typeof value.$ref !== 'string') throw new TypeError(`Invalid ${context} $ref`);
+  const resolved = resolveOpenApiLocalRef(ir.document, value.$ref);
+  if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) throw new TypeError(`Invalid resolved ${context} $ref: ${value.$ref}`);
+  return resolved as Record<string, any>;
+}
+
 /** Extract request and response content without losing media-type metadata. */
 export function extractOperationContracts(ir: OpenApiOperationIR): OperationContracts {
   const operation = ir.operation;
   const body = operation.requestBody;
   const requestBody = body === undefined ? undefined : (() => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError(`Invalid requestBody: ${ir.method} ${ir.path}`);
-    if ('$ref' in body) throw new TypeError(`Unsupported requestBody $ref: ${body.$ref}`);
-    if (body.required !== undefined && typeof body.required !== 'boolean') throw new TypeError(`Invalid requestBody.required: ${ir.method} ${ir.path}`);
-    if (body.content === undefined) throw new TypeError(`Invalid requestBody.content: ${ir.method} ${ir.path}`);
-    const media = firstContent(body.content);
-    return { ...media, contentType: media.contentType ?? 'application/json', required: body.required === true };
+    const bodyObject = resolveRef(body, ir, 'requestBody');
+    if (bodyObject.required !== undefined && typeof bodyObject.required !== 'boolean') throw new TypeError(`Invalid requestBody.required: ${ir.method} ${ir.path}`);
+    if (bodyObject.content === undefined) throw new TypeError(`Invalid requestBody.content: ${ir.method} ${ir.path}`);
+    const media = firstContent(bodyObject.content);
+    return { ...media, contentType: media.contentType ?? 'application/json', required: bodyObject.required === true };
   })();
   const responses = operation.responses;
   if (!responses || typeof responses !== 'object' || Array.isArray(responses) || Object.keys(responses).length === 0) throw new TypeError(`Invalid responses: ${ir.method} ${ir.path}`);
   return { requestBody, responses: Object.entries(responses).map(([status, value]) => {
     if (status !== 'default' && !/^[1-5](?:\d{2}|XX)$/.test(status)) throw new TypeError(`Invalid response status: ${status}`);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`Invalid response ${status}: ${ir.method} ${ir.path}`);
-    const response = value as Record<string, any>;
-    if ('$ref' in response) throw new TypeError(`Unsupported response $ref: ${response.$ref}`);
+    const response = resolveRef(value as Record<string, any>, ir, 'response');
     if (response.description !== undefined && typeof response.description !== 'string') throw new TypeError(`Invalid response description: ${status}`);
     const media = firstContent(response.content);
     return { status, description: response.description ?? '', ...media };
