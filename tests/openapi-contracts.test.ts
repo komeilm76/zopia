@@ -10,4 +10,8 @@ describe('OpenAPI operation contracts', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: null } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Invalid responses');
   });
+  it('does not silently drop referenced contracts', () => {
+    const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { requestBody: { $ref: '#/components/requestBodies/X' }, responses: { '200': { $ref: '#/components/responses/X' } } } } } });
+    expect(() => extractOperationContracts(ir)).toThrow('Unsupported requestBody $ref');
+  });
 });
