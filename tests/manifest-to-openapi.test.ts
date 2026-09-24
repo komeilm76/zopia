@@ -12,6 +12,10 @@ describe('manifest reverse conversion', () => {
     expect(document.components.schemas.User).toEqual({ type: 'object' });
     expect(document.paths['/users'].get.responses['200'].description).toBe('ok');
   });
+  it('restores Swagger security definitions', () => {
+    const result = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'swagger-2.0', title: 'Test', version: '1' }, securitySchemes: { apiKey: { type: 'apiKey', name: 'X-Key', in: 'header' } }, apis: [] }) as any;
+    expect(result.securityDefinitions.apiKey).toEqual({ type: 'apiKey', name: 'X-Key', in: 'header' });
+  });
   it('round-trips a generated manifest without losing the operation', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Round trip', version: '1' }, paths: { '/users': { get: { operationId: 'listUsers', security: [], responses: { '200': { description: 'ok' } } } } } }, { outputDir });

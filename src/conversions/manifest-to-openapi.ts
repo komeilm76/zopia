@@ -11,7 +11,10 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
   if (manifest.servers?.length && !isSwagger) document.servers = manifest.servers;
   if (manifest.servers?.length && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
   if (manifest.tags?.length) document.tags = manifest.tags;
-  if (manifest.securitySchemes && !isSwagger) document.components = { securitySchemes: manifest.securitySchemes };
+  if (manifest.securitySchemes) {
+    if (isSwagger) document.securityDefinitions = manifest.securitySchemes;
+    else document.components = { securitySchemes: manifest.securitySchemes };
+  }
   if (manifest.defaultSecurity !== undefined) document.security = manifest.defaultSecurity;
   const schemas = Object.fromEntries((manifest.components ?? []).map((component) => [component.name, component.schema]));
   if (Object.keys(schemas).length) {
