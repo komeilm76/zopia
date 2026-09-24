@@ -40,7 +40,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (bodyObject.required !== undefined && typeof bodyObject.required !== 'boolean') throw new TypeError(`Invalid requestBody.required: ${ir.method} ${ir.path}`);
     if (bodyObject.content === undefined) throw new TypeError(`Invalid requestBody.content: ${ir.method} ${ir.path}`);
     const media = firstContent(bodyObject.content);
-    return { ...media, contentType: media.contentType ?? 'application/json', required: bodyObject.required === true };
+    if (!media.contentType) throw new TypeError(`Invalid requestBody.content: ${ir.method} ${ir.path}`);
+    return { ...media, contentType: media.contentType, required: bodyObject.required === true };
   })();
   const responses = operation.responses;
   if (!responses || typeof responses !== 'object' || Array.isArray(responses) || Object.keys(responses).length === 0) throw new TypeError(`Invalid responses: ${ir.method} ${ir.path}`);
