@@ -93,7 +93,7 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
   }
   if (object?.nullable === true) {
     const withoutNullable = { ...object }; delete withoutNullable.nullable;
-    return `z.nullable(${renderNestedSchema(withoutNullable, name, imports, stack)})`;
+    return `z.nullable(${renderNestedSchema(withoutNullable, name, imports, stack, source, root)})`;
   }
   const target = componentTarget(object?.$ref);
   if (target) {
@@ -108,6 +108,9 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
   if (Array.isArray(object?.allOf)) {
     const choices = object.allOf.map((child: unknown, index: number) => renderNestedSchema(child, `${name}Part${index}`, imports, stack, source, root));
     return choices.length === 0 ? 'z.never()' : choices.slice(1).reduce((left: string, right: string) => `z.intersection(${left}, ${right})`, choices[0]);
+  }
+  if (object?.type === 'array' && Array.isArray(object.prefixItems)) {
+    return `z.tuple([${object.prefixItems.map((item: unknown, index: number) => renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root)).join(', ')}])`;
   }
   if (object?.type === 'array' && object.items !== undefined) {
     let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
