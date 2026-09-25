@@ -14,6 +14,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   const reservedNames = new Set(['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield']);
   if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(rootName) || reservedNames.has(rootName)) throw new TypeError(`Invalid rootName: ${rootName}`);
   const warnings: string[] = [];
+  const isSchema = (value: unknown): value is JsonSchema => typeof value === 'boolean' || (value !== null && typeof value === 'object' && !Array.isArray(value));
+  const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+  const isNonNegativeInteger = (value: unknown): value is number => isFiniteNumber(value) && Number.isInteger(value) && value >= 0;
   let source: JsonSchema;
   try { source = (typeof input === 'string' ? JSON.parse(input) : input) as JsonSchema; }
   catch (error) { throw new TypeError(`Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`); }
@@ -31,7 +34,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   const convert = (node: JsonSchema, resolving = new Set<string>()): { schema: z.ZodType; code: string } => {
     if (node === true) return { schema: z.any(), code: 'z.any()' };
     if (node === false) return { schema: z.never(), code: 'z.never()' };
-    if (!node || typeof node !== 'object') { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
+    if (!node || typeof node !== 'object' || Array.isArray(node)) { warnings.push('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
     if ('$ref' in node) {
       if (typeof node.$ref !== 'string' || node.$ref.length === 0) { warnings.push('Invalid $ref: expected a non-empty string'); return { schema: z.any(), code: 'z.any()' }; }
       const ref = node.$ref; const target = resolveLocalRef(ref);
@@ -89,26 +92,39 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     switch (node.type) {
       case 'object': {
         if (node.properties !== undefined && (!node.properties || typeof node.properties !== 'object' || Array.isArray(node.properties))) { warnings.push('Invalid properties: expected an object'); result = { schema: z.object({}).passthrough(), code: 'z.object({}).passthrough()' }; break; }
-        if (node.required !== undefined && (!Array.isArray(node.required) || !node.required.every((key: unknown) => typeof key === 'string'))) warnings.push('Invalid required: expected an array of strings');
+        const requiredKeys = Array.isArray(node.required) && node.required.every((key: unknown) => typeof key === 'string') ? node.required as string[] : [];
+        if (node.required !== undefined && (!Array.isArray(node.required) || requiredKeys.length !== node.required.length)) warnings.push('Invalid required: expected an array of strings');
+        const patternPropertiesValid = node.patternProperties === undefined || (node.patternProperties !== null && typeof node.patternProperties === 'object' && !Array.isArray(node.patternProperties));
+        if (!patternPropertiesValid) warnings.push('Invalid patternProperties: expected an object');
+        const additionalPropertiesValid = node.additionalProperties === undefined || isSchema(node.additionalProperties);
+        if (!additionalPropertiesValid) warnings.push('Invalid additionalProperties: expected a schema');
+        const unevaluatedPropertiesValid = node.unevaluatedProperties === undefined || isSchema(node.unevaluatedProperties);
+        if (!unevaluatedPropertiesValid) warnings.push('Invalid unevaluatedProperties: expected a schema');
         const shape: Record<string, z.ZodType> = Object.create(null); const parts: string[] = [];
-        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`[${JSON.stringify(key)}]: ${required ? item.code : `${item.code}.optional()`}`); }
-        if (Array.isArray(node.required)) for (const key of node.required) if (!(key in shape)) { shape[key] = z.unknown(); parts.push(`[${JSON.stringify(key)}]: z.unknown()`); }
+        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving); const required = requiredKeys.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`[${JSON.stringify(key)}]: ${required ? item.code : `${item.code}.optional()`}`); }
+        for (const key of requiredKeys) if (!(key in shape)) { shape[key] = z.unknown(); parts.push(`[${JSON.stringify(key)}]: z.unknown()`); }
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
-        if (node.additionalProperties === undefined && node.patternProperties && typeof node.patternProperties === 'object') {
+        if (node.additionalProperties === undefined && patternPropertiesValid && node.patternProperties) {
           const patternSchemas = Object.values(node.patternProperties as Record<string, JsonSchema>);
           if (patternSchemas.length) { const pattern = convert(patternSchemas[0], resolving); objectSchema = objectSchema.catchall(pattern.schema); objectCode += `.catchall(${pattern.code})`; }
         }
-        if (typeof node.minProperties === 'number') { objectSchema = objectSchema.refine((value) => Object.keys(value).length >= node.minProperties); objectCode += `.refine((value) => Object.keys(value).length >= ${node.minProperties})`; }
-        if (typeof node.maxProperties === 'number') { objectSchema = objectSchema.refine((value) => Object.keys(value).length <= node.maxProperties); objectCode += `.refine((value) => Object.keys(value).length <= ${node.maxProperties})`; }
         if (node.additionalProperties === false || (node.additionalProperties === undefined && node.unevaluatedProperties === false)) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
-        else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
-        else if (node.unevaluatedProperties && typeof node.unevaluatedProperties === 'object') { const item = convert(node.unevaluatedProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
+        else if (additionalPropertiesValid && node.additionalProperties !== undefined && typeof node.additionalProperties !== 'boolean') { const item = convert(node.additionalProperties, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
+        else if (node.additionalProperties === undefined && unevaluatedPropertiesValid && node.unevaluatedProperties !== undefined && typeof node.unevaluatedProperties !== 'boolean') { const item = convert(node.unevaluatedProperties, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
         else { objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()'; }
         result = { schema: objectSchema, code: objectCode }; break;
       }
       case 'array': {
-        if (node.items === false && !Array.isArray(node.prefixItems)) { result = { schema: z.tuple([]), code: 'z.tuple([])' }; break; }
-        if (Array.isArray(node.prefixItems) || Array.isArray(node.items)) {
+        const prefixItemsValid = node.prefixItems === undefined || Array.isArray(node.prefixItems);
+        if (!prefixItemsValid) warnings.push('Invalid prefixItems: expected an array of schemas');
+        const itemsValid = node.items === undefined || Array.isArray(node.items) || isSchema(node.items);
+        if (!itemsValid) warnings.push('Invalid items: expected a schema or tuple array');
+        const additionalItemsValid = node.additionalItems === undefined || isSchema(node.additionalItems);
+        if (!additionalItemsValid) warnings.push('Invalid additionalItems: expected a schema');
+        const unevaluatedItemsValid = node.unevaluatedItems === undefined || isSchema(node.unevaluatedItems);
+        if (!unevaluatedItemsValid) warnings.push('Invalid unevaluatedItems: expected a schema');
+        if (itemsValid && node.items === false && !Array.isArray(node.prefixItems)) { result = { schema: z.tuple([]), code: 'z.tuple([])' }; break; }
+        if (Array.isArray(node.prefixItems) || (itemsValid && Array.isArray(node.items))) {
           const usesPrefixItems = Array.isArray(node.prefixItems);
           const tupleNodes = (usesPrefixItems ? node.prefixItems : node.items) as JsonSchema[];
           const tuple = tupleNodes.map((item) => convert(item, resolving));
@@ -116,11 +132,11 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
           const codes = tuple.map((item) => item.code);
           let tupleSchema: any = z.tuple(schemas as any); let tupleCode = `z.tuple([${codes.join(', ')}])`;
           const restNode: JsonSchema = usesPrefixItems
-            ? node.items !== undefined ? node.items : node.unevaluatedItems !== undefined ? node.unevaluatedItems : true
-            : node.additionalItems !== undefined ? node.additionalItems : true;
+            ? itemsValid && node.items !== undefined ? node.items : unevaluatedItemsValid && node.unevaluatedItems !== undefined ? node.unevaluatedItems : true
+            : additionalItemsValid && node.additionalItems !== undefined ? node.additionalItems : true;
           if (restNode !== false) { const rest = convert(restNode, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
           result = { schema: tupleSchema, code: tupleCode };
-        } else { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; }
+        } else { const item = convert(itemsValid && node.items !== undefined ? node.items as JsonSchema : true, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; }
         break;
       }
       case 'string': result = { schema: z.string(), code: 'z.string()' }; break;
@@ -165,35 +181,55 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       if (format) { try { result = { schema: format.schema(result.schema), code: `${result.code}.${format.code}` }; } catch { warnings.push(`Unsupported format: ${node.format}`); } }
       else warnings.push(`Unsupported format: ${node.format}`);
     }
+    if (node.uniqueItems !== undefined && node.type === 'array' && typeof node.uniqueItems !== 'boolean') warnings.push('Invalid uniqueItems: expected a boolean');
     if (node.uniqueItems === true && node.type === 'array') {
       result = { schema: result.schema.refine((items: any) => new Set(items.map((item: any) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
     }
-    const methods: Array<[string, unknown, (schema: any, value: any) => any]> = [
-      ['minLength', node.minLength, (s, v) => s.min(v)],
-      ['maxLength', node.maxLength, (s, v) => s.max(v)],
-      ['pattern', node.pattern, (s, v) => s.regex(new RegExp(v))],
-      ['minimum', node.minimum, (s, v) => s.min(v)],
-      ['maximum', node.maximum, (s, v) => s.max(v)],
-      ['exclusiveMinimum', typeof node.exclusiveMinimum === 'boolean' ? (node.exclusiveMinimum ? node.minimum : undefined) : node.exclusiveMinimum, (s, v) => s.gt(v)],
-      ['exclusiveMaximum', typeof node.exclusiveMaximum === 'boolean' ? (node.exclusiveMaximum ? node.maximum : undefined) : node.exclusiveMaximum, (s, v) => s.lt(v)],
-      ['minItems', node.minItems, (s, v) => s.min(v)],
-      ['maxItems', node.maxItems, (s, v) => s.max(v)],
-    ];
-    for (const [name, value, apply] of methods) {
-      if (value === undefined) continue;
-      try { const method = name === 'pattern' ? `regex(new RegExp(${JSON.stringify(value)}))` : `${name === 'exclusiveMinimum' ? 'gt' : name === 'exclusiveMaximum' ? 'lt' : name === 'minItems' ? 'min' : name === 'maxItems' ? 'max' : name === 'minLength' ? 'min' : name === 'maxLength' ? 'max' : name === 'minimum' ? 'min' : name === 'maximum' ? 'max' : name}(${JSON.stringify(value)})`; result = { schema: apply(result.schema, value), code: `${result.code}.${method}` }; }
+    const applyConstraint = (name: string, value: unknown, valid: boolean, expected: string, apply: (schema: any, constraint: any) => any, method: string): void => {
+      if (value === undefined) return;
+      if (!valid) { warnings.push(`Invalid ${name}: expected ${expected}`); return; }
+      try { result = { schema: apply(result.schema, value), code: `${result.code}.${method}(${JSON.stringify(value)})` }; }
       catch { warnings.push(`Unsupported constraint: ${name}`); }
+    };
+    if (node.type === 'string') {
+      applyConstraint('minLength', node.minLength, isNonNegativeInteger(node.minLength), 'a non-negative integer', (schema, value) => schema.min(value), 'min');
+      applyConstraint('maxLength', node.maxLength, isNonNegativeInteger(node.maxLength), 'a non-negative integer', (schema, value) => schema.max(value), 'max');
+      if (node.pattern !== undefined) {
+        if (typeof node.pattern !== 'string') warnings.push('Invalid pattern: expected a string');
+        else try { result = { schema: (result.schema as any).regex(new RegExp(node.pattern)), code: `${result.code}.regex(new RegExp(${JSON.stringify(node.pattern)}))` }; }
+        catch { warnings.push('Unsupported constraint: pattern'); }
+      }
     }
-    if (node.multipleOf !== undefined && (node.type === 'number' || node.type === 'integer') && typeof node.multipleOf === 'number' && node.multipleOf > 0) {
+    if (node.type === 'number' || node.type === 'integer') {
+      applyConstraint('minimum', node.minimum, isFiniteNumber(node.minimum), 'a finite number', (schema, value) => schema.min(value), 'min');
+      applyConstraint('maximum', node.maximum, isFiniteNumber(node.maximum), 'a finite number', (schema, value) => schema.max(value), 'max');
+      for (const [name, keyword, fallback, method] of [['exclusiveMinimum', node.exclusiveMinimum, node.minimum, 'gt'], ['exclusiveMaximum', node.exclusiveMaximum, node.maximum, 'lt']] as const) {
+        if (keyword === undefined || keyword === false) continue;
+        const value = keyword === true ? fallback : keyword;
+        if (!isFiniteNumber(value)) { warnings.push(`Invalid ${name}: expected a finite number${keyword === true ? ' in the corresponding inclusive bound' : ''}`); continue; }
+        result = { schema: (result.schema as any)[method](value), code: `${result.code}.${method}(${JSON.stringify(value)})` };
+      }
+    }
+    if (node.type === 'array') {
+      applyConstraint('minItems', node.minItems, isNonNegativeInteger(node.minItems), 'a non-negative integer', (schema, value) => schema.min(value), 'min');
+      applyConstraint('maxItems', node.maxItems, isNonNegativeInteger(node.maxItems), 'a non-negative integer', (schema, value) => schema.max(value), 'max');
+    }
+    if (node.type === 'object') {
+      if (node.minProperties !== undefined) {
+        if (!isNonNegativeInteger(node.minProperties)) warnings.push('Invalid minProperties: expected a non-negative integer');
+        else result = { schema: result.schema.refine((value: any) => Object.keys(value).length >= node.minProperties), code: `${result.code}.refine((value) => Object.keys(value).length >= ${node.minProperties})` };
+      }
+      if (node.maxProperties !== undefined) {
+        if (!isNonNegativeInteger(node.maxProperties)) warnings.push('Invalid maxProperties: expected a non-negative integer');
+        else result = { schema: result.schema.refine((value: any) => Object.keys(value).length <= node.maxProperties), code: `${result.code}.refine((value) => Object.keys(value).length <= ${node.maxProperties})` };
+      }
+    }
+    if (node.multipleOf !== undefined && (node.type === 'number' || node.type === 'integer') && isFiniteNumber(node.multipleOf) && node.multipleOf > 0) {
       const multiple = node.multipleOf;
       result = { schema: result.schema.refine((value: unknown) => typeof value === 'number' && Math.abs(value / multiple - Math.round(value / multiple)) <= Number.EPSILON * Math.max(1, Math.abs(value / multiple))), code: `${result.code}.refine((value) => Math.abs(value / ${multiple} - Math.round(value / ${multiple})) <= Number.EPSILON * Math.max(1, Math.abs(value / ${multiple})))` };
     } else if (node.multipleOf !== undefined && (node.type === 'number' || node.type === 'integer')) warnings.push('Invalid multipleOf: expected a positive number');
     if (node.contains === undefined && (node.minContains !== undefined || node.maxContains !== undefined)) warnings.push('minContains/maxContains require contains and were ignored');
     if (node.additionalItems !== undefined && !Array.isArray(node.items) && !Array.isArray(node.prefixItems)) warnings.push('additionalItems applies only to tuple schemas and was ignored');
-    if (node.type === 'object' && (node.minProperties !== undefined || node.maxProperties !== undefined)) {
-      const min = node.minProperties; const max = node.maxProperties;
-      result = { schema: result.schema.refine((value: any) => Object.keys(value).length >= (min ?? 0) && (max === undefined || Object.keys(value).length <= max)), code: `${result.code}.refine((value) => Object.keys(value).length >= ${min ?? 0}${max === undefined ? '' : ` && Object.keys(value).length <= ${max}`})` };
-    }
     if (node.type === 'object' && node.propertyNames !== undefined) {
       if (typeof node.propertyNames === 'boolean' || (node.propertyNames !== null && typeof node.propertyNames === 'object' && !Array.isArray(node.propertyNames))) {
         const propertyDefinition = typeof node.propertyNames === 'object' ? node.propertyNames as Record<string, unknown> : undefined;
@@ -218,9 +254,13 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       }
     }
     if (node.type === 'array' && node.contains !== undefined) {
-      if (typeof node.contains === 'boolean' || (node.contains !== null && typeof node.contains === 'object' && !Array.isArray(node.contains))) {
-        const contained = convert(node.contains as JsonSchema, resolving);
-        const min = node.minContains ?? 1; const max = node.maxContains;
+      if (isSchema(node.contains)) {
+        const contained = convert(node.contains, resolving);
+        const minValid = node.minContains === undefined || isNonNegativeInteger(node.minContains);
+        const maxValid = node.maxContains === undefined || isNonNegativeInteger(node.maxContains);
+        if (!minValid) warnings.push('Invalid minContains: expected a non-negative integer');
+        if (!maxValid) warnings.push('Invalid maxContains: expected a non-negative integer');
+        const min = minValid ? node.minContains ?? 1 : 1; const max = maxValid ? node.maxContains : undefined;
         result = { schema: result.schema.refine((items: any) => { const count = items.filter((item: any) => contained.schema.safeParse(item).success).length; return count >= min && (max === undefined || count <= max); }), code: `${result.code}.refine((items) => { const count = items.filter((item) => ${contained.code}.safeParse(item).success).length; return count >= ${min}${max === undefined ? '' : ` && count <= ${max}`}; })` };
       } else warnings.push('Invalid contains: expected a schema');
     }

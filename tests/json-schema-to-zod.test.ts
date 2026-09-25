@@ -286,6 +286,41 @@ describe('jsonSchemaToZod', () => {
   it('reports malformed object keywords without throwing', () => {
     expect(jsonSchemaToZod({ type: 'object', properties: [] }).warnings).toContain('Invalid properties: expected an object');
     expect(jsonSchemaToZod({ type: 'object', required: 'id' }).warnings).toContain('Invalid required: expected an array of strings');
+    const malformedRequired = jsonSchemaToZod({ type: 'object', required: [1] });
+    expect(malformedRequired.warnings).toContain('Invalid required: expected an array of strings');
+    expect(malformedRequired.schema.safeParse({}).success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'object', patternProperties: [] }).warnings).toContain('Invalid patternProperties: expected an object');
+    expect(jsonSchemaToZod({ type: 'object', additionalProperties: [] }).warnings).toContain('Invalid additionalProperties: expected a schema');
+    expect(jsonSchemaToZod({ type: 'object', unevaluatedProperties: [] }).warnings).toContain('Invalid unevaluatedProperties: expected a schema');
+  });
+  it('warns for malformed numeric and size constraints without emitting invalid code', () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ type: 'string', minLength: 'x' }, 'Invalid minLength: expected a non-negative integer'],
+      [{ type: 'string', minLength: -1 }, 'Invalid minLength: expected a non-negative integer'],
+      [{ type: 'string', maxLength: 'x' }, 'Invalid maxLength: expected a non-negative integer'],
+      [{ type: 'string', pattern: 42 }, 'Invalid pattern: expected a string'],
+      [{ type: 'number', minimum: 'x' }, 'Invalid minimum: expected a finite number'],
+      [{ type: 'number', minimum: Number.NaN }, 'Invalid minimum: expected a finite number'],
+      [{ type: 'array', minItems: 'x' }, 'Invalid minItems: expected a non-negative integer'],
+      [{ type: 'array', contains: false, minContains: 'x' }, 'Invalid minContains: expected a non-negative integer'],
+      [{ type: 'array', contains: false, minContains: -1 }, 'Invalid minContains: expected a non-negative integer'],
+      [{ type: 'object', minProperties: 'x' }, 'Invalid minProperties: expected a non-negative integer'],
+      [{ type: 'object', minProperties: -1 }, 'Invalid minProperties: expected a non-negative integer'],
+      [{ type: 'number', multipleOf: Number.POSITIVE_INFINITY }, 'Invalid multipleOf: expected a positive number'],
+    ];
+    for (const [schema, warning] of cases) {
+      const result = jsonSchemaToZod(schema);
+      expect(result.warnings).toContain(warning);
+      expect(() => new Function('z', result.code)).not.toThrow();
+    }
+  });
+  it('warns for malformed array keywords and ignores inapplicable constraints', () => {
+    expect(jsonSchemaToZod({ type: 'array', prefixItems: 'bad' }).warnings).toContain('Invalid prefixItems: expected an array of schemas');
+    expect(jsonSchemaToZod({ type: 'array', items: null }).warnings).toContain('Invalid items: expected a schema or tuple array');
+    expect(jsonSchemaToZod({ type: 'array', uniqueItems: 'yes' }).warnings).toContain('Invalid uniqueItems: expected a boolean');
+    const inapplicable = jsonSchemaToZod({ type: 'number', minLength: 5 });
+    expect(inapplicable.schema.safeParse(1).success).toBe(true);
+    expect(inapplicable.code).not.toContain('.min(5)');
   });
   it('reports malformed combinators without throwing', () => {
     expect(jsonSchemaToZod({ oneOf: 'bad' }).warnings).toContain('Invalid oneOf: expected an array');
