@@ -1,3 +1,4 @@
+export { type ZopiaWarning } from './warnings';
 export {
   zodToJsonSchema,
   type ZodJsonSchemaTarget,

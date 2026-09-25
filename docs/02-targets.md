@@ -12,7 +12,7 @@ Vitest suite — see [Testing → Scenario matrix](11-testing.md).
 
 | # | 🎯 Target | Spec | Status |
 | --- | --- | --- | --- |
-| T-1 | **Convert Zod → JSON Schema** | [Conversions → Engine ①](06-conversions.md) | ✅ 🚧 |
+| T-1 | **Convert Zod → JSON Schema** | [Conversions → Engine ①](06-conversions.md) | ✅ |
 | T-2 | **Convert JSON Schema → Zod** | [Conversions → Engine ②](06-conversions.md) | ✅ 🚧 |
 | T-3 | **Convert OpenAPI → api docs** — Swagger 2.0 *and* OpenAPI 3.0/3.1 | [Conversions → Engine ③](06-conversions.md) | ✅ 🚧 |
 | T-4 | **Convert api docs → OpenAPI** (the reverse direction) | [Conversions → Engine ④](06-conversions.md) | ✅ |

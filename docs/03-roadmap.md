@@ -25,7 +25,7 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [ ] ⚙️ Package scaffold — `package.json` (Bun-first, zero runtime deps,
       `zod` peer + `km-api ^0.4.1` from npm — D-15), strict
       `tsconfig`, Vitest + Bun setup
-- [ ] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
+- [x] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
       ([rules](06-conversions.md))
 - [ ] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
       ([rules](06-conversions.md))
