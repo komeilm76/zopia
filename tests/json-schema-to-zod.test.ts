@@ -116,6 +116,15 @@ describe('jsonSchemaToZod', () => {
     expect(jsonSchemaToZod({ type: 'string', format: 'time' }).schema.safeParse('12:30:00').success).toBe(true);
     expect(jsonSchemaToZod({ type: 'string', format: 'duration' }).schema.safeParse('P3Y6M4DT12H30M5S').success).toBe(true);
   });
+  it('supports base64 content encoding', () => {
+    const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'base64' });
+    expect(result.schema.safeParse('SGVsbG8=').success).toBe(true);
+    expect(result.code).toContain('.base64()');
+  });
+  it('warns for unsupported content encoding', () => {
+    const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'hex' });
+    expect(result.warnings).toContain('Unsupported contentEncoding: hex');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
