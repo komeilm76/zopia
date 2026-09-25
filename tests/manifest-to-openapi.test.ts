@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
-import { mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -36,6 +36,14 @@ describe('manifest reverse conversion', () => {
     const document = await manifestFileToOpenApi(file) as any;
     expect(document.openapi).toBe('3.1.0');
     expect(document.components.schemas.Inline).toEqual({ type: 'string' });
+  });
+  it('reports a missing manifest distinctly from malformed manifest content', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const missingError = await manifestFileToOpenApi(join(directory, '.zopia-manifest.json')).catch((error: unknown) => error);
+    expect(missingError).toMatchObject({ code: 'ZOPIA_DOCS_MISSING_MANIFEST', message: expect.stringContaining('manifest file not found') });
+    const malformed = join(directory, 'malformed.json');
+    await writeFile(malformed, '{', 'utf8');
+    await expect(manifestFileToOpenApi(malformed)).rejects.toThrow('Invalid manifest file');
   });
   it('imports generated endpoint modules and uses edited runtime metadata', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -312,15 +320,33 @@ describe('manifest reverse conversion', () => {
     expect(reversed.paths['/first'].get.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
     expect(reversed.paths['/second'].post.responses['201'].content['application/json'].schema).toEqual({ type: 'number' });
   });
+  it('detects renamed generated files before importing any listed module', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Rename', version: '1' }, paths: { '/users': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'users', 'get', 'index.ts');
+    await rename(endpointFile, join(outputDir, 'users', 'get', 'renamed.ts'));
+    const mismatch = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')).catch((error: unknown) => error);
+    expect(mismatch).toMatchObject({ code: 'ZOPIA_DOCS_MANIFEST_MISMATCH', message: expect.stringContaining('generated endpoint file is missing or renamed: users/get/index.ts') });
+
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await writeFile(join(directory, 'first.ts'), `import { writeFileSync } from 'node:fs';\nimport { z } from 'zod';\nimport { makeApiConfig } from 'km-api';\nwriteFileSync(new URL('./executed.txt', import.meta.url), 'executed');\nexport default makeApiConfig({ method: 'GET', pathShape: '/first', operationId: 'first', auth: 'NO', request: { body: z.any(), params: z.object({}), query: z.object({}), headers: z.object({}), cookies: z.object({}) }, response: { 200: z.void() } });\n`, 'utf8');
+    const manifestFile = join(directory, '.zopia-manifest.json');
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Preflight', version: '1' }, apis: [
+      { file: 'first.ts', path: '/first', method: 'get', operationId: 'first' },
+      { file: 'renamed.ts', path: '/second', method: 'get', operationId: 'second' },
+    ] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('ZOPIA_DOCS_MANIFEST_MISMATCH: generated endpoint file is missing or renamed: renamed.ts');
+    await expect(readFile(join(directory, 'executed.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it('rejects missing, unsafe, and invalid generated endpoint modules', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
     const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
     const manifestFile = join(directory, '.zopia-manifest.json');
     await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/x', method: 'get' }] }), 'utf8');
-    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Manifest API file is required');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('ZOPIA_DOCS_MANIFEST_MISMATCH: manifest API entry does not list a generated file');
 
     await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: 'missing.ts', path: '/x', method: 'get' }] }), 'utf8');
-    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unable to resolve generated endpoint file missing.ts');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('ZOPIA_DOCS_MANIFEST_MISMATCH: generated endpoint file is missing or renamed: missing.ts');
 
     await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: join(directory, 'absolute.ts'), path: '/x', method: 'get' }] }), 'utf8');
     await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unsafe manifest API file');
@@ -346,7 +372,7 @@ describe('manifest reverse conversion', () => {
     const manifest = (file: string) => ({ $schema: 'zopia:manifest@1', source, components: [{ name: 'User', file, schema: { type: 'string' } }], apis: [] });
 
     await writeFile(manifestFile, JSON.stringify(manifest('missing.ts')), 'utf8');
-    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unable to resolve generated component file missing.ts');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('ZOPIA_DOCS_MANIFEST_MISMATCH: generated component file is missing or renamed: missing.ts');
 
     await writeFile(manifestFile, JSON.stringify(manifest(join(directory, 'absolute.ts'))), 'utf8');
     await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unsafe manifest component file');

@@ -23,6 +23,50 @@ function isFileWithinRoot(root: string, file: string): boolean {
   return Boolean(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot);
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return isRecord(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
+}
+
+function codedTypeError(code: string, message: string): TypeError & { code: string } {
+  const error = new TypeError(`${code}: ${message}`) as TypeError & { code: string };
+  error.code = code;
+  return error;
+}
+
+function manifestMismatch(message: string): TypeError & { code: string } {
+  return codedTypeError('ZOPIA_DOCS_MANIFEST_MISMATCH', message);
+}
+
+async function validateManifestFiles(manifest: ZopiaManifest, root: string): Promise<void> {
+  const entries: Array<{ file: string; kind: 'endpoint' | 'component' }> = [];
+  for (const api of manifest.apis) {
+    if (!isRecord(api) || typeof api.file !== 'string' || !api.file) throw manifestMismatch(`manifest API entry does not list a generated file: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
+    entries.push({ file: api.file, kind: 'endpoint' });
+  }
+  for (const component of manifest.components ?? []) if (component.file !== undefined && component.file !== null) entries.push({ file: component.file, kind: 'component' });
+
+  for (const { file, kind } of entries) {
+    const manifestKind = kind === 'endpoint' ? 'API' : 'component';
+    if (isAbsolute(file)) throw new TypeError(`Unsafe manifest ${manifestKind} file: ${file}`);
+    const requested = resolve(root, file);
+    if (!isFileWithinRoot(root, requested)) throw new TypeError(`Unsafe manifest ${manifestKind} file: ${file}`);
+    let generatedFile: string;
+    try { generatedFile = await realpath(requested); }
+    catch (error) {
+      if (isMissingFileError(error)) throw manifestMismatch(`generated ${kind} file is missing or renamed: ${file}`);
+      throw new TypeError(`Unable to resolve generated ${kind} file ${file}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!isFileWithinRoot(root, generatedFile)) throw new TypeError(`Unsafe manifest ${manifestKind} file: ${file}`);
+    let metadata;
+    try { metadata = await stat(generatedFile); }
+    catch (error) {
+      if (isMissingFileError(error)) throw manifestMismatch(`generated ${kind} file is missing or renamed: ${file}`);
+      throw new TypeError(`Unable to inspect generated ${kind} file ${file}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!metadata.isFile()) throw manifestMismatch(`generated ${kind} file is missing or renamed: ${file}`);
+  }
+}
+
 function isComponentSchema(value: unknown): value is ComponentSchema {
   return isRecord(value) && isRecord(value._zod) && typeof value._zod.run === 'function' && typeof value.parse === 'function';
 }
@@ -133,11 +177,19 @@ function componentRefTarget(schema: unknown): string | undefined {
 /** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
 export async function manifestFileToOpenApi(file: string): Promise<Record<string, unknown>> {
   if (typeof file !== 'string' || !file) throw new TypeError('Manifest file path is required');
+  let source: string;
+  try { source = await readFile(file, 'utf8'); }
+  catch (error) {
+    if (isMissingFileError(error)) throw codedTypeError('ZOPIA_DOCS_MISSING_MANIFEST', `manifest file not found: ${file}`);
+    throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`);
+  }
   let parsed: unknown;
-  try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`); }
+  try { parsed = JSON.parse(source); }
+  catch (error) { throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`); }
   const manifest = parsed as ZopiaManifest;
   reconstructOpenApi(manifest);
   const root = await realpath(dirname(resolve(file)));
+  await validateManifestFiles(manifest, root);
   const modules = new Map<string, Record<string, unknown>>();
   const endpointConfigs = await importEndpointConfigs(manifest, root, modules);
   const components = await importComponentSchemas(manifest, root, modules);

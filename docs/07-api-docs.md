@@ -297,6 +297,8 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` (and any future non-expressible response fields) — full Response Objects, re-emitted verbatim (R-754) |
 | `source.sha256` | 🆔 staleness detection: regeneration warns when the tree's manifest hash differs from the new input |
 
+Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[].file` and every non-null `components[].file` still resolves to a regular file inside the manifest directory. Missing or renamed entries fail the whole preflight with `ZOPIA_DOCS_MANIFEST_MISMATCH`; no earlier module is executed.
+
 > 📌 **Rule R-751** — the manifest carries a **full** `schema` for every
 > declared component, in every mode. It is the verbatim source of
 > `components.schemas` on the reverse trip; when `file` is set, the imported
