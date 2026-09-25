@@ -6,9 +6,12 @@ describe('jsonSchemaToZod', () => {
     expect(jsonSchemaToZod({ type: [] }).warnings).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
     expect(jsonSchemaToZod({ type: [1] }).warnings).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
   });
-  it('supports JSON Schema boolean schemas', () => {
+  it('supports JSON Schema boolean and empty schemas without false warnings', () => {
     expect(jsonSchemaToZod(true).schema.safeParse('anything').success).toBe(true);
     expect(jsonSchemaToZod(false).schema.safeParse('anything').success).toBe(false);
+    const empty = jsonSchemaToZod({});
+    expect(empty.schema.safeParse('anything').success).toBe(true);
+    expect(empty.warnings).toEqual([]);
   });
   it('converts objects and preserves optional properties', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'integer' }, nickname: { type: 'string' } }, required: ['id'] });
@@ -27,6 +30,13 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('Object.keys(value).every');
     expect(result.schema.safeParse({ good: 1 }).success).toBe(true);
     expect(result.schema.safeParse({ 'bad-key': 1 }).success).toBe(false);
+  });
+  it('supports boolean property-name schemas', () => {
+    const result = jsonSchemaToZod({ type: 'object', propertyNames: false });
+    expect(result.schema.safeParse({}).success).toBe(true);
+    expect(result.schema.safeParse({ forbidden: true }).success).toBe(false);
+    expect(result.warnings).toEqual([]);
+    expect(jsonSchemaToZod({ type: 'object', propertyNames: [] }).warnings).toContain('Invalid propertyNames: expected a schema');
   });
   it('supports not schemas', () => {
     const result = jsonSchemaToZod({ type: 'string', not: { enum: ['blocked'] } });
@@ -228,6 +238,14 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse([1, 'x', 2]).success).toBe(true);
     expect(result.schema.safeParse([1]).success).toBe(false);
     expect(result.schema.safeParse([1, 2, 3]).success).toBe(false);
+  });
+  it('supports false boolean contains schemas', () => {
+    const result = jsonSchemaToZod({ type: 'array', contains: false });
+    expect(result.schema.safeParse([]).success).toBe(false);
+    expect(result.schema.safeParse([1]).success).toBe(false);
+    expect(result.warnings).toEqual([]);
+    expect(jsonSchemaToZod({ type: 'array', contains: false, minContains: 0 }).schema.safeParse([1]).success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'array', contains: [] }).warnings).toContain('Invalid contains: expected a schema');
   });
   it('enforces object property counts', () => {
     const result = jsonSchemaToZod({ type: 'object', minProperties: 1, maxProperties: 2 });

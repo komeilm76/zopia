@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 JSON Schema conversion now honors `false` boolean schemas in `contains` and `propertyNames`, warns for malformed values, and no longer reports empty schemas as unsupported types.
 - 🔒 Reverse conversion restores manifest overlays with prototype-safe property definition.
 
 - 🖥️ The npm CLI now invokes a Node-compatible wrapper that launches the TypeScript CLI through Bun instead of asking Node to execute TypeScript directly; help now lists the component-reference option.
