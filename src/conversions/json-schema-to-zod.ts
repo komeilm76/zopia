@@ -181,8 +181,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => expression.test(key))), code: `${result.code}.refine((value) => Object.keys(value).every((key) => new RegExp(${JSON.stringify(pattern)}).test(key)))` };
       } catch { warnings.push(`Unsupported propertyNames pattern: ${pattern}`); }
     }
-    if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object') {
-      const dependencies = Object.entries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => Array.isArray(value));
+    if (node.type === 'object' && node.dependentRequired !== undefined && (!node.dependentRequired || typeof node.dependentRequired !== 'object' || Array.isArray(node.dependentRequired))) warnings.push('Invalid dependentRequired: expected an object of string arrays');
+    if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object' && !Array.isArray(node.dependentRequired)) {
+      const dependencies = Object.entries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => { if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) warnings.push('Invalid dependentRequired entry: expected an array of strings'); return Array.isArray(value); });
       for (const [key, requiredKeys] of dependencies) {
         const keys = (requiredKeys as unknown[]).filter((item): item is string => typeof item === 'string');
         if (!keys.length) continue;

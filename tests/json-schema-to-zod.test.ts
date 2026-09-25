@@ -57,6 +57,10 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ password: 'Password1!', confirmPassword: 'Password1!' }).success).toBe(true);
     expect(result.schema.safeParse({}).success).toBe(true);
   });
+  it('reports malformed dependent required rules', () => {
+    const result = jsonSchemaToZod({ type: 'object', dependentRequired: { password: 'confirmPassword' } });
+    expect(result.warnings).toContain('Invalid dependentRequired entry: expected an array of strings');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
