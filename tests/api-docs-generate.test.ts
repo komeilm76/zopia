@@ -44,6 +44,15 @@ describe('API docs endpoint generation', () => {
     const content = await readFile(join(outputDir, 'components', 'Account', 'index.ts'), 'utf8');
     expect(content).toContain('z.union([UserSchema, AdminSchema])');
   });
+  it('renders prototype-like component property names as computed keys', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const schema = JSON.parse('{"type":"object","properties":{"__proto__":{"type":"string"},"nested":{"type":"object","properties":{"__proto__":{"type":"number"}},"required":["__proto__"]}},"required":["__proto__","nested"]}');
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Safe: schema } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Safe', 'index.ts'), 'utf8');
+    expect(content).toContain('["__proto__"]: z.string()');
+    expect(content).toContain('["__proto__"]: z.number()');
+    expect(content).not.toContain('"__proto__":');
+  });
   it('renders nested enum, const, and nullable schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Profile: { type: 'object', properties: { role: { enum: ['admin', 'user'] }, active: { const: true }, nickname: { type: 'string', nullable: true } } } } }, paths: {} }, { outputDir, insertComponents: true });
@@ -96,13 +105,13 @@ describe('API docs endpoint generation', () => {
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { $ref: '#/components/schemas/UserId' } }], get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const content = await readFile(join(outputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
     expect(content).toContain("import { UserIdSchema } from '../../../components/index';");
-    expect(content).toContain('params: z.object({ "id": UserIdSchema })');
-    expect(content).not.toContain('"id": z.any()');
+    expect(content).toContain('params: z.object({ ["id"]: UserIdSchema })');
+    expect(content).not.toContain('["id"]: z.any()');
 
     const inlineOutputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { $ref: '#/components/schemas/UserId' } }], get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir: inlineOutputDir, manifest: false });
     const inlineContent = await readFile(join(inlineOutputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
-    expect(inlineContent).toContain('params: z.object({ "id": z.string().uuid() })');
+    expect(inlineContent).toContain('params: z.object({ ["id"]: z.string().uuid() })');
   });
   it('uses component references nested inside endpoint schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -146,13 +155,18 @@ describe('API docs endpoint generation', () => {
     expect(required).toContain('auth: "YES"');
     expect(optional).toContain('auth: "NO"');
   });
-  it('preserves prototype-like request example names safely', async () => {
+  it('preserves prototype-like parameter and request example names safely', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const examples = JSON.parse('{"__proto__":{"value":{"safe":true}},"named":{"value":1}}');
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/examples': { post: { requestBody: { content: { 'application/json': { schema: { type: 'object' }, examples } } }, responses: { '200': { description: 'ok' } } } } } }, { outputDir, manifest: false });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/examples': { post: { parameters: [{ name: '__proto__', in: 'query', schema: { type: 'string' } }], requestBody: { content: { 'application/json': { schema: { type: 'object' }, examples } } }, responses: { '200': { description: 'ok' } } } } } }, { outputDir, manifest: false });
     const content = await readFile(join(outputDir, 'examples', 'post', 'index.ts'), 'utf8');
-    expect(content).toContain('"__proto__":{"value":{"safe":true}}');
-    expect(content).toContain('"named":{"value":1}');
+    expect(content).toContain('query: z.object({ ["__proto__"]: z.string().optional() })');
+    const encoded = content.match(/examples: JSON\.parse\(("(?:\\.|[^"\\])*")\),/)?.[1];
+    expect(encoded).toBeDefined();
+    const generatedExamples = JSON.parse(JSON.parse(encoded!));
+    expect(Object.prototype.hasOwnProperty.call(generatedExamples.request, '__proto__')).toBe(true);
+    expect(generatedExamples.request.__proto__).toEqual({ value: { safe: true } });
+    expect(generatedExamples.request.named).toEqual({ value: 1 });
     expect((Object.prototype as any).safe).toBeUndefined();
   });
   it('escapes source metadata in generated comments', async () => {
@@ -172,7 +186,7 @@ describe('API docs endpoint generation', () => {
     const numericDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/x': { get: { parameters: [{ name: '123', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'ok' } } } } } }, { outputDir: numericDir });
     const numericContent = await readFile(join(numericDir, 'x', 'get', 'index.ts'), 'utf8');
-    expect(numericContent).toContain('"123": z.string()');
+    expect(numericContent).toContain('["123"]: z.string()');
     const oddDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/x': { get: { operationId: 'get-user', responses: { '200': { description: 'ok' } } } } } }, { outputDir: oddDir });
     expect(await readFile(join(oddDir, 'x', 'get', 'index.ts'), 'utf8')).toContain('export const getUser');

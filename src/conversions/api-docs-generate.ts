@@ -127,7 +127,7 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
   }
   if (object?.type === 'object' && object.properties && typeof object.properties === 'object') {
     const required = new Set(Array.isArray(object.required) ? object.required : []);
-    const fields = Object.entries(object.properties).map(([key, child]) => `${JSON.stringify(key)}: ${renderNestedSchema(child, `${name}${key}`, imports, stack)}${required.has(key) ? '' : '.optional()'}`);
+    const fields = Object.entries(object.properties).map(([key, child]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(child, `${name}${key}`, imports, stack)}${required.has(key) ? '' : '.optional()'}`);
     return `z.object({ ${fields.join(', ')} })`;
   }
   return schemaCode(value, name);
@@ -148,7 +148,7 @@ function renderComponent(name: string, schema: unknown, source: OpenApiDocument)
     const properties = ((schema as any).properties ?? {}) as Record<string, unknown>;
     const imports = new Map<string, string>();
     const required = new Set(Array.isArray((schema as any).required) ? (schema as any).required : []);
-    const fields = Object.entries(properties).map(([key, value]) => `${JSON.stringify(key)}: ${renderNestedSchema(value, `${name}${key}`, imports, new Set([name]), source, name)}${required.has(key) ? '' : '.optional()'}`).join(', ');
+    const fields = Object.entries(properties).map(([key, value]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(value, `${name}${key}`, imports, new Set([name]), source, name)}${required.has(key) ? '' : '.optional()'}`).join(', ');
     const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\\n');
     const additionalValue = (schema as any).additionalProperties;
     const additional = additionalValue && typeof additionalValue === 'object' ? ` .catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports)})` : additionalValue === false ? ' .strict()' : additionalValue === undefined ? ' .passthrough()' : '';
@@ -216,7 +216,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
     const normalizedComponents = Object.fromEntries(Object.entries(schemas).map(([name, component]) => [name, normalizeRefs(component)]));
     return schemaCode({ ...(normalized as Record<string, unknown>), $defs: { ...ownDefinitions, [namespace]: normalizedComponents } }, fallback);
   };
-  const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `${JSON.stringify(p.name)}: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
+  const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `[${JSON.stringify(p.name)}]: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
   const rawRequestSchema = resolveObject(operation.operation.requestBody, source)?.content ? (Object.values(resolveObject(operation.operation.requestBody, source).content)[0] as any)?.schema : undefined;
   const request = `request: { body: ${contracts.requestBody ? componentSchema(rawRequestSchema, 'requestBody') : 'z.any()'},  params: z.object({ ${params('path')} }), query: z.object({ ${params('query')} }), headers: z.object({ ${params('header')} }), cookies: z.object({ ${params('cookie')} }) }`;
   const response = contracts.responses.map((r) => { const raw = resolveObject(operation.operation.responses?.[r.status], source); const rawSchema = raw?.content ? (Object.values(raw.content)[0] as any)?.schema : raw?.schema; return `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : componentSchema(rawSchema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`; }).join(', ');
@@ -235,7 +235,8 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
     const legacyExamples = raw && typeof raw === 'object' ? (raw as any).examples : undefined;
     if (legacyExamples && typeof legacyExamples === 'object') responseExamples[status] = Object.fromEntries(Object.entries(legacyExamples).map(([contentType, value]) => [contentType, { value }]));
   }
-  const examples = Object.keys(requestExamples).length || Object.keys(responseExamples).length ? `examples: ${JSON.stringify({ ...(Object.keys(requestExamples).length ? { request: requestExamples } : {}), ...(Object.keys(responseExamples).length ? { response: responseExamples } : {}) })},` : '';
+  const examplesValue = { ...(Object.keys(requestExamples).length ? { request: requestExamples } : {}), ...(Object.keys(responseExamples).length ? { response: responseExamples } : {}) };
+  const examples = Object.keys(examplesValue).length ? `examples: JSON.parse(${JSON.stringify(JSON.stringify(examplesValue))}),` : '';
   const opId = operation.operationId;
   const exportId = exportName(opId);
   const tags = ir.tags;
