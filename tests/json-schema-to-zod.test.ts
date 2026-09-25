@@ -38,6 +38,19 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '[' } });
     expect(result.warnings).toContain('Unsupported propertyNames pattern: [');
   });
+  it('combines multiple password rules through allOf', () => {
+    const result = jsonSchemaToZod({ allOf: [
+      { type: 'string', minLength: 9 },
+      { type: 'string', pattern: '[A-Z]' },
+      { type: 'string', pattern: '[0-9]' },
+      { type: 'string', pattern: '[^A-Za-z0-9]' }
+    ] });
+    expect(result.warnings).toEqual([]);
+    expect(result.schema.safeParse('Password1!').success).toBe(true);
+    expect(result.schema.safeParse('password1!').success).toBe(false);
+    expect(result.schema.safeParse('PasswordOnly').success).toBe(false);
+    expect(result.code).toContain('.and(');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

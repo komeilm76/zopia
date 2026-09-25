@@ -75,12 +75,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       if (!Array.isArray(node.allOf)) { warnings.push('Invalid allOf: expected an array'); return { schema: z.any(), code: 'z.any()' }; }
       const items = node.allOf.map((child: JsonSchema) => convert(child, resolving));
       if (items.length === 0) return { schema: z.any(), code: 'z.any()' };
-      if (items.every((item: { schema: z.ZodType }) => item.schema instanceof z.ZodObject)) {
-        const schema = items.slice(1).reduce((acc: any, item: { schema: z.ZodType }) => acc.and(item.schema), items[0].schema as any);
-        return { schema, code: items.slice(1).reduce((code: string, item: { code: string }) => `${code}.and(${item.code})`, items[0].code) };
-      }
-      warnings.push('allOf is only executable for object schemas');
-      return { schema: z.any(), code: 'z.any()' };
+      const schema = items.slice(1).reduce((acc: any, item: { schema: z.ZodType }) => acc.and(item.schema), items[0].schema as any);
+      return { schema, code: items.slice(1).reduce((code: string, item: { code: string }) => `${code}.and(${item.code})`, items[0].code) };
     }
     if ('enum' in node) {
       if (!Array.isArray(node.enum)) { warnings.push('Invalid enum: expected an array'); return { schema: z.any(), code: 'z.any()' }; }
