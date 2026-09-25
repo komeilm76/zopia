@@ -135,8 +135,14 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const excluded = convert(node.not as JsonSchema, resolving);
       result = { schema: result.schema.refine((value: unknown) => !excluded.schema.safeParse(value).success), code: `${result.code}.refine((value) => !(${excluded.code}).safeParse(value).success)` };
     }
-    if ((node.format === 'int32' || node.format === 'int64') && (node.type === 'integer' || node.type === 'number')) result = { schema: (result.schema as any).int(), code: `${result.code}.int()` };
-    if ((node.format === 'uint32' || node.format === 'uint64') && (node.type === 'integer' || node.type === 'number')) result = { schema: (result.schema as any).int().nonnegative(), code: `${result.code}.int().nonnegative()` };
+    if ((node.format === 'int32' || node.format === 'int64') && (node.type === 'integer' || node.type === 'number')) {
+      const integer = (result.schema as any).int(); const code = `${result.code}.int()`;
+      result = node.format === 'int32' ? { schema: integer.min(-2147483648).max(2147483647), code: `${code}.min(-2147483648).max(2147483647)` } : { schema: integer, code };
+    }
+    if ((node.format === 'uint32' || node.format === 'uint64') && (node.type === 'integer' || node.type === 'number')) {
+      const integer = (result.schema as any).int().nonnegative(); const code = `${result.code}.int().nonnegative()`;
+      result = node.format === 'uint32' ? { schema: integer.max(4294967295), code: `${code}.max(4294967295)` } : { schema: integer, code };
+    }
     if (node.format && node.type === 'string') {
       const formats: Record<string, { schema: (s: any) => any; code: string }> = {
         email: { schema: (s) => s.email(), code: 'email()' },
