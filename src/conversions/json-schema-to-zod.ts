@@ -129,6 +129,19 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const literal = literalSchema(node.const, 'const') ?? { schema: z.any(), code: 'z.any()' };
       return withSiblings('const', literal);
     }
+    const objectKeywords = new Set(['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'minProperties', 'maxProperties', 'dependentRequired', 'dependentSchemas', 'unevaluatedProperties']);
+    if (node.type === undefined && Object.keys(node).some((key) => objectKeywords.has(key))) {
+      const objectNode = { type: 'object', ...Object.fromEntries(Object.entries(node).filter(([key]) => objectKeywords.has(key))) } as JsonSchema;
+      const objectResult = convert(objectNode, resolving);
+      const applicable = {
+        schema: z.union([objectResult.schema, z.string(), z.number(), z.boolean(), z.null(), z.array(z.any())]),
+        code: `z.union([${objectResult.code}, z.string(), z.number(), z.boolean(), z.null(), z.array(z.any())])`,
+      };
+      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => !objectKeywords.has(key)));
+      if (Object.keys(siblings).length === 0) return applicable;
+      const siblingResult = convert(siblings, resolving);
+      return { schema: (siblingResult.schema as any).and(applicable.schema), code: `${siblingResult.code}.and(${applicable.code})` };
+    }
     let result: { schema: z.ZodType; code: string };
     switch (node.type) {
       case 'object': {
@@ -313,7 +326,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         const contextualize = (schema: JsonSchema): JsonSchema => {
           if (typeof schema === 'boolean' || schema.type !== undefined) return schema;
           if (typeof node.type === 'string') return { ...schema, type: node.type };
-          const typeSpecificKeywords = ['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'dependentRequired', 'dependentSchemas', 'items', 'prefixItems', 'contains', 'minItems', 'maxItems', 'minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'];
+          const typeSpecificKeywords = ['items', 'prefixItems', 'contains', 'minItems', 'maxItems', 'minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'];
           const warning = 'Conditional schema without an explicit parent or branch type may approximate type-specific keyword semantics';
           if (typeSpecificKeywords.some((key) => Object.prototype.hasOwnProperty.call(schema, key)) && !warnings.includes(warning)) warnings.push(warning);
           return schema;

@@ -122,7 +122,8 @@ used in tests as an independent cross-check.
 | `{ "type": "array", "items": [A, B] }` *(tuple, draft-04/07)* | `z.tuple([⟦A⟧, ⟦B⟧])` | R-622 |
 | `{ "type": "array", "prefixItems": [A, B] }` *(2020-12 tuple)* | `z.tuple([⟦A⟧, ⟦B⟧])` | R-622 |
 | `{ "type": "object", "properties": P, "required": R }` | `z.object({…})` — keys in `R` plain, others `.optional()` | R-623 |
-| *(no `type`, or `{}`)* | `z.unknown()` | R-624 |
+| `{}` or annotations without `type` | `z.any()` | R-624 |
+| object-only keywords without `type` | union of the constrained object schema and unconstrained non-object JSON types, preserving JSON Schema keyword applicability | R-624 |
 | `{ "type": ["string", "null"] }` *(3.1/2020-12 nullable)* | `⟦string⟧.nullable()` | R-625 |
 | `{ "nullable": true }` *(3.0)* | `⟦…⟧.nullable()` | R-625 |
 | `{ "enum": ["a", "b"] }` | `z.enum(['a', 'b'])` (string enums — round-trips exactly) | R-626 |

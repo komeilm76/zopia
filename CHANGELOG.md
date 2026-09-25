@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- ✨ Keyword-only object schemas now enforce object constraints while retaining JSON Schema's rule that non-object instances remain valid.
 - ✨ JSON Schema conversion now enforces `if`/`then`/`else` conditionals, including boolean branches, typed-parent context, malformed-definition warnings, and explicit approximation warnings for untyped type-specific branches.
 - 🐛 Manifest reverse conversion now preserves non-schema OpenAPI component sections and reusable Swagger parameter and response definitions.
 - 🔒 Generated component and parameter Zod shapes now use computed property keys, while example metadata is reconstructed with `JSON.parse`, preserving `__proto__` as ordinary data at runtime.
