@@ -13,6 +13,24 @@ describe('OpenAPI operation collection', () => {
     expect(result.parameters[0].schema.type).toBe('integer');
     expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { parameters: [{ name: 'q', in: 'query' }, { name: 'q', in: 'query' }], get: {} } } })).toThrow('Duplicate path-level parameter');
   });
+  it('uses resolved parameter identities for references and overrides', () => {
+    const document = {
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      components: { parameters: {
+        IdString: { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        Filter: { name: 'filter', in: 'query', schema: { type: 'string' } },
+        IdInteger: { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+      } },
+      paths: { '/x/{id}': {
+        parameters: [{ $ref: '#/components/parameters/IdString' }, { $ref: '#/components/parameters/Filter' }],
+        get: { parameters: [{ $ref: '#/components/parameters/IdInteger' }] },
+      } },
+    };
+    const [result] = collectOpenApiOperations(document);
+    expect(result.parameters).toHaveLength(2);
+    expect(result.parameters[0].$ref).toBe('#/components/parameters/IdInteger');
+    expect(result.parameters[1].$ref).toBe('#/components/parameters/Filter');
+  });
   it('preserves explicit operation ids and rejects invalid operations', () => {
     expect(collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { operationId: 'createX' } } } })[0].operationId).toBe('createX');
     expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: null } } })).toThrow('Invalid OpenAPI operation');

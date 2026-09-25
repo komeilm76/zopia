@@ -10,6 +10,19 @@ function pascalPath(path: string): string {
 }
 export function deriveOperationId(path: string, method: OpenApiMethod): string { return `${method}${pascalPath(path)}`; }
 
+function parameterIdentity(parameter: Record<string, any>, document: OpenApiDocument): string {
+  let current = parameter; const seen = new Set<string>();
+  while ('$ref' in current) {
+    if (typeof current.$ref !== 'string' || !current.$ref) throw new TypeError('Invalid parameter $ref');
+    if (seen.has(current.$ref)) throw new TypeError(`Circular parameter $ref: ${current.$ref}`);
+    seen.add(current.$ref);
+    const target = resolveOpenApiLocalRef(document, current.$ref);
+    if (!target || typeof target !== 'object' || Array.isArray(target)) throw new TypeError(`Invalid parameter $ref target: ${current.$ref}`);
+    current = { ...(target as Record<string, any>), ...Object.fromEntries(Object.entries(current).filter(([key]) => key !== '$ref')) };
+  }
+  return `${String(current.in)}:${String(current.name)}`;
+}
+
 /** Collect path operations in the canonical km-api method order. */
 export function collectOpenApiOperations(input: OpenApiDocument | string): OpenApiOperation[] {
   const { document } = normalizeOpenApiDocument(input); const operations: OpenApiOperation[] = []; const ids = new Set<string>();
@@ -35,21 +48,23 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
       if (!Array.isArray(pathParameters) || !pathParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid path parameters: ${path}`);
       const operationParameters = operation.parameters === undefined ? [] : operation.parameters;
       if (!Array.isArray(operationParameters) || !operationParameters.every((parameter: any) => parameter && typeof parameter === 'object' && !Array.isArray(parameter))) throw new TypeError(`Invalid operation parameters: ${method.toUpperCase()} ${path}`);
-      const validateUnique = (parameters: any[], label: string) => {
+      const identities = (parameters: any[], label: string): string[] => {
+        const keys = parameters.map((parameter) => parameterIdentity(parameter, document));
         const seen = new Set<string>();
-        for (const parameter of parameters) {
-          const key = `${String(parameter.in)}:${String(parameter.name)}`;
+        for (const key of keys) {
           if (seen.has(key)) throw new TypeError(`Duplicate ${label} parameter: ${key}`);
           seen.add(key);
         }
+        return keys;
       };
-      validateUnique(pathParameters, 'path-level');
-      validateUnique(operationParameters, 'operation-level');
-      const mergedParameters = [...pathParameters];
-      for (const parameter of operationParameters) {
-        const index = mergedParameters.findIndex((candidate: any) => candidate.name === parameter.name && candidate.in === parameter.in);
+      const pathIdentities = identities(pathParameters, 'path-level');
+      const operationIdentities = identities(operationParameters, 'operation-level');
+      const mergedParameters = [...pathParameters]; const mergedIdentities = [...pathIdentities];
+      for (let parameterIndex = 0; parameterIndex < operationParameters.length; parameterIndex += 1) {
+        const parameter = operationParameters[parameterIndex]; const identity = operationIdentities[parameterIndex];
+        const index = mergedIdentities.indexOf(identity);
         if (index >= 0) mergedParameters[index] = parameter;
-        else mergedParameters.push(parameter);
+        else { mergedParameters.push(parameter); mergedIdentities.push(identity); }
       }
       const operationId = operation.operationId ?? deriveOperationId(path, method);
       if (ids.has(operationId)) throw new TypeError(`Duplicate operationId: ${operationId}`);

@@ -34,8 +34,8 @@ function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context:
 
 /** Extract request and response content without losing media-type metadata. */
 export function extractOperationContracts(ir: OpenApiOperationIR): OperationContracts {
-  const parameters = ir.parameters.filter((raw) => raw.in !== 'body' && raw.in !== 'formData').map((raw) => {
-    const parameter = resolveRef(raw, ir, 'parameter');
+  const resolvedParameters = ir.parameters.map((raw) => resolveRef(raw, ir, 'parameter'));
+  const parameters = resolvedParameters.filter((parameter) => parameter.in !== 'body' && parameter.in !== 'formData').map((parameter) => {
     if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || typeof parameter.name !== 'string' || !parameter.name) throw new TypeError(`Invalid parameter: ${ir.method} ${ir.path}`);
     if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new TypeError(`Invalid parameter.required: ${parameter.name}`);
     if (parameter.in === 'path' && parameter.required !== true) throw new TypeError(`Path parameter must be required: ${parameter.name}`);
@@ -52,8 +52,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   const operation = ir.operation;
   let body = operation.requestBody;
   if (body === undefined && ir.document.swagger === '2.0') {
-    const bodyParameter = ir.parameters.find((parameter: any) => parameter && parameter.in === 'body');
-    const formParameters = ir.parameters.filter((parameter: any) => parameter && parameter.in === 'formData');
+    const bodyParameter = resolvedParameters.find((parameter) => parameter.in === 'body');
+    const formParameters = resolvedParameters.filter((parameter) => parameter.in === 'formData');
     if (bodyParameter && formParameters.length) throw new TypeError(`Swagger operation cannot combine body and formData parameters: ${ir.method} ${ir.path}`);
     if (bodyParameter) {
       if (typeof bodyParameter !== 'object' || !bodyParameter.schema) throw new TypeError(`Invalid Swagger body parameter: ${ir.method} ${ir.path}`);

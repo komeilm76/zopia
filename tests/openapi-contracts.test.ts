@@ -13,12 +13,16 @@ describe('OpenAPI operation contracts', () => {
   it('extracts Swagger formData parameters', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/upload': { post: { consumes: ['multipart/form-data'], parameters: [{ in: 'formData', name: 'file', type: 'file', required: true }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'multipart/form-data', schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } }, required: ['file'] }, required: true });
+    const [referenced] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, parameters: { File: { in: 'formData', name: 'file', type: 'file', required: true } }, paths: { '/upload': { post: { parameters: [{ $ref: '#/parameters/File' }], responses: { '200': { description: 'ok' } } } } } });
+    expect(extractOperationContracts(referenced).requestBody?.contentType).toBe('multipart/form-data');
     const [invalid] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/upload': { post: { parameters: [{ in: 'formData', name: 'file', type: 'file', required: 'yes' }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(invalid)).toThrow('Invalid Swagger formData required');
   });
   it('extracts Swagger body parameters', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], paths: { '/x': { parameters: [{ in: 'body', name: 'payload', required: true, schema: { type: 'object' } }], post: { responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'object' }, required: true });
+    const [referenced] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], parameters: { Payload: { in: 'body', name: 'payload', required: true, schema: { type: 'string' } } }, paths: { '/x': { post: { parameters: [{ $ref: '#/parameters/Payload' }], responses: { '200': { description: 'ok' } } } } } });
+    expect(extractOperationContracts(referenced).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'string' }, required: true });
     const [invalid] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { parameters: [{ in: 'body', name: 'payload', required: 'yes', schema: { type: 'object' } }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(invalid)).toThrow('Invalid Swagger body parameter required');
   });

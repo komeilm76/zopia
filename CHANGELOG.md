@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 OpenAPI operation collection now resolves parameter references before duplicate detection and override merging; referenced Swagger body and form-data parameters are extracted correctly.
 - 🔒 Reverse conversion now rejects unsafe or duplicate manifest operations and prevents overlays from replacing canonical OpenAPI fields.
 - 🐛 JSON Schema conversion now honors OpenAPI 3.0 `nullable: true` around the complete schema and warns for malformed nullable flags.
 - 🐛 JSON Schema conversion now preserves sibling constraints alongside `enum`, `const`, `oneOf`, `anyOf`, and `allOf`, and validates structured enum/constant values using order-independent JSON object equality.
