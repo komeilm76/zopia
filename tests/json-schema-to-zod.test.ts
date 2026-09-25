@@ -121,9 +121,15 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse('SGVsbG8=').success).toBe(true);
     expect(result.code).toContain('.base64()');
   });
-  it('warns for unsupported content encoding', () => {
+  it('supports hexadecimal content encoding', () => {
     const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'hex' });
-    expect(result.warnings).toContain('Unsupported contentEncoding: hex');
+    expect(result.schema.safeParse('deadBEEF').success).toBe(true);
+    expect(result.schema.safeParse('abc').success).toBe(false);
+    expect(result.warnings).toEqual([]);
+  });
+  it('warns for unsupported content encoding', () => {
+    const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'binary' });
+    expect(result.warnings).toContain('Unsupported contentEncoding: binary');
   });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });

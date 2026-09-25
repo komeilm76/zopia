@@ -212,6 +212,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     }
     if (node.contentEncoding === 'base64' && node.type === 'string') result = { schema: (result.schema as any).base64(), code: `${result.code}.base64()` };
     else if (node.contentEncoding === 'base64url' && node.type === 'string') result = { schema: (result.schema as any).base64url(), code: `${result.code}.base64url()` };
+    else if (node.contentEncoding === 'hex' && node.type === 'string') result = { schema: (result.schema as any).regex(/^(?:[0-9A-Fa-f]{2})*$/), code: `${result.code}.regex(/^(?:[0-9A-Fa-f]{2})*$/)` };
     else if (node.contentEncoding !== undefined && node.type === 'string') warnings.push(`Unsupported contentEncoding: ${String(node.contentEncoding)}`);
     if (node.default !== undefined) result = { schema: result.schema.default(node.default), code: `${result.code}.default(${JSON.stringify(node.default)})` };
     return result;
