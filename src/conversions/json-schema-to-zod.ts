@@ -217,9 +217,12 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         if (node.type !== undefined) warnings.push(`Unsupported JSON Schema type: ${String(node.type)}`);
         result = { schema: z.any(), code: 'z.any()' };
     }
-    if (node.not) {
-      const excluded = convert(node.not as JsonSchema, resolving);
-      result = { schema: result.schema.refine((value: unknown) => !excluded.schema.safeParse(value).success), code: `${result.code}.refine((value) => !(${excluded.code}).safeParse(value).success)` };
+    if (Object.prototype.hasOwnProperty.call(node, 'not')) {
+      if (!isSchema(node.not)) warnings.push('Invalid not: expected a schema');
+      else if (node.not !== false) {
+        const excluded = convert(node.not, resolving);
+        result = { schema: result.schema.refine((value: unknown) => !excluded.schema.safeParse(value).success), code: `${result.code}.refine((value) => !(${excluded.code}).safeParse(value).success)` };
+      }
     }
     if ((node.format === 'int32' || node.format === 'int64') && (node.type === 'integer' || node.type === 'number')) {
       const integer = (result.schema as any).int(); const code = `${result.code}.int()`;
@@ -327,18 +330,22 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     }
     if (node.type === 'object' && node.dependentRequired !== undefined && (!node.dependentRequired || typeof node.dependentRequired !== 'object' || Array.isArray(node.dependentRequired))) warnings.push('Invalid dependentRequired: expected an object of string arrays');
     if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object' && !Array.isArray(node.dependentRequired)) {
-      const dependencies = Object.entries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => { if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) warnings.push('Invalid dependentRequired entry: expected an array of strings'); return Array.isArray(value); });
+      const dependencies = Object.entries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => {
+        const valid = Array.isArray(value) && value.every((item) => typeof item === 'string');
+        if (!valid) warnings.push('Invalid dependentRequired entry: expected an array of strings');
+        return valid;
+      });
       for (const [key, requiredKeys] of dependencies) {
-        const keys = (requiredKeys as unknown[]).filter((item): item is string => typeof item === 'string');
+        const keys = requiredKeys as string[];
         if (!keys.length) continue;
-        result = { schema: result.schema.refine((value: any) => value[key] === undefined || keys.every((requiredKey) => value[requiredKey] !== undefined)), code: `${result.code}.refine((value) => value[${JSON.stringify(key)}] === undefined || ${JSON.stringify(keys)}.every((requiredKey) => value[requiredKey] !== undefined))` };
+        result = { schema: result.schema.refine((value: any) => !Object.prototype.hasOwnProperty.call(value, key) || keys.every((requiredKey) => Object.prototype.hasOwnProperty.call(value, requiredKey))), code: `${result.code}.refine((value) => !Object.prototype.hasOwnProperty.call(value, ${JSON.stringify(key)}) || ${JSON.stringify(keys)}.every((requiredKey) => Object.prototype.hasOwnProperty.call(value, requiredKey)))` };
       }
     }
     if (node.type === 'object' && node.dependentSchemas !== undefined && (!node.dependentSchemas || typeof node.dependentSchemas !== 'object' || Array.isArray(node.dependentSchemas))) warnings.push('Invalid dependentSchemas: expected an object of schemas');
     if (node.type === 'object' && node.dependentSchemas && typeof node.dependentSchemas === 'object' && !Array.isArray(node.dependentSchemas)) {
       for (const [key, dependency] of Object.entries(node.dependentSchemas as Record<string, JsonSchema>)) {
         const dependent = convert(dependency, resolving);
-        result = { schema: result.schema.refine((value: any) => value[key] === undefined || dependent.schema.safeParse(value).success), code: `${result.code}.refine((value) => value[${JSON.stringify(key)}] === undefined || (${dependent.code}).safeParse(value).success)` };
+        result = { schema: result.schema.refine((value: any) => !Object.prototype.hasOwnProperty.call(value, key) || dependent.schema.safeParse(value).success), code: `${result.code}.refine((value) => !Object.prototype.hasOwnProperty.call(value, ${JSON.stringify(key)}) || (${dependent.code}).safeParse(value).success)` };
       }
     }
     if (node.type === 'array' && node.contains !== undefined) {

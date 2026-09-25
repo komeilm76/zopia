@@ -70,11 +70,16 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([]);
     expect(jsonSchemaToZod({ type: 'object', propertyNames: [] }).warnings).toContain('Invalid propertyNames: expected a schema');
   });
-  it('supports not schemas', () => {
+  it('supports not schemas and validates malformed definitions', () => {
     const result = jsonSchemaToZod({ type: 'string', not: { enum: ['blocked'] } });
     expect(result.schema.safeParse('allowed').success).toBe(true);
     expect(result.schema.safeParse('blocked').success).toBe(false);
     expect(result.code).toContain('safeParse');
+    const falseNot = jsonSchemaToZod({ type: 'string', not: false });
+    expect(falseNot.schema.safeParse('allowed').success).toBe(true);
+    expect(falseNot.warnings).toEqual([]);
+    expect(jsonSchemaToZod({ type: 'string', not: null }).warnings).toContain('Invalid not: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', not: 0 }).warnings).toContain('Invalid not: expected a schema');
   });
   it('reports invalid property name patterns without throwing', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '[' } });
@@ -100,9 +105,13 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ password: 'Password1!', confirmPassword: 'Password1!' }).success).toBe(true);
     expect(result.schema.safeParse({}).success).toBe(true);
   });
-  it('reports malformed dependent required rules', () => {
+  it('reports malformed dependent required rules without partially applying them', () => {
     const result = jsonSchemaToZod({ type: 'object', dependentRequired: { password: 'confirmPassword' } });
     expect(result.warnings).toContain('Invalid dependentRequired entry: expected an array of strings');
+    const mixed = jsonSchemaToZod({ type: 'object', dependentRequired: { password: ['confirmPassword', 1] } });
+    expect(mixed.warnings).toContain('Invalid dependentRequired entry: expected an array of strings');
+    expect(mixed.schema.safeParse({ password: 'secret' }).success).toBe(true);
+    expect(mixed.code).not.toContain('confirmPassword');
   });
   it('supports dependent schemas', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { password: { type: 'string' }, confirmPassword: { type: 'string' } }, dependentSchemas: { password: { type: 'object', required: ['confirmPassword'] } } });
