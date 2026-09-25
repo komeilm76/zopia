@@ -18,6 +18,21 @@ flowchart LR
 > `apiDocsToOpenApi`); `jsonSchemaToZod()` additionally resolves its documented
 > `.json` path convenience before invoking the same in-memory emitter.
 
+### ⚠️ Shared warning contract
+
+All four engines use `ZopiaWarning = { code, at?, message }`, where `code` is
+one of the exported stable `ZOPIA_WARNING_CODES` and `at` is an escaped JSON
+Pointer when the location is discoverable. Before an engine returns warnings
+or invokes a callback, it sanitizes one-line messages, removes exact
+duplicates, and sorts by pointer/code/message. Nested conversions rebase their
+pointers into the containing OpenAPI location.
+
+Engine ① reports through `onWarning`; engine ② returns `warnings` and mirrors
+them in generated code; engines ③ and ④ return warnings on their result
+objects. `ZopiaReverseOptions.onWarning` receives the same normalized warnings
+returned by `apiDocsToOpenApi()`. The CLI prints canonical diagnostics to
+stderr and never mixes them into reverse JSON on stdout.
+
 ---
 
 ## Engine ① — Zod → JSON Schema
@@ -345,17 +360,20 @@ source document order. Re-generating a directory from a changed source emits
 
 ```ts
 /** 📦 Documented directory-level API; defaults to OpenAPI 3.1. */
-function apiDocsToOpenApi(path: string, options?: ZopiaReverseOptions): Promise<{ openapi: Record<string, unknown>; warnings: string[] }>;
+function apiDocsToOpenApi(path: string, options?: ZopiaReverseOptions): Promise<{ openapi: Record<string, unknown>; warnings: ZopiaWarning[] }>;
 
 /** 📦 Low-level snapshot helper; omission preserves the manifest source dialect. */
 function manifestToOpenApi(manifest: ZopiaManifest, options?: ZopiaReverseOptions): Record<string, unknown>;
 function manifestFileToOpenApi(file: string, options?: ZopiaReverseOptions): Promise<Record<string, unknown>>;
 
-interface ZopiaReverseOptions { version?: '3.0' | '3.1' }
+interface ZopiaReverseOptions {
+  version?: '3.0' | '3.1';
+  onWarning?: (warning: ZopiaWarning) => void;
+}
 
 interface ZopiaManifest {
   $schema: 'zopia:manifest@1';
-  source: { kind: string; title: string; version: string };
+  source: { kind: string; title?: string; version?: string };
   components?: Array<{ name: string; file: string | null; schema: unknown }>;
   apis: Array<{ file: string; path: string; method: string; sourceOperation?: Record<string, unknown>; refs?: Array<{ at: string; ref?: string; component?: string }>; overlay?: Array<{ at?: string; set?: Record<string, unknown>; remove?: string[]; node?: unknown; key?: string; value?: unknown }>; responseOverlay?: unknown }>;
 }
@@ -368,11 +386,11 @@ interface ZopiaManifest {
 | R-651 | 📦 **Manifest required** | no `.zopia-manifest.json` → `ZOPIA_DOCS_MISSING_MANIFEST`; a missing file field or a missing/renamed endpoint or emitted-component file → `ZOPIA_DOCS_MANIFEST_MISMATCH`. All listed paths are preflighted (including containment and regular-file checks) before any generated module is imported, so a stale manifest cannot partially execute the tree. (The manifest is what makes flat mode unambiguous — D-06.) |
 | R-652 | 🧬 **Trusted import** (D-08) | each `apis[].file` is imported at runtime (Bun executes the `.ts`). The module must export a `makeApiConfig` result — default or named; otherwise `ZOPIA_DOCS_IMPORT_FAILED`. |
 | R-653 | 🧩 **Extraction** | from the config result: `method`, `pathShape → makeOpenApiPathShape()` (guarantees `{param}` form; identity on already-OpenAPI paths), `summary`, `description`, `operationId`, `tags` (strip `#`), `auth` (`'YES' | 'NO'`), `deprecated === 'YES'` → `deprecated: true`; `disable` remains an independent status field, `requestContentType`/`responseContentType` (the actual media types — km-api 0.4.1's open unions), `examples`. Edited media types replace the former selected media entry rather than retaining its stale manifest schema; runtime examples likewise replace `example`/`examples` snapshots. The operation's **`security` requirement** comes from the manifest, not the config (km-api stores only the `auth` status): `apis[].security` when present, else the top-level `defaultSecurity` — see R-656. Response keys — incl. custom codes and `default` — come straight from the config; response `headers` arrive via `apis[].responseOverlay`. |
-| R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`; **request** schemas with `io: 'input'`, **response** schemas with `io: 'output'` (R-615) — so defaulted request fields naturally stay out of `required`. `z.any()` body → no `requestBody`. `z.void()` responses are detected **before** engine ① (Zod lists `z.void()` as unrepresentable — it would become `{}` + warning) → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. Swagger form-data is changed to a body parameter when code changes the request media type away from a form media type; cookie parameters and non-body object/reference schemas fail explicitly because Swagger 2.0 cannot represent them. The serializer then applies **value normalizations**: (a) drop sentinel safe-integer bounds (R-618), (b) re-emit const-literal `anyOf`/`oneOf` as `enum` (inverse of Zod's expansion), (c) `apis[].responseOverlay` entries (response `headers`) are re-emitted verbatim into the matching `responses` entry. |
+| R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`; **request** schemas with `io: 'input'`, **response** schemas with `io: 'output'` (R-615) — so defaulted request fields naturally stay out of `required`. Engine ① losses are collected and rebased to the exact output operation/component pointer. `z.any()` body → no `requestBody`. `z.void()` responses are detected **before** engine ① (Zod lists `z.void()` as unrepresentable — it would become `{}` + warning) → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. Swagger form-data is changed to a body parameter when code changes the request media type away from a form media type; cookie parameters and non-body object/reference schemas fail explicitly because Swagger 2.0 cannot represent them. The serializer then applies **value normalizations**: (a) drop sentinel safe-integer bounds (R-618), (b) re-emit const-literal `anyOf`/`oneOf` as `enum` (inverse of Zod's expansion), (c) `apis[].responseOverlay` entries (response `headers`) are re-emitted verbatim into the matching `responses` entry. |
 | R-655 | 🧱 **Components** | the manifest **always** lists schema components (name, full `schema`, `file: <path> \| null`) and preserves other OpenAPI component sections in `componentsOverlay`; Swagger reusable `parameters` and `responses` are retained separately. `file` set (components mode): the component file is imported and converted — developer edits win. `file: null` (default mode): the manifest `schema` is re-emitted verbatim. File-based endpoint use-sites become `$ref`s from imported Zod identities; snapshot ref pointers never overwrite a developer-selected component (R-752). |
 | R-656 | 🔐 **Security** | `securitySchemes` **and the requirement lists** (top-level `defaultSecurity`, per-operation `apis[].security`) restored from the manifest — an operation emits its own `security` key iff `apis[].security` is present (an explicit `[]` is re-emitted as `security: []`), otherwise the global `security` is re-emitted from `defaultSecurity`. If an operation has `auth: YES` but the manifest records no requirement (e.g. a hand-edited tree) → a default `bearerAuth` (http/bearer) scheme **and** requirement are added **plus warning** `ZOPIA_WARN_DEFAULT_SECURITY`. |
-| R-657 | 🏷️ **Document frame** | `info` from the manifest `source` (title/version/description); `servers`, `tags` from the manifest; fallbacks (`title: 'Zopia API'`, `version: '0.0.0'`) + warning when the manifest lacks them. |
-| R-658 | 📏 **Shape** | `version: '3.0'` emits `openapi: '3.0.0'` with OpenAPI 3.0 schemas; `version: '3.1'` emits `openapi: '3.1.0'` with JSON Schema 2020-12 semantics. The directory-level API and CLI default to 3.1 (D-09); invalid versions fail with `ZOPIA_CONFIG_INVALID` before generated code is imported. Translation preserves nullable refs, literal annotation data, effective exclusive bounds, and every Swagger `consumes`/`produces` media type; 3.1-only `webhooks`, `jsonSchemaDialect`, and `components.pathItems` are omitted from 3.0. Swagger 2.0 output itself remains Phase 2. |
+| R-657 | 🏷️ **Document frame** | `info` from the manifest `source` (title/version/description); `servers`, `tags` from the manifest. Legacy manifests missing title/version use `title: 'Zopia API'` / `version: '0.0.0'` and emit `ZOPIA_WARN_DEFAULT_INFO` at `#/info/title` / `#/info/version`. Newly generated manifests still require both values. |
+| R-658 | 📏 **Shape** | `version: '3.0'` emits `openapi: '3.0.0'` with OpenAPI 3.0 schemas; `version: '3.1'` emits `openapi: '3.1.0'` with JSON Schema 2020-12 semantics. The directory-level API and CLI default to 3.1 (D-09); invalid versions fail with `ZOPIA_CONFIG_INVALID` before generated code is imported. Translation preserves nullable refs, literal annotation data, effective exclusive bounds, and every Swagger `consumes`/`produces` media type. A 3.1→3.0 conversion omits `webhooks`, `jsonSchemaDialect`, and `components.pathItems` only with source-located `ZOPIA_WARN_WEBHOOKS` / `ZOPIA_WARN_DIALECT_DOWNGRADE` diagnostics. Swagger 2.0 output itself remains Phase 2. |
 | R-659 | 🩹 **Refs & overlays applied last** | after Zod serialization, file-backed conversion restores each `apis[].refs` entry at its RFC 6901 pointer, then applies schema overlays (`set`/`remove` or frozen `node`), operation overlays, and `responseOverlay`. A source ref is not restored when runtime code already points at a different component, and overlays beneath that skipped ref are skipped too; developer-selected reference changes therefore win. Response overlays restore non-schema response facts without replacing code-derived `content`, Swagger `schema`, or examples. |
 
 ### 🔁 Why the round-trip closes

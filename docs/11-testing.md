@@ -99,6 +99,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-50 | ②/① determinism — same input ⇒ identical output, twice in a row |
 | S-51 | ①/④ value normalizations — sentinel integer bounds stripped (R-618), const-literal unions → `enum` (R-654) — asserted before the round-trip comparison |
 | S-52 | `io: 'input'` request conversion (R-615) — defaulted request fields stay out of `required`, transformed request fields convert to their *input* type; response schemas use `io: 'output'` |
+| S-53 | shared warning normalization — stable-code validation, one-line sanitization, deduplication, deterministic order, JSON Pointer rebasing, and canonical comment/log formatting; nested ② siblings retain distinct exact source locations |
 
 ### 🔁 Reverse-conversion scenarios (engine ④)
 
@@ -115,6 +116,8 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-69 | exotic media type (`application/vnd.custom+json`) → emitted verbatim as the content type, used as the `content` key on reverse (km-api ≥ 0.4.1) | R-642 |
 | S-70 | parameter extras (`allowEmptyValue`, `style`, `explode`) + response `headers` → overlay/`responseOverlay`, restored verbatim on reverse | R-635/R-754 |
 | S-71 | multiple security schemes + per-operation requirements with scopes (oauth2) + an explicit `security: []` operation → `defaultSecurity` / `apis[].security` manifest fields, round-trips exactly (km-api stores only the `auth` boolean) | R-653/R-656 |
+| S-72 | reverse warnings — runtime Zod losses, fallback info/security, and 3.1→3.0 omissions return/callback with exact output pointers | R-408/R-654/R-656…R-658 |
+| S-73 | CLI warning channels — generate/reverse diagnostics go to stderr while reverse stdout remains parseable JSON | R-408 |
 
 ## 🔄 Round-trip property tests
 

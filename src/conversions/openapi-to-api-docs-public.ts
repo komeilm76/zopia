@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ZopiaError } from '../errors';
-import type { ZopiaWarning } from '../warnings';
+import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { generateApiDocsFiles } from './api-docs-generate';
 import type { ApiDocsMode } from './api-docs-layout';
 import { extractOperationContracts } from './openapi-contracts';
@@ -158,8 +158,8 @@ function primaryContent(content: unknown): [string, Record<string, any>] | undef
 }
 
 function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
-  const warnings: ZopiaWarning[] = [];
-  const push = (warning: ZopiaWarning): void => { warnings.push(warning); };
+  const collector = new ZopiaWarningCollector();
+  const push = (warning: ZopiaWarning): void => { collector.add(warning); };
   const schemaWithoutRefs = (value: unknown): unknown => {
     if (typeof value === 'boolean') return value;
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -190,10 +190,7 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
   const addSchemaWarnings = (schema: unknown, at: string): void => {
     if (schema === undefined) return;
     const result = jsonSchemaToZod(schemaWithoutRefs(schema) as JsonSchema);
-    for (const warning of result.warnings) {
-      const suffix = warning.at && warning.at !== '#' ? warning.at.slice(1) : '';
-      push({ ...warning, at: `${at}${suffix}` });
-    }
+    collector.addRebased(result.warnings, at);
   };
   const addMultiContentWarning = (content: unknown, at: string): void => {
     if (!content || typeof content !== 'object' || Array.isArray(content)) throw new TypeError(`Invalid content at ${at}: expected an object`);
@@ -263,17 +260,7 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
     }
   }
 
-  const seen = new Set<string>();
-  return warnings.filter((warning) => {
-    const key = `${warning.code}\0${warning.at ?? ''}\0${warning.message}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((left, right) => {
-    const a = `${left.at ?? ''}\0${left.code}\0${left.message}`;
-    const b = `${right.at ?? ''}\0${right.code}\0${right.message}`;
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
+  return collector.toArray();
 }
 
 function mapGenerationError(error: unknown): ZopiaError {
@@ -343,10 +330,6 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
     path: file,
     kind: file === ZOPIA_MANIFEST_FILE ? 'manifest' : file.startsWith('components/') ? 'component' : 'endpoint',
   })).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-  warnings.sort((left, right) => {
-    const a = `${left.at ?? ''}\0${left.code}\0${left.message}`;
-    const b = `${right.at ?? ''}\0${right.code}\0${right.message}`;
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
-  return { files, warnings, ...(config.manifest ? { manifestPath: ZOPIA_MANIFEST_FILE } : {}) };
+  const warningCollector = new ZopiaWarningCollector(); warningCollector.addAll(warnings);
+  return { files, warnings: warningCollector.toArray(), ...(config.manifest ? { manifestPath: ZOPIA_MANIFEST_FILE } : {}) };
 }

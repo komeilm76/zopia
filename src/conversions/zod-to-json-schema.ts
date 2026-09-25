@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ZopiaWarning } from '../warnings';
+import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 
 /** Output dialect supported by the Zod-to-JSON-Schema converter. */
 export type ZodJsonSchemaTarget =
@@ -127,7 +127,8 @@ export function zodToJsonSchema(
   const target = options.target ?? 'openapi-3.1';
   const warnings: ZopiaWarning[] = [];
   const result = convert(schema, target, options, warnings);
-  for (const warning of warnings) options.onWarning?.(warning);
+  const collector = new ZopiaWarningCollector(); collector.addAll(warnings);
+  for (const warning of collector.toArray()) options.onWarning?.(warning);
   return result;
 }
 
@@ -139,17 +140,19 @@ export function zodSchemasToJsonSchema(
 ): Record<string, Record<string, unknown>> {
   const target = options.target ?? 'openapi-3.1';
   const zodTarget = zodTargetFor(target);
+  const entries = [...schemas];
   const registry = z.registry<{ id?: string }>();
-  for (const [name, schema] of schemas) registry.add(schema, { id: name });
+  for (const [name, schema] of entries) registry.add(schema, { id: name });
 
   const warnings: ZopiaWarning[] = [];
   const unrepresentable = new WeakSet<object>();
+  const owners = indexNamedSchemaOwners(entries);
   const converted = z.toJSONSchema(registry, {
     target: zodTarget,
     io: options.io ?? 'output',
     uri,
     metadata: metadataWithoutIds(),
-    unrepresentable: warningHandler(warnings, unrepresentable),
+    unrepresentable: warningHandler(warnings, unrepresentable, owners),
     override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
   }).schemas as Record<string, Record<string, unknown>>;
 
@@ -159,7 +162,8 @@ export function zodSchemasToJsonSchema(
     delete schema.$id;
     define(result, name, canonicalizeSchema(schema));
   }
-  for (const warning of warnings) options.onWarning?.(warning);
+  const collector = new ZopiaWarningCollector(); collector.addAll(warnings);
+  for (const warning of collector.toArray()) options.onWarning?.(warning);
   return result;
 }
 
@@ -185,16 +189,48 @@ function zodTargetFor(target: InternalZodJsonSchemaTarget): 'draft-4' | 'draft-0
   return target === 'openapi-3.1' ? 'draft-2020-12' : target;
 }
 
-function warningHandler(warnings: ZopiaWarning[], unrepresentable: WeakSet<object>) {
+function warningHandler(warnings: ZopiaWarning[], unrepresentable: WeakSet<object>, owners?: WeakMap<object, Set<string>>) {
   return ({ zodSchema, path, message }: { zodSchema: z.core.$ZodType; path: (string | number)[]; message: string }): 'any' => {
     unrepresentable.add(zodSchema);
-    warnings.push({
+    const names = owners?.get(zodSchema);
+    if (names?.size) for (const name of names) warnings.push({
+      code: 'ZOPIA_WARN_UNREPRESENTABLE',
+      at: jsonPointer([name, ...path]),
+      message,
+    });
+    else warnings.push({
       code: 'ZOPIA_WARN_UNREPRESENTABLE',
       ...(path.length === 0 ? {} : { at: jsonPointer(path) }),
       message,
     });
     return 'any';
   };
+}
+
+function indexNamedSchemaOwners(entries: Array<readonly [string, z.ZodType]>): WeakMap<object, Set<string>> {
+  const owners = new WeakMap<object, Set<string>>();
+  const roots = new WeakSet<object>(entries.map(([, schema]) => schema));
+  for (const [name, root] of entries) {
+    const seen = new WeakSet<object>();
+    const visit = (value: unknown): void => {
+      if (value === null || typeof value !== 'object' || seen.has(value)) return;
+      seen.add(value);
+      const record = value as Record<string, unknown>;
+      if (record._zod && typeof record._zod === 'object') {
+        if (value !== root && roots.has(value)) return;
+        const names = owners.get(value) ?? new Set<string>();
+        names.add(name);
+        owners.set(value, names);
+        visit((record._zod as Record<string, unknown>).def);
+        return;
+      }
+      if (Array.isArray(value)) for (const child of value) visit(child);
+      else if (value instanceof Map || value instanceof Set) for (const child of value.values()) visit(child);
+      else for (const child of Object.values(record)) visit(child);
+    };
+    visit(root);
+  }
+  return owners;
 }
 
 function jsonPointer(path: (string | number)[]): string {

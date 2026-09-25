@@ -22,10 +22,10 @@ export type ZopiaManifestSourceKind = 'swagger-2.0' | 'openapi-3.0' | 'openapi-3
 export interface ZopiaManifestSource {
   /** Source dialect. Writers emit a `ZopiaManifestSourceKind`; readers retain forward compatibility. */
   kind: ZopiaManifestSourceKind | (string & {});
-  /** Original API title. */
-  title: string;
-  /** Original API version. */
-  version: string;
+  /** Original API title. Optional only for legacy reader fallback compatibility. */
+  title?: string;
+  /** Original API version. Optional only for legacy reader fallback compatibility. */
+  version?: string;
   /** Original API description, when present. */
   description?: string;
   /** Canonical SHA-256 digest of the complete source document. */
@@ -159,7 +159,7 @@ export interface GeneratedZopiaManifestApi extends ZopiaManifestApi {
 export interface GeneratedZopiaManifest extends ZopiaManifest {
   $schema: typeof ZOPIA_MANIFEST_SCHEMA;
   zopiaVersion: typeof ZOPIA_VERSION;
-  source: ZopiaManifestSource & { kind: ZopiaManifestSourceKind; sha256: string };
+  source: ZopiaManifestSource & { kind: ZopiaManifestSourceKind; title: string; version: string; sha256: string };
   mode: ApiDocsMode;
   options: ZopiaManifestGenerationOptions;
   infoOverlay: Record<string, unknown>;

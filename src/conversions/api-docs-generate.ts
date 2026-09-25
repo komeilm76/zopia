@@ -7,6 +7,7 @@ import { planApiDocsFiles } from './api-docs-plan';
 import type { ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
 import { createZopiaManifest, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
+import { formatZopiaWarningComment } from '../warnings';
 import { decodeJsonPointerSegment, resolveOpenApiLocalRef } from './openapi-ref';
 
 /** A low-level generated file record with both relative and absolute paths. */
@@ -63,7 +64,7 @@ function schemaCode(schema: unknown, name: string): string {
 function generatedWarningComments(schema: unknown, name: string): string {
   const result = jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: exportName(name) });
   if (result.warnings.length === 0) return '';
-  return `${result.warnings.map((warning) => `// @zopia:warn ${warning.code} schema — ${warning.message.replace(/[\r\n\u2028\u2029]+/g, ' ')}${warning.at ? ` (${warning.at})` : ''}`).join('\n')}\n`;
+  return `${result.warnings.map((warning) => formatZopiaWarningComment(warning, 'schema')).join('\n')}\n`;
 }
 
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }

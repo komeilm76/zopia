@@ -39,6 +39,9 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [ ] 🧱 Component options — `insertComponents`, `useComponentAsReference`
       ([rules](08-components.md))
 - [x] 📦 Manifest writer/reader — `.zopia-manifest.json` (D-06)
+- [x] ⚠️ **Warnings pipeline** — stable typed codes, exact JSON Pointer locations,
+      deterministic collection/callbacks, generated-code markers, and CLI stderr
+      reporting across engines ①–④ (R-144/R-408/D-12)
 - [ ] ⌨️ CLI — `zopia generate` / `zopia reverse` ([usage](10-usage.md#-cli))
 - [ ] 🧪 Vitest suite — full scenario matrix, golden files, round-trip
       property tests ([testing](11-testing.md))

@@ -3,6 +3,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
+import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { ZOPIA_MANIFEST_FILE, ZOPIA_MANIFEST_SCHEMA, type ZopiaManifest } from './manifest-writer';
 export type { ZopiaManifest } from './manifest-writer';
 
@@ -10,14 +11,16 @@ export type { ZopiaManifest } from './manifest-writer';
 export interface ZopiaReverseOptions {
   /** OpenAPI version to emit. Omit on low-level manifest helpers to preserve the source dialect. */
   version?: '3.0' | '3.1';
+  /** Receive each deterministic structured warning emitted during reverse conversion. */
+  onWarning?: (warning: ZopiaWarning) => void;
 }
 
 /** Result returned by the directory-level reverse-conversion API. */
 export interface ZopiaReverseResult {
   /** Reconstructed OpenAPI document. */
   openapi: Record<string, unknown>;
-  /** Non-fatal conversion warnings. */
-  warnings: string[];
+  /** Non-fatal structured conversion warnings. */
+  warnings: ZopiaWarning[];
 }
 
 type EndpointConfig = Record<string, any>;
@@ -25,6 +28,7 @@ type ComponentSchema = Parameters<typeof zodToJsonSchema>[0];
 interface ImportedComponents { schemas: Map<number, Record<string, unknown>>; references: Array<readonly [string, ComponentSchema]>; }
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace']);
+const pointerToken = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1');
 
 function isRecord(value: unknown): value is Record<string, any> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 
@@ -138,7 +142,7 @@ async function importEndpointConfigs(manifest: ZopiaManifest, root: string, modu
   return configs;
 }
 
-async function importComponentSchemas(manifest: ZopiaManifest, root: string, modules: Map<string, Record<string, unknown>>): Promise<ImportedComponents> {
+async function importComponentSchemas(manifest: ZopiaManifest, root: string, modules: Map<string, Record<string, unknown>>, warnings?: ZopiaWarningCollector): Promise<ImportedComponents> {
   const shared = new Map<number, ComponentSchema>();
   const imported = new Map<number, ComponentSchema>();
   for (const [index, component] of (manifest.components ?? []).entries()) {
@@ -164,7 +168,7 @@ async function importComponentSchemas(manifest: ZopiaManifest, root: string, mod
   const target = manifest.source.kind === 'swagger-2.0' ? 'draft-4' : manifest.source.kind === 'openapi-3.0' ? 'openapi-3.0' : 'openapi-3.1';
   const referenceRoot = manifest.source.kind === 'swagger-2.0' ? '#/definitions/' : '#/components/schemas/';
   let converted: Record<string, Record<string, unknown>>;
-  try { converted = zodSchemasToJsonSchema(namedSchemas, { target, $schema: false }, (name) => `${referenceRoot}${name.replace(/~/g, '~0').replace(/\//g, '~1')}`); }
+  try { converted = zodSchemasToJsonSchema(namedSchemas, { target, $schema: false, onWarning: (warning) => warnings?.addRebased([warning], manifest.source.kind === 'swagger-2.0' ? '#/definitions' : '#/components/schemas') }, (name) => `${referenceRoot}${name.replace(/~/g, '~0').replace(/\//g, '~1')}`); }
   catch (error) { throw new TypeError(`Unable to convert generated component files: ${error instanceof Error ? error.message : String(error)}`); }
 
   const schemas = new Map<number, Record<string, unknown>>();
@@ -192,7 +196,14 @@ function componentRefTarget(schema: unknown): string | undefined {
 function reverseVersion(options: ZopiaReverseOptions | undefined): '3.0' | '3.1' | undefined {
   if (options === undefined) return undefined;
   if (!isRecord(options) || options.version !== undefined && options.version !== '3.0' && options.version !== '3.1') throw codedTypeError('ZOPIA_CONFIG_INVALID', `reverse version must be '3.0' or '3.1': ${String((options as any)?.version)}`);
+  if (options.onWarning !== undefined && typeof options.onWarning !== 'function') throw codedTypeError('ZOPIA_CONFIG_INVALID', 'reverse onWarning must be a function');
   return options.version;
+}
+
+function emitReverseWarnings(options: ZopiaReverseOptions | undefined, collector: ZopiaWarningCollector): ZopiaWarning[] {
+  const warnings = collector.toArray();
+  for (const warning of warnings) options?.onWarning?.(warning);
+  return warnings;
 }
 
 function rewriteSchemaVersion(value: unknown, sourceKind: string, version: '3.0' | '3.1'): unknown {
@@ -349,9 +360,14 @@ function rewriteOverlaysVersion(overlay: unknown, sourceKind: string, version: '
   });
 }
 
-function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1' | undefined): ZopiaManifest {
+function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1' | undefined, warnings?: ZopiaWarningCollector): ZopiaManifest {
   if (version === undefined) return manifest;
   const sourceKind = manifest.source.kind;
+  if (version === '3.0' && sourceKind === 'openapi-3.1') {
+    if (manifest.documentOverlay?.webhooks !== undefined) warnings?.add({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks are omitted because OpenAPI 3.0 cannot represent them' });
+    if (manifest.documentOverlay?.jsonSchemaDialect !== undefined) warnings?.add({ code: 'ZOPIA_WARN_DIALECT_DOWNGRADE', at: '#/jsonSchemaDialect', message: 'jsonSchemaDialect is omitted from OpenAPI 3.0 output' });
+    if (manifest.componentsOverlay?.pathItems !== undefined) warnings?.add({ code: 'ZOPIA_WARN_DIALECT_DOWNGRADE', at: '#/components/pathItems', message: 'components.pathItems is omitted from OpenAPI 3.0 output' });
+  }
   const targetKind = version === '3.0' ? 'openapi-3.0' : 'openapi-3.1';
   const components = (manifest.components ?? []).map((component) => ({
     ...component,
@@ -400,10 +416,8 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1
   };
 }
 
-/** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
-export async function manifestFileToOpenApi(file: string, options?: ZopiaReverseOptions): Promise<Record<string, unknown>> {
+async function manifestFileToOpenApiInternal(file: string, version: '3.0' | '3.1' | undefined, warnings: ZopiaWarningCollector): Promise<Record<string, unknown>> {
   if (typeof file !== 'string' || !file) throw new TypeError('Manifest file path is required');
-  const version = reverseVersion(options);
   let source: string;
   try { source = await readFile(file, 'utf8'); }
   catch (error) {
@@ -414,19 +428,32 @@ export async function manifestFileToOpenApi(file: string, options?: ZopiaReverse
   try { parsed = JSON.parse(source); }
   catch (error) { throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`); }
   const manifest = parsed as ZopiaManifest;
-  reconstructOpenApi(manifest);
-  const outputManifest = manifestForOutputVersion(manifest, version);
+  reconstructOpenApi(manifest, undefined, undefined, undefined, warnings);
+  const outputManifest = manifestForOutputVersion(manifest, version, warnings);
   const root = await realpath(dirname(resolve(file)));
   await validateManifestFiles(manifest, root);
   const modules = new Map<string, Record<string, unknown>>();
   const endpointConfigs = await importEndpointConfigs(outputManifest, root, modules);
-  const components = await importComponentSchemas(outputManifest, root, modules);
-  return reconstructOpenApi(outputManifest, endpointConfigs, components.schemas, components.references);
+  const components = await importComponentSchemas(outputManifest, root, modules, warnings);
+  return reconstructOpenApi(outputManifest, endpointConfigs, components.schemas, components.references, warnings);
+}
+
+/** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
+export async function manifestFileToOpenApi(file: string, options?: ZopiaReverseOptions): Promise<Record<string, unknown>> {
+  const version = reverseVersion(options);
+  const warnings = new ZopiaWarningCollector();
+  const openapi = await manifestFileToOpenApiInternal(file, version, warnings);
+  emitReverseWarnings(options, warnings);
+  return openapi;
 }
 
 /** Reconstruct an API document from in-memory manifest snapshots without importing generated files. */
 export function manifestToOpenApi(manifest: ZopiaManifest, options?: ZopiaReverseOptions): Record<string, unknown> {
-  return reconstructOpenApi(manifestForOutputVersion(manifest, reverseVersion(options)));
+  const version = reverseVersion(options);
+  const warnings = new ZopiaWarningCollector();
+  const openapi = reconstructOpenApi(manifestForOutputVersion(manifest, version, warnings), undefined, undefined, undefined, warnings);
+  emitReverseWarnings(options, warnings);
+  return openapi;
 }
 
 /** Convert a generated api-docs directory (or manifest path) to OpenAPI. */
@@ -439,7 +466,10 @@ export async function apiDocsToOpenApi(path: string, options: ZopiaReverseOption
     if (!isMissingFileError(error)) throw error;
     if (!path.toLowerCase().endsWith('.json')) manifestFile = resolve(path, ZOPIA_MANIFEST_FILE);
   }
-  return { openapi: await manifestFileToOpenApi(manifestFile, { version }), warnings: [] };
+  const warnings = new ZopiaWarningCollector();
+  const openapi = await manifestFileToOpenApiInternal(manifestFile, version, warnings);
+  const emitted = emitReverseWarnings(options, warnings);
+  return { openapi, warnings: emitted };
 }
 
 function schemaKind(schema: ComponentSchema): unknown { return (schema as any)?._zod?.def?.type; }
@@ -449,7 +479,7 @@ function referenceUri(manifest: ZopiaManifest, name: string): string {
   return `${root}${name.replace(/~/g, '~0').replace(/\//g, '~1')}`;
 }
 
-function convertRuntimeSchema(schema: unknown, io: 'input' | 'output', manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, context: string): Record<string, any> {
+function convertRuntimeSchema(schema: unknown, io: 'input' | 'output', manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, context: string, warningAt: string, warnings?: ZopiaWarningCollector): Record<string, any> {
   if (!isComponentSchema(schema)) throw new TypeError(`Invalid generated endpoint ${context} schema`);
   const direct = references.find(([, candidate]) => candidate === schema);
   if (direct) return { $ref: referenceUri(manifest, direct[0]) };
@@ -458,7 +488,14 @@ function convertRuntimeSchema(schema: unknown, io: 'input' | 'output', manifest:
   while (names.has(name)) name += '_';
   const target = manifest.source.kind === 'swagger-2.0' ? 'draft-4' : manifest.source.kind === 'openapi-3.0' ? 'openapi-3.0' : 'openapi-3.1';
   try {
-    const converted = zodSchemasToJsonSchema([...references, [name, schema]], { target, $schema: false, io }, (component) => referenceUri(manifest, component));
+    const runtimePointer = `#/${pointerToken(name)}`;
+    const converted = zodSchemasToJsonSchema([...references, [name, schema]], { target, $schema: false, io, onWarning: (warning) => {
+      if (warning.at === undefined) warnings?.addRebased([warning], warningAt);
+      else if (warning.at === runtimePointer || warning.at.startsWith(`${runtimePointer}/`)) {
+        const suffix = warning.at.slice(runtimePointer.length);
+        warnings?.addRebased([{ ...warning, at: suffix ? `#${suffix}` : '#' }], warningAt);
+      }
+    } }, (component) => referenceUri(manifest, component));
     const result = converted[name];
     if (!result) throw new TypeError('schema conversion produced no output');
     return normalizeRuntimeSchema(result, manifest.source.kind);
@@ -687,13 +724,13 @@ function swaggerParameterShape(schema: unknown, previous: Record<string, any> = 
   return shape;
 }
 
-function serializeParameters(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>): Record<string, any>[] {
+function serializeParameters(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, operationAt: string, warnings?: ZopiaWarningCollector): Record<string, any>[] {
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const locations = [['path', 'params'], ['query', 'query'], ['header', 'headers'], ['cookie', 'cookies']] as const;
   const groups = new Map<string, { properties: Record<string, any>; required: Set<string> }>();
   for (const [location, field] of locations) {
     if (!isComponentSchema(config.request[field]) || schemaKind(config.request[field]) !== 'object') throw new TypeError(`Invalid generated endpoint ${location} parameters schema`);
-    const schema = convertRuntimeSchema(config.request[field], 'input', manifest, references, `${location} parameters`);
+    const schema = convertRuntimeSchema(config.request[field], 'input', manifest, references, `${location} parameters`, `${operationAt}/parameters/${location}`, warnings);
     const properties = isRecord(schema.properties) ? schema.properties : {};
     groups.set(location, { properties, required: new Set(Array.isArray(schema.required) ? schema.required : []) });
   }
@@ -740,12 +777,13 @@ function resolvedRequestBody(operation: Record<string, any>, manifest: ZopiaMani
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(operation.requestBody).filter(([key]) => key !== '$ref')) } : {};
 }
 
-function serializeRequestBody(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, parameters: Record<string, any>[]): void {
+function serializeRequestBody(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, parameters: Record<string, any>[], operationAt: string, warnings?: ZopiaWarningCollector): void {
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const body = config.request.body;
   if (!isComponentSchema(body)) throw new TypeError('Invalid generated endpoint body schema');
   if (schemaKind(body) === 'any') { delete operation.requestBody; operation.parameters = parameters; return; }
-  const schema = convertRuntimeSchema(body, 'input', manifest, references, 'request body');
+  const warningAt = manifest.source.kind === 'swagger-2.0' ? `${operationAt}/parameters/body/schema` : `${operationAt}/requestBody/schema`;
+  const schema = convertRuntimeSchema(body, 'input', manifest, references, 'request body', warningAt, warnings);
   const contentType = typeof config.requestContentType === 'string' && config.requestContentType ? config.requestContentType : undefined;
   if (isSwagger) {
     const original = (Array.isArray(operation.parameters) ? operation.parameters : []).filter(isRecord);
@@ -796,7 +834,7 @@ function resolveResponse(response: Record<string, any>, manifest: ZopiaManifest)
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(response).filter(([key]) => key !== '$ref')) } : {};
 }
 
-function serializeResponses(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>): void {
+function serializeResponses(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, operationAt: string, warnings?: ZopiaWarningCollector): void {
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const original = isRecord(operation.responses) ? operation.responses : {};
   const responses: Record<string, any> = {};
@@ -817,7 +855,8 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
       else delete response.examples;
     }
     if (schemaKind(runtimeSchema) === 'void') { delete response.content; delete response.schema; responses[status] = response; continue; }
-    const schema = convertRuntimeSchema(runtimeSchema, 'output', manifest, references, `response ${status}`);
+    const warningAt = manifest.source.kind === 'swagger-2.0' ? `${operationAt}/responses/${pointerToken(status)}/schema` : `${operationAt}/responses/${pointerToken(status)}/content/schema`;
+    const schema = convertRuntimeSchema(runtimeSchema, 'output', manifest, references, `response ${status}`, warningAt, warnings);
     if (isSwagger) response.schema = schema;
     else {
       const previousContent = isRecord(previous.content) ? previous.content : {};
@@ -839,7 +878,7 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
   }
 }
 
-function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>): { path: string; method: string; operation: Record<string, any> } {
+function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, warnings?: ZopiaWarningCollector): { path: string; method: string; operation: Record<string, any> } {
   const method = config.method.toLowerCase();
   if (!HTTP_METHODS.has(method)) throw new TypeError(`Invalid generated endpoint method: ${String(config.method)}`);
   let path: unknown;
@@ -871,9 +910,10 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   if (Object.prototype.hasOwnProperty.call(sourceOperation, 'deprecated') || deprecated) operation.deprecated = deprecated;
   else delete operation.deprecated;
   for (const field of ['requestContentType', 'responseContentType'] as const) if (config[field] !== undefined && (typeof config[field] !== 'string' || !config[field])) throw new TypeError(`Invalid generated endpoint ${field}: ${String(config[field])}`);
-  const parameters = serializeParameters(operation, config, manifest, references);
-  serializeRequestBody(operation, config, manifest, references, parameters);
-  serializeResponses(operation, config, manifest, references);
+  const operationAt = `#/paths/${pointerToken(path)}/${method}`;
+  const parameters = serializeParameters(operation, config, manifest, references, operationAt, warnings);
+  serializeRequestBody(operation, config, manifest, references, parameters, operationAt, warnings);
+  serializeResponses(operation, config, manifest, references, operationAt, warnings);
   if (Array.isArray(operation.parameters) && operation.parameters.length === 0) delete operation.parameters;
   const skippedRefs = applyManifestRefs(operation, sourceOperation, api, manifest);
   operation = applyManifestSchemaOverlays(operation, api, skippedRefs);
@@ -881,10 +921,14 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   return { path, method, operation };
 }
 
-function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<number, EndpointConfig>(), componentSchemas = new Map<number, Record<string, unknown>>(), componentReferences: Array<readonly [string, ComponentSchema]> = []): Record<string, unknown> {
+function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<number, EndpointConfig>(), componentSchemas = new Map<number, Record<string, unknown>>(), componentReferences: Array<readonly [string, ComponentSchema]> = [], warnings?: ZopiaWarningCollector): Record<string, unknown> {
   if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA || !isRecord(manifest.source) || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
   if (!['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new TypeError(`Unsupported manifest source kind: ${manifest.source.kind}`);
-  if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new TypeError('Invalid manifest source title or version');
+  if (manifest.source.title !== undefined && (typeof manifest.source.title !== 'string' || !manifest.source.title.trim()) || manifest.source.version !== undefined && (typeof manifest.source.version !== 'string' || !manifest.source.version.trim())) throw new TypeError('Invalid manifest source title or version');
+  const title = manifest.source.title ?? 'Zopia API';
+  const sourceVersion = manifest.source.version ?? '0.0.0';
+  if (manifest.source.title === undefined) warnings?.add({ code: 'ZOPIA_WARN_DEFAULT_INFO', at: '#/info/title', message: 'manifest source title is missing; using Zopia API' });
+  if (manifest.source.version === undefined) warnings?.add({ code: 'ZOPIA_WARN_DEFAULT_INFO', at: '#/info/version', message: 'manifest source version is missing; using 0.0.0' });
   if (manifest.infoOverlay !== undefined && !isRecord(manifest.infoOverlay)) throw new TypeError('Invalid manifest infoOverlay');
   if (manifest.documentOverlay !== undefined && !isRecord(manifest.documentOverlay)) throw new TypeError('Invalid manifest documentOverlay');
   if (manifest.componentsOverlay !== undefined && !isRecord(manifest.componentsOverlay)) throw new TypeError('Invalid manifest componentsOverlay');
@@ -906,8 +950,8 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
   if (invalidDocumentKey) throw new TypeError(`Invalid manifest documentOverlay key: ${invalidDocumentKey}`);
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const document: Record<string, any> = isSwagger
-    ? { swagger: '2.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} }
-    : { openapi: manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} };
+    ? { swagger: '2.0', info: { title, version: sourceVersion, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} }
+    : { openapi: manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0', info: { title, version: sourceVersion, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} };
   const assignOverlay = (target: Record<string, unknown>, overlay: Record<string, unknown>): void => {
     for (const [key, value] of Object.entries(overlay)) Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
   };
@@ -934,8 +978,14 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
     if (api.sourceOperation !== undefined && !isRecord(api.sourceOperation)) throw new TypeError(`Invalid manifest source operation: ${api.path} ${api.method}`);
     const sourceOperation: Record<string, any> = api.sourceOperation ? { ...api.sourceOperation } : { operationId: api.operationId, responses: { default: { description: 'Generated from manifest' } } };
     const runtime = endpointConfigs.get(index);
-    const reconstructed = runtime ? runtimeOperation(api, sourceOperation, runtime, manifest, componentReferences) : { path: api.path, method: api.method, operation: sourceOperation };
+    const reconstructed = runtime ? runtimeOperation(api, sourceOperation, runtime, manifest, componentReferences, warnings) : { path: api.path, method: api.method, operation: sourceOperation };
     if (api.security !== undefined) reconstructed.operation.security = api.security;
+    else if (runtime?.auth === 'YES' && manifest.defaultSecurity === undefined) {
+      reconstructed.operation.security = [{ bearerAuth: [] }];
+      if (isSwagger) document.securityDefinitions = { ...(document.securityDefinitions ?? {}), bearerAuth: document.securityDefinitions?.bearerAuth ?? { type: 'apiKey', name: 'Authorization', in: 'header' } };
+      else document.components = { ...(document.components ?? {}), securitySchemes: { ...(document.components?.securitySchemes ?? {}), bearerAuth: document.components?.securitySchemes?.bearerAuth ?? { type: 'http', scheme: 'bearer' } } };
+      warnings?.add({ code: 'ZOPIA_WARN_DEFAULT_SECURITY', at: `#/paths/${pointerToken(reconstructed.path)}/${reconstructed.method}/security`, message: 'auth is YES but the manifest has no security requirement; using bearerAuth' });
+    }
     const pathItem = Object.prototype.hasOwnProperty.call(document.paths, reconstructed.path) ? document.paths[reconstructed.path] : {};
     if (Object.prototype.hasOwnProperty.call(pathItem, reconstructed.method)) throw new TypeError(`Duplicate manifest API: ${reconstructed.path} ${reconstructed.method}`);
     Object.defineProperty(document.paths, reconstructed.path, { value: { ...pathItem, [reconstructed.method]: reconstructed.operation }, enumerable: true, configurable: true, writable: true });

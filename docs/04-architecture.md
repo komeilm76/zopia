@@ -23,10 +23,8 @@ the same commit, per the [docs convention](12-standards.md#-docs-convention)).
 ```text
 src/
 ├── index.ts                    # 🚪 Public entry — named exports only (JSDoc'd)
-├── types/
-│   ├── options.ts              # ⚙️  ZopiaGenerateOptions / ZopiaReverseOptions / …
-│   ├── errors.ts               # 🛑 ZopiaError + all error codes
-│   └── warnings.ts             # ⚠️  ZopiaWarning shape
+├── errors.ts                    # 🛑 ZopiaError + all error codes
+├── warnings.ts                  # ⚠️ Stable warning catalogue + shared pipeline
 ├── ir/
 │   ├── model.ts                # 🧬 ApiModel, OperationModel, ComponentSchema, ParameterModel
 │   └── order.ts                # 📏 canonical-ordering helpers (R-401)
@@ -288,6 +286,42 @@ export class ZopiaError extends Error {
 > code, a location (`at`) when discoverable, and a `hint`. Tests assert on
 > `code`, never on message text.
 
+## ⚠️ Warning model
+
+Warnings are non-fatal conversion diagnostics. Every public engine uses the
+same `ZopiaWarning` contract and stable `ZopiaWarningCode` union:
+
+```ts
+interface ZopiaWarning {
+  code: ZopiaWarningCode;
+  at?: string;       // escaped RFC 6901 JSON Pointer, including leading #
+  message: string;
+}
+```
+
+| 🆔 Stable code | 📝 Meaning |
+| --- | --- |
+| `ZOPIA_WARN_UNREPRESENTABLE` | a Zod node cannot be represented in the selected schema dialect |
+| `ZOPIA_WARN_INVALID_SCHEMA` | a malformed JSON Schema keyword is ignored or approximated |
+| `ZOPIA_WARN_CUSTOM_FORMAT`, `ZOPIA_WARN_CONTENT_ENCODING`, `ZOPIA_WARN_INT64` | a string/numeric format or encoding has no exact runtime equivalent |
+| `ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND` | a legacy boolean exclusive bound requires normalization |
+| `ZOPIA_WARN_ONE_OF`, `ZOPIA_WARN_NOT`, `ZOPIA_WARN_UNIQUE_ITEMS`, `ZOPIA_WARN_FROZEN_SUBTREE` | an applicator or refinement needs an approximation or frozen manifest restoration |
+| `ZOPIA_WARN_REF` | a recoverable schema-reference conversion cannot be exact |
+| `ZOPIA_WARN_MULTI_CONTENT`, `ZOPIA_WARN_SERVER_VARIABLES`, `ZOPIA_WARN_WEBHOOKS` | an OpenAPI document fact has no direct generated-code representation |
+| `ZOPIA_WARN_STALE_TREE` | generation found a manifest from different source content |
+| `ZOPIA_WARN_DEFAULT_INFO`, `ZOPIA_WARN_DEFAULT_SECURITY` | reverse conversion synthesized documented fallback metadata or security |
+| `ZOPIA_WARN_DIALECT_DOWNGRADE` | OpenAPI 3.1-only content is omitted from 3.0 output |
+
+The shared collector validates codes, collapses line breaks in messages,
+deduplicates identical diagnostics, and sorts by location, code, then message.
+Nested engine warnings are rebased rather than string-concatenated ad hoc, so
+`at` always identifies the affected source or output node. Engine ① and engine
+④ invoke `onWarning` once per normalized warning; engines ②–④ also return
+normalized warning arrays. Engine ② mirrors losses with the canonical marker
+`// @zopia:warn CODE subject — message (pointer)`. The CLI renders the same
+warning as `Warning: CODE pointer: message` on **stderr**, leaving reverse JSON
+on stdout parseable.
+
 ## 🛡️ Safety & boundaries
 
 | # | Rule | Where enforced |
@@ -295,7 +329,7 @@ export class ZopiaError extends Error {
 | R-405 | **Pure core** — no `fs`, `process`, or `Date` inside `engines/*`; only public input adapters/wrappers and the CLI touch the outside world (`jsonSchemaToZod()` resolves its documented `.json` path before entering the emitter) | architecture (module boundaries) + import-lint in tests |
 | R-406 | **outDir guard** — every path joined to `outDir` is canonicalized and verified to stay inside it; `..` in spec-derived segment names is impossible because segments are template literals, and flat names are sanitized (see [API docs → Naming](07-api-docs.md#-naming-conventions-fixed)) | `fs/guard.ts` |
 | R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `loader.ts` |
-| R-408 | **No silent loss** — every lossy/unsupported conversion produces a `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144) collected on the result, mirrored as `// @zopia:warn …` comments in generated code | every engine |
+| R-408 | **No silent loss** — every lossy/unsupported conversion produces a normalized `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144). Public wrappers return or callback each warning; engine ② and generated api-doc files mirror schema warnings as canonical `// @zopia:warn …` comments; CLI diagnostics go only to stderr | every engine + CLI |
 | R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; engine ④ output is canonical (R-401) | round-trip tests |
 
 ## 📏 Performance

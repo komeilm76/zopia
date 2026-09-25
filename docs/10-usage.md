@@ -89,6 +89,34 @@ const url = getUser.makeFullPath({ id: '550e8400-e29b-41d4-a716-446655440000' })
 const user = getUser.makeBody(undefined); // type-safe: no body on GET
 ```
 
+## ⚠️ Handling warnings
+
+Warnings are structured, deterministic, and non-fatal. `code` is a stable
+`ZopiaWarningCode`; `at` is an escaped JSON Pointer when a location is known.
+Use codes for automation and treat `message` as human-readable context.
+
+```ts
+import { apiDocsToOpenApi, zodToJsonSchema, type ZopiaWarning } from 'zopia';
+
+const observed: ZopiaWarning[] = [];
+zodToJsonSchema(schema, { onWarning: (warning) => observed.push(warning) });
+
+const result = await apiDocsToOpenApi('api_docs', {
+  version: '3.1',
+  onWarning: (warning) => observed.push(warning),
+});
+
+for (const warning of result.warnings) {
+  console.error(warning.code, warning.at, warning.message);
+}
+```
+
+Exact duplicates are removed and results/callbacks are sorted by location,
+code, then message. Engine ② also writes canonical `// @zopia:warn …` comments
+into emitted code. A manifest preserves restorable schema facts; a warning
+still remains visible because the generated Zod expression itself is an
+approximation.
+
 ## ⌨️ CLI
 
 > The CLI delegates generation to the same validated Engine ③ public API; its
@@ -103,6 +131,11 @@ zopia reverse  <manifest.json> [--out openapi.json] # ④ manifest → OpenAPI
 | --- | --- | --- |
 | `zopia generate` | generates the endpoint tree and manifest | `zopia generate swagger.json api_docs` |
 | `zopia reverse` | imports the manifest's endpoint and emitted component modules, then writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
+
+Both commands print warnings only to stderr as
+`Warning: ZOPIA_WARN_* <pointer>: <message>`. In particular, `zopia reverse`
+keeps stdout as valid OpenAPI JSON even when warnings are present; `--out`
+writes only JSON to the selected file.
 
 > ⚠️ `zopia reverse` executes the TypeScript modules referenced by `apis[].file`
 > and non-null `components[].file` entries. Reverse only trusted generated trees.

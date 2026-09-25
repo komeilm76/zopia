@@ -72,7 +72,7 @@ export function openApiToApiDocs(
 | R-141 | one base class `ZopiaError` (`code`, `at?`, `hint?`) — full table in [Architecture → Error model](04-architecture.md#-error-model) |
 | R-142 | codes are stable strings, UPPER_SNAKE, prefixed `ZOPIA_`; adding a code is a **MINOR** change |
 | R-143 | `hint` is always an *action* ("enable `insertComponents` first"), never a lecture |
-| R-144 | warnings (not errors) for lossy-but-recoverable conversions (D-12) — shape: `{ code, at?, message }` |
+| R-144 | warnings (not errors) for lossy-but-recoverable conversions (D-12) — shape: `{ code: ZopiaWarningCode, at?: string, message: string }`; codes come from the stable `ZOPIA_WARNING_CODES` catalogue, `at` is an escaped JSON Pointer when discoverable, and public emission is sanitized, deduplicated, deterministic, and callback/result consistent |
 
 ## 🛡️ Safety
 
@@ -177,7 +177,7 @@ export function openApiToApiDocs(
 | **D-09** | 📤 reverse output defaults to OpenAPI **3.1** | 3.1 schemas = full JSON Schema 2020-12 (the "same standard" the project is built on); 3.0 remains one flag away |
 | **D-10** | 🔐 MIT license | consistency with the whole `km-*` ecosystem |
 | **D-11** | 📦 zero runtime dependencies (Phase 1) | `zod` + `km-api` are peers of the *generated* code; a small surface = small attack area (P-6) |
-| **D-12** | ⚠️ unsupported keywords never fail silently — warning + nearest approximation + `// @zopia:warn` marker + manifest record | "pure, safe, clean" means *visible* loss; the reverse conversion restores the original verbatim from the manifest |
+| **D-12** | ⚠️ unsupported facts never fail silently — every engine emits the shared structured warning; schema emission adds a canonical `// @zopia:warn` marker; restorable source facts also enter the manifest; CLI diagnostics use stderr only | "pure, safe, clean" means *visible* loss without corrupting generated output; reverse conversion restores manifest-recorded facts verbatim where the target dialect permits |
 | **D-13** | 📝 Phase 1 input is JSON only (YAML, external refs, server variables → Phase 2) | keeps the v0.1.0 contract tight; every deferral is listed in [Roadmap](03-roadmap.md) with a date-like horizon |
 | **D-14** | 📐 zopia **targets km-api ≥ 0.4.1** — the output contract is "the generated tree **typechecks** against km-api 0.4.x" (enforced by the golden-tree test, R-126). km-api 0.4.1's open type surface (8 methods incl. `trace`, any custom/`default` status code, any MIME type, `operationId`) means every practical API fact is emitted **as code**; the remaining km-api gaps (per-parameter metadata, response `headers`) are preserved in the manifest (overlay / `responseOverlay`, R-635/R-754) | `makeApiConfig` is a type-level factory (no runtime validation) — the typecheck *is* the contract. km-api 0.4.1 was designed with zopia in mind (komeilm76/km-api); re-verify km-api's type surface against its source on every km-api bump |
 | **D-15** | 📦 **km-api is consumed from npm** — zopia depends on the published `km-api@^0.4.1`; no Git submodule or unpublished commit is required. | reproducible fresh clones and published dependency resolution |

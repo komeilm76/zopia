@@ -1,5 +1,5 @@
 export { ZopiaError, type ZopiaErrorCode } from './errors';
-export { type ZopiaWarning } from './warnings';
+export { ZOPIA_WARNING_CODES, type ZopiaWarning, type ZopiaWarningCode } from './warnings';
 export {
   zodToJsonSchema,
   type ZodJsonSchemaTarget,
