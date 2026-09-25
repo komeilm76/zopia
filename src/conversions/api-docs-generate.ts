@@ -121,7 +121,7 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
     if (typeof object.minItems === 'number') expression += `.min(${object.minItems})`;
     if (typeof object.maxItems === 'number') expression += `.max(${object.maxItems})`;
-    if (object.uniqueItems === true) expression += `.refine((items) => new Set(items.map((item) => JSON.stringify(item))).size === items.length)`;
+    if (object.uniqueItems === true) expression += `.refine((items) => new Set(items.map((item) => JSON.stringify(item, item !== null && typeof item === 'object' ? Object.keys(item).sort() : undefined))).size === items.length)`;
     return expression;
   }
   if (object?.type === 'object' && object.properties && typeof object.properties === 'object') {
