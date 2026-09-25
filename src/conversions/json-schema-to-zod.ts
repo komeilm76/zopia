@@ -190,6 +190,12 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         result = { schema: result.schema.refine((value: any) => value[key] === undefined || keys.every((requiredKey) => value[requiredKey] !== undefined)), code: `${result.code}.refine((value) => value[${JSON.stringify(key)}] === undefined || ${JSON.stringify(keys)}.every((requiredKey) => value[requiredKey] !== undefined))` };
       }
     }
+    if (node.type === 'object' && node.dependentSchemas && typeof node.dependentSchemas === 'object' && !Array.isArray(node.dependentSchemas)) {
+      for (const [key, dependency] of Object.entries(node.dependentSchemas as Record<string, JsonSchema>)) {
+        const dependent = convert(dependency, resolving);
+        result = { schema: result.schema.refine((value: any) => value[key] === undefined || dependent.schema.safeParse(value).success), code: `${result.code}.refine((value) => value[${JSON.stringify(key)}] === undefined || (${dependent.code}).safeParse(value).success)` };
+      }
+    }
     if (node.type === 'array' && node.contains) {
       const contained = convert(node.contains as JsonSchema, resolving);
       const min = node.minContains ?? 1; const max = node.maxContains;
