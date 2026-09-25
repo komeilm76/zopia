@@ -2,6 +2,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
+import { decodeJsonPointerSegment } from './openapi-ref';
 
 export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
 
@@ -27,10 +28,11 @@ function isComponentSchema(value: unknown): value is ComponentSchema {
 }
 
 function selectEndpointConfig(module: Record<string, unknown>, operationId: string | undefined, file: string): EndpointConfig {
-  if (isEndpointConfig(module.default)) return module.default;
   const candidates = [...new Set(Object.values(module).filter(isEndpointConfig))];
   const matching = operationId === undefined ? [] : candidates.filter((candidate) => candidate.operationId === operationId);
   if (matching.length === 1) return matching[0];
+  if (matching.length > 1) throw new TypeError(`Generated endpoint module exports multiple km-api configs for operationId ${operationId}: ${file}`);
+  if (isEndpointConfig(module.default)) return module.default;
   if (candidates.length === 1) return candidates[0];
   throw new TypeError(`Generated endpoint module does not export a unique km-api config: ${file}`);
 }
@@ -60,7 +62,7 @@ async function importGeneratedModule(root: string, file: string, kind: 'endpoint
         const metadata = await stat(generatedFile);
         url.searchParams.set('zopia-reverse', `${metadata.mtimeMs}-${metadata.size}`);
       }
-      const importUrl = url.href.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+      const importUrl = url.href.replace(/%7B/gi, '{').replace(/%7D/gi, '}').replace(/%7E/gi, '~');
       generatedModule = await import(importUrl) as Record<string, unknown>;
     } catch (error) { throw new TypeError(`Unable to import generated ${kind} file ${file}: ${error instanceof Error ? error.message : String(error)}`); }
     modules.set(moduleKey, generatedModule);
@@ -125,7 +127,7 @@ async function importComponentSchemas(manifest: ZopiaManifest, root: string, mod
 function componentRefTarget(schema: unknown): string | undefined {
   if (!isRecord(schema) || typeof schema.$ref !== 'string') return undefined;
   const prefix = schema.$ref.startsWith('#/components/schemas/') ? '#/components/schemas/' : schema.$ref.startsWith('#/definitions/') ? '#/definitions/' : undefined;
-  return prefix ? schema.$ref.slice(prefix.length) : undefined;
+  return prefix ? decodeJsonPointerSegment(schema.$ref.slice(prefix.length), schema.$ref) : undefined;
 }
 
 /** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
@@ -196,16 +198,17 @@ function resolveParameter(parameter: Record<string, any>, manifest: ZopiaManifes
   const openApiPrefix = '#/components/parameters/';
   const swaggerPrefix = '#/parameters/';
   const source = parameter.$ref.startsWith(openApiPrefix)
-    ? (manifest.componentsOverlay as any)?.parameters?.[parameter.$ref.slice(openApiPrefix.length)]
-    : parameter.$ref.startsWith(swaggerPrefix) ? manifest.swaggerParameters?.[parameter.$ref.slice(swaggerPrefix.length)] : undefined;
+    ? (manifest.componentsOverlay as any)?.parameters?.[decodeJsonPointerSegment(parameter.$ref.slice(openApiPrefix.length), parameter.$ref)]
+    : parameter.$ref.startsWith(swaggerPrefix) ? manifest.swaggerParameters?.[decodeJsonPointerSegment(parameter.$ref.slice(swaggerPrefix.length), parameter.$ref)] : undefined;
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(parameter).filter(([key]) => key !== '$ref')) } : parameter;
 }
 
 const SWAGGER_PARAMETER_SCHEMA_KEYS = new Set(['schema', 'content', 'type', 'format', 'items', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength', 'maxLength', 'pattern', 'enum', 'default', 'multipleOf', 'minItems', 'maxItems', 'uniqueItems']);
 
-function swaggerParameterShape(schema: unknown, previous: Record<string, any> = {}): Record<string, unknown> {
+function swaggerParameterShape(schema: unknown, previous: Record<string, any> = {}, context = 'parameter'): Record<string, unknown> {
   const shape = isRecord(schema) ? { ...schema } : {};
   if (previous.type === 'file' && shape.type === 'string' && shape.format === 'binary') { shape.type = 'file'; delete shape.format; }
+  if (!['string', 'number', 'integer', 'boolean', 'array', 'file'].includes(String(shape.type)) || Object.prototype.hasOwnProperty.call(shape, '$ref')) throw new TypeError(`Swagger 2.0 ${context} must serialize to a primitive, array, or file schema`);
   return shape;
 }
 
@@ -219,6 +222,7 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
     const properties = isRecord(schema.properties) ? schema.properties : {};
     groups.set(location, { properties, required: new Set(Array.isArray(schema.required) ? schema.required : []) });
   }
+  if (isSwagger && Object.keys(groups.get('cookie')!.properties).length > 0) throw new TypeError('Swagger 2.0 does not support cookie parameters');
   const used = new Map<string, Set<string>>(locations.map(([location]) => [location, new Set()]));
   const parameters: Record<string, any>[] = [];
   for (const raw of Array.isArray(operation.parameters) ? operation.parameters : []) {
@@ -232,7 +236,7 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
     used.get(parameter.in)!.add(parameter.name);
     if (isSwagger) {
       const metadata = Object.fromEntries(Object.entries(parameter).filter(([key]) => !SWAGGER_PARAMETER_SCHEMA_KEYS.has(key) && key !== '$ref'));
-      parameters.push({ ...metadata, name: parameter.name, in: parameter.in, required: parameter.in === 'path' || group.required.has(parameter.name), ...swaggerParameterShape(schema, parameter) });
+      parameters.push({ ...metadata, name: parameter.name, in: parameter.in, required: parameter.in === 'path' || group.required.has(parameter.name), ...swaggerParameterShape(schema, parameter, `${parameter.in} parameter ${parameter.name}`) });
     } else if (isRecord(parameter.content) && Object.keys(parameter.content).length) {
       const [contentType, media] = Object.entries(parameter.content)[0];
       parameters.push({ ...parameter, name: parameter.name, in: parameter.in, required: parameter.in === 'path' || group.required.has(parameter.name), content: { ...parameter.content, [contentType]: { ...(isRecord(media) ? media : {}), schema } } });
@@ -241,7 +245,7 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
   for (const [location] of locations) {
     const group = groups.get(location)!;
     for (const [name, schema] of Object.entries(group.properties)) if (!used.get(location)!.has(name)) {
-      if (isSwagger) parameters.push({ name, in: location, required: location === 'path' || group.required.has(name), ...swaggerParameterShape(schema) });
+      if (isSwagger) parameters.push({ name, in: location, required: location === 'path' || group.required.has(name), ...swaggerParameterShape(schema, {}, `${location} parameter ${name}`) });
       else parameters.push({ name, in: location, required: location === 'path' || group.required.has(name), schema });
     }
   }
@@ -252,7 +256,7 @@ function resolvedRequestBody(operation: Record<string, any>, manifest: ZopiaMani
   if (!isRecord(operation.requestBody)) return {};
   if (typeof operation.requestBody.$ref !== 'string') return operation.requestBody;
   const prefix = '#/components/requestBodies/';
-  const source = operation.requestBody.$ref.startsWith(prefix) ? (manifest.componentsOverlay as any)?.requestBodies?.[operation.requestBody.$ref.slice(prefix.length)] : undefined;
+  const source = operation.requestBody.$ref.startsWith(prefix) ? (manifest.componentsOverlay as any)?.requestBodies?.[decodeJsonPointerSegment(operation.requestBody.$ref.slice(prefix.length), operation.requestBody.$ref)] : undefined;
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(operation.requestBody).filter(([key]) => key !== '$ref')) } : {};
 }
 
@@ -266,29 +270,38 @@ function serializeRequestBody(operation: Record<string, any>, config: EndpointCo
   if (isSwagger) {
     const original = (Array.isArray(operation.parameters) ? operation.parameters : []).filter(isRecord);
     const form = original.filter((parameter) => parameter.in === 'formData');
-    if (form.length || contentType === 'multipart/form-data' || contentType === 'application/x-www-form-urlencoded') {
+    const baselineContentType = (Array.isArray(operation.consumes) ? operation.consumes[0] : undefined) ?? manifest.swaggerConsumes?.[0];
+    const contentTypeEdited = contentType !== undefined && typeof baselineContentType === 'string' && contentType !== baselineContentType;
+    const formContentType = contentType === 'multipart/form-data' || contentType === 'application/x-www-form-urlencoded';
+    if (contentTypeEdited ? formContentType : form.length > 0 || formContentType) {
       const properties = isRecord((schema as any).properties) ? (schema as any).properties : {};
       const required = new Set(Array.isArray((schema as any).required) ? (schema as any).required : []);
       for (const [name, property] of Object.entries(properties)) {
         const previous = form.find((parameter) => parameter.name === name) ?? {};
         const metadata = Object.fromEntries(Object.entries(previous).filter(([key]) => !SWAGGER_PARAMETER_SCHEMA_KEYS.has(key)));
-        parameters.push({ ...metadata, name, in: 'formData', required: required.has(name), ...swaggerParameterShape(property, previous) });
+        parameters.push({ ...metadata, name, in: 'formData', required: required.has(name), ...swaggerParameterShape(property, previous, `formData parameter ${name}`) });
       }
     } else {
       const previous = original.find((parameter) => parameter.in === 'body') ?? {};
       parameters.push({ ...previous, name: typeof previous.name === 'string' ? previous.name : 'body', in: 'body', required: previous.required === true, schema });
     }
     operation.parameters = parameters;
-    if (contentType) operation.consumes = [contentType, ...(Array.isArray(operation.consumes) ? operation.consumes.filter((value: unknown) => value !== contentType) : [])];
+    if (contentType) {
+      const retainedConsumes = Array.isArray(operation.consumes) ? operation.consumes.filter((value: unknown) => value !== contentType && (!contentTypeEdited || value !== baselineContentType)) : [];
+      operation.consumes = [contentType, ...retainedConsumes];
+    }
     return;
   }
   const previous = resolvedRequestBody(operation, manifest);
   const previousContent = isRecord(previous.content) ? previous.content : {};
   const previousType = Object.keys(previousContent)[0];
   const selectedType = contentType ?? previousType ?? 'application/json';
+  const contentTypeEdited = contentType !== undefined && previousType !== undefined && contentType !== previousType;
+  const retainedContent = contentTypeEdited ? Object.fromEntries(Object.entries(previousContent).filter(([type]) => type !== previousType)) : previousContent;
   const previousMedia = isRecord(previousContent[selectedType]) ? previousContent[selectedType] : {};
+  const retainedMedia = Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
   const examples = isRecord(config.examples?.request) ? { examples: config.examples.request } : {};
-  operation.requestBody = { ...previous, content: { ...previousContent, [selectedType]: { ...previousMedia, ...examples, schema } } };
+  operation.requestBody = { ...previous, content: { ...retainedContent, [selectedType]: { ...retainedMedia, ...examples, schema } } };
   operation.parameters = parameters;
 }
 
@@ -297,8 +310,8 @@ function resolveResponse(response: Record<string, any>, manifest: ZopiaManifest)
   const openApiPrefix = '#/components/responses/';
   const swaggerPrefix = '#/responses/';
   const source = response.$ref.startsWith(openApiPrefix)
-    ? (manifest.componentsOverlay as any)?.responses?.[response.$ref.slice(openApiPrefix.length)]
-    : response.$ref.startsWith(swaggerPrefix) ? manifest.swaggerResponses?.[response.$ref.slice(swaggerPrefix.length)] : undefined;
+    ? (manifest.componentsOverlay as any)?.responses?.[decodeJsonPointerSegment(response.$ref.slice(openApiPrefix.length), response.$ref)]
+    : response.$ref.startsWith(swaggerPrefix) ? manifest.swaggerResponses?.[decodeJsonPointerSegment(response.$ref.slice(swaggerPrefix.length), response.$ref)] : undefined;
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(response).filter(([key]) => key !== '$ref')) } : {};
 }
 
@@ -307,14 +320,21 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
   const original = isRecord(operation.responses) ? operation.responses : {};
   const responses: Record<string, any> = {};
   const contentType = typeof config.responseContentType === 'string' && config.responseContentType ? config.responseContentType : undefined;
-  const baselineContentType = Object.values(original).map((value) => isRecord(value) && isRecord(value.content) ? Object.keys(value.content)[0] : undefined).find((value) => value !== undefined);
-  const contentTypeEdited = contentType !== undefined && baselineContentType !== undefined && contentType !== baselineContentType;
+  const baselineContentType = isSwagger
+    ? (Array.isArray(operation.produces) ? operation.produces[0] : undefined) ?? manifest.swaggerProduces?.[0]
+    : Object.values(original).map((value) => isRecord(value) && isRecord(value.content) ? Object.keys(value.content)[0] : undefined).find((value) => value !== undefined);
+  const contentTypeEdited = contentType !== undefined && typeof baselineContentType === 'string' && contentType !== baselineContentType;
   if (Object.keys(config.response).length === 0) throw new TypeError('Generated endpoint must define at least one response');
   for (const [status, runtimeSchema] of Object.entries(config.response)) {
     if (status !== 'default' && !/^(?:\d{3}|[1-5]XX)$/.test(status)) throw new TypeError(`Invalid generated endpoint response status: ${status}`);
     if (!isComponentSchema(runtimeSchema)) throw new TypeError(`Invalid generated endpoint response schema: ${status}`);
     const previous = isRecord(original[status]) ? resolveResponse(original[status], manifest) : {};
     const response: Record<string, any> = { ...previous, description: typeof previous.description === 'string' && previous.description ? previous.description : 'Generated response' };
+    const configuredExamples = config.examples?.response?.[status];
+    if (isSwagger) {
+      if (isRecord(configuredExamples)) response.examples = Object.fromEntries(Object.entries(configuredExamples).map(([type, example]) => [type, isRecord(example) && Object.prototype.hasOwnProperty.call(example, 'value') ? example.value : example]));
+      else delete response.examples;
+    }
     if (schemaKind(runtimeSchema) === 'void') { delete response.content; delete response.schema; responses[status] = response; continue; }
     const schema = convertRuntimeSchema(runtimeSchema, 'output', manifest, references, `response ${status}`);
     if (isSwagger) response.schema = schema;
@@ -322,14 +342,19 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
       const previousContent = isRecord(previous.content) ? previous.content : {};
       const previousType = Object.keys(previousContent)[0];
       const selectedType = contentTypeEdited ? contentType! : previousType ?? contentType ?? 'application/json';
+      const retainedContent = contentTypeEdited && previousType !== selectedType ? Object.fromEntries(Object.entries(previousContent).filter(([type]) => type !== previousType)) : previousContent;
       const previousMedia = isRecord(previousContent[selectedType]) ? previousContent[selectedType] : {};
-      const runtimeExamples = isRecord(config.examples?.response?.[status]) ? { examples: config.examples.response[status] } : {};
-      response.content = { ...previousContent, [selectedType]: { ...previousMedia, ...runtimeExamples, schema } };
+      const retainedMedia = Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
+      const runtimeExamples = isRecord(configuredExamples) ? { examples: configuredExamples } : {};
+      response.content = { ...retainedContent, [selectedType]: { ...retainedMedia, ...runtimeExamples, schema } };
     }
     responses[status] = response;
   }
   operation.responses = responses;
-  if (isSwagger && contentType) operation.produces = [contentType, ...(Array.isArray(operation.produces) ? operation.produces.filter((value: unknown) => value !== contentType) : [])];
+  if (isSwagger && contentType) {
+    const retainedProduces = Array.isArray(operation.produces) ? operation.produces.filter((value: unknown) => value !== contentType && (!contentTypeEdited || value !== baselineContentType)) : [];
+    operation.produces = [contentType, ...retainedProduces];
+  }
 }
 
 function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>): { path: string; method: string; operation: Record<string, any> } {

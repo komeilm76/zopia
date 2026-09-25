@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 File-backed reverse conversion now replaces stale media types and examples after generated-code edits, honors Swagger form-to-body transitions and legacy response examples, and rejects Swagger cookie/object parameters instead of emitting invalid documents.
+- 🐛 Escaped JSON Pointer component and reusable-object names now resolve correctly; direct component aliases preserve `$ref` siblings, and generated `~` directories can be imported at runtime.
+- 🐛 Multi-config endpoint modules now select the named config matching the manifest operation before an unrelated default export.
 - 🧬 Runtime endpoint and component schemas now take precedence over manifest schema snapshots, including developer edits that switch a `$ref` to a different component.
 - 🐛 Direct component aliases now use distinct lazy Zod schemas so reverse conversion can distinguish an unchanged alias from a developer-selected target.
 - 🔄 File-based reverse conversion now re-serializes edited endpoint body, parameter, and response Zod schemas through Engine ① with request-input and response-output semantics across OpenAPI 3.x and Swagger 2.0.

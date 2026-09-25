@@ -120,6 +120,34 @@ describe('manifest reverse conversion', () => {
     expect(stripped.parameters).toBeUndefined();
     expect(stripped.responses['201']).toEqual({ description: 'Created', headers: { 'X-Trace': { schema: { type: 'string' } } } });
   });
+  it('replaces edited media types and treats runtime examples as authoritative', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Media edits', version: '1' }, paths: { '/messages': { post: {
+      requestBody: { content: { 'application/json': { example: { message: 'old request' }, schema: { type: 'string' } } } },
+      responses: { '200': { description: 'ok', content: { 'application/json': { example: { message: 'old response' }, schema: { type: 'string' } } } } },
+    } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'messages', 'post', 'index.ts');
+    const generated = await readFile(endpointFile, 'utf8');
+    const edited = generated
+      .replace('requestContentType: "application/json"', 'requestContentType: "application/xml"')
+      .replace('responseContentType: "application/json"', 'responseContentType: "application/xml"')
+      .replace(/^  examples: .*,$/m, '  examples: { request: { edited: { value: "new request" } }, response: { 200: { edited: { value: "new response" } } } },');
+    await writeFile(endpointFile, edited, 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    const operation = reversed.paths['/messages'].post;
+    expect(Object.keys(operation.requestBody.content)).toEqual(['application/xml']);
+    expect(operation.requestBody.content['application/xml']).toMatchObject({ examples: { edited: { value: 'new request' } }, schema: { type: 'string' } });
+    expect(operation.requestBody.content['application/xml'].example).toBeUndefined();
+    expect(Object.keys(operation.responses['200'].content)).toEqual(['application/xml']);
+    expect(operation.responses['200'].content['application/xml']).toMatchObject({ examples: { edited: { value: 'new response' } }, schema: { type: 'string' } });
+    expect(operation.responses['200'].content['application/xml'].example).toBeUndefined();
+
+    await writeFile(endpointFile, edited.replace(/^  examples: .*\n/m, ''), 'utf8');
+    const withoutExamples = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(withoutExamples.paths['/messages'].post.requestBody.content['application/xml'].examples).toBeUndefined();
+    expect(withoutExamples.paths['/messages'].post.responses['200'].content['application/xml'].examples).toBeUndefined();
+  });
   it('re-serializes edited Swagger request and response schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy runtime schemas', version: '1' }, consumes: ['application/json'], produces: ['application/json'], paths: { '/items/{id}': { post: {
@@ -148,6 +176,40 @@ describe('manifest reverse conversion', () => {
     ]);
     expect(operation.responses['200']).toMatchObject({ description: 'OK', schema: { properties: { ok: { type: 'boolean' }, message: { type: 'string' } }, required: ['ok', 'message'] } });
     expect(operation.responses['204']).toEqual({ description: 'Empty' });
+  });
+  it('honors Swagger form-to-body content edits and edited legacy examples', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Swagger media', version: '1' }, consumes: ['multipart/form-data'], produces: ['application/json'], paths: { '/upload': { post: {
+      parameters: [{ name: 'name', in: 'formData', required: true, type: 'string' }],
+      responses: { '200': { description: 'ok', schema: { type: 'string' }, examples: { 'application/json': 'old response' } } },
+    } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'upload', 'post', 'index.ts');
+    const generated = await readFile(endpointFile, 'utf8');
+    const edited = generated
+      .replace('requestContentType: "multipart/form-data"', 'requestContentType: "application/json"')
+      .replace('responseContentType: "application/json"', 'responseContentType: "application/xml"')
+      .replace(/^  examples: .*,$/m, '  examples: { response: { 200: { "application/xml": { value: "new response" } } } },');
+    await writeFile(endpointFile, edited, 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    const operation = reversed.paths['/upload'].post;
+    expect(operation.parameters.filter((parameter: any) => parameter.in === 'formData')).toEqual([]);
+    expect(operation.parameters).toContainEqual(expect.objectContaining({ name: 'body', in: 'body', schema: expect.objectContaining({ type: 'object', required: ['name'] }) }));
+    expect(operation.consumes).toEqual(['application/json']);
+    expect(operation.produces).toEqual(['application/xml']);
+    expect(operation.responses['200'].examples).toEqual({ 'application/xml': 'new response' });
+  });
+  it('rejects Swagger-only parameter shapes that cannot be represented', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Swagger params', version: '1' }, paths: { '/items': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'items', 'get', 'index.ts');
+    const generated = await readFile(endpointFile, 'utf8');
+
+    await writeFile(endpointFile, generated.replace('cookies: z.object({  })', 'cookies: z.object({ ["session"]: z.string() })'), 'utf8');
+    await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Swagger 2.0 does not support cookie parameters');
+
+    await writeFile(endpointFile, generated.replace('query: z.object({  })', 'query: z.object({ ["filter"]: z.object({ ["id"]: z.string() }) })'), 'utf8');
+    await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Swagger 2.0 query parameter filter must serialize to a primitive, array, or file schema');
   });
   it('imports emitted component modules and uses edited Zod schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -179,6 +241,21 @@ describe('manifest reverse conversion', () => {
     await writeFile(endpointFile, endpoint.replace('{ UserAliasSchema }', '{ GroupSchema }').replace('200: UserAliasSchema', '200: GroupSchema'), 'utf8');
     const referenceEdited = await manifestFileToOpenApi(manifestFile) as any;
     expect(referenceEdited.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/Group' });
+  });
+  it('round-trips escaped component names and direct-ref siblings through generated code', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Escaped refs', version: '1' }, components: { schemas: {
+      'User~Model': { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      'Alias~Model': { $ref: '#/components/schemas/User~0Model', description: 'Alias schema', maxProperties: 2 },
+    } }, paths: { '/alias': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/Alias~0Model' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+
+    const aliasFile = await readFile(join(outputDir, 'components', 'Alias~Model', 'index.ts'), 'utf8');
+    expect(aliasFile).toContain('from "../User~Model/index"');
+    expect(aliasFile).toContain('.meta({"description":"Alias schema","maxProperties":2})');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.components.schemas['Alias~Model']).toEqual({ description: 'Alias schema', maxProperties: 2, $ref: '#/components/schemas/User~0Model' });
+    expect(reversed.paths['/alias'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/Alias~0Model' });
   });
   it('imports nested cyclic component graphs without eager initialization failures', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -220,6 +297,20 @@ describe('manifest reverse conversion', () => {
 
     const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
     expect(reversed.definitions.Limit).toEqual({ type: 'number', minimum: 1, exclusiveMinimum: true });
+  });
+  it('selects a matching named endpoint config before a different default export', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const endpointFile = join(directory, 'endpoints.ts');
+    await writeFile(endpointFile, `import { z } from 'zod';\nimport { makeApiConfig } from 'km-api';\nconst request = { body: z.any(), params: z.object({}), query: z.object({}), headers: z.object({}), cookies: z.object({}) };\nexport const first = makeApiConfig({ method: 'GET', pathShape: '/first', operationId: 'first', auth: 'NO', request, response: { 200: z.string() } });\nexport const second = makeApiConfig({ method: 'POST', pathShape: '/second', operationId: 'second', auth: 'NO', request, response: { 201: z.number() } });\nexport default first;\n`, 'utf8');
+    const manifestFile = join(directory, '.zopia-manifest.json');
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Multiple', version: '1' }, apis: [
+      { file: 'endpoints.ts', path: '/first', method: 'get', operationId: 'first', sourceOperation: { operationId: 'first', responses: { '200': { description: 'first' } } } },
+      { file: 'endpoints.ts', path: '/second', method: 'post', operationId: 'second', sourceOperation: { operationId: 'second', responses: { '201': { description: 'second' } } } },
+    ] }), 'utf8');
+
+    const reversed = await manifestFileToOpenApi(manifestFile) as any;
+    expect(reversed.paths['/first'].get.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
+    expect(reversed.paths['/second'].post.responses['201'].content['application/json'].schema).toEqual({ type: 'number' });
   });
   it('rejects missing, unsafe, and invalid generated endpoint modules', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -267,15 +358,18 @@ describe('manifest reverse conversion', () => {
   it('round-trips reusable OpenAPI and Swagger component sections', async () => {
     const openApiDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Reusable', version: '1' }, components: {
-      parameters: { Trace: { name: 'trace', in: 'header', schema: { type: 'string' } } },
-      responses: { Problem: { description: 'problem', content: { 'application/json': { schema: { type: 'string' } } } } },
+      parameters: { 'Trace~Header': { name: 'trace', in: 'header', description: 'trace header', schema: { type: 'string' } } },
+      responses: { 'Problem~Response': { description: 'problem', content: { 'application/json': { schema: { type: 'string' } } } } },
       headers: { RateLimit: { schema: { type: 'integer' } } },
-    }, paths: { '/x': { get: { parameters: [{ $ref: '#/components/parameters/Trace' }], responses: { '400': { $ref: '#/components/responses/Problem' } } } } } }, { outputDir: openApiDir });
+    }, paths: { '/x': { get: { parameters: [{ $ref: '#/components/parameters/Trace~0Header' }], responses: { '400': { $ref: '#/components/responses/Problem~0Response' } } } } } }, { outputDir: openApiDir });
     const openApiManifest = JSON.parse(await readFile(join(openApiDir, '.zopia-manifest.json'), 'utf8'));
     const openApi = manifestToOpenApi(openApiManifest) as any;
-    expect(openApi.components.parameters.Trace.name).toBe('trace');
-    expect(openApi.components.responses.Problem.description).toBe('problem');
+    expect(openApi.components.parameters['Trace~Header'].name).toBe('trace');
+    expect(openApi.components.responses['Problem~Response'].description).toBe('problem');
     expect(openApi.components.headers.RateLimit.schema.type).toBe('integer');
+    const openApiRuntime = await manifestFileToOpenApi(join(openApiDir, '.zopia-manifest.json')) as any;
+    expect(openApiRuntime.paths['/x'].get.parameters).toEqual([expect.objectContaining({ name: 'trace', in: 'header', description: 'trace header' })]);
+    expect(openApiRuntime.paths['/x'].get.responses['400']).toMatchObject({ description: 'problem', content: { 'application/json': { schema: { type: 'string' } } } });
 
     const swaggerDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Reusable', version: '1' }, parameters: { Limit: { name: 'limit', in: 'query', type: 'integer' } }, responses: { Problem: { description: 'problem', schema: { type: 'string' } } }, paths: { '/x': { get: { parameters: [{ $ref: '#/parameters/Limit' }], responses: { '400': { $ref: '#/responses/Problem' } } } } } }, { outputDir: swaggerDir });
