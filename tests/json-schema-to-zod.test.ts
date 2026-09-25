@@ -109,6 +109,11 @@ describe('jsonSchemaToZod', () => {
     expect(jsonSchemaToZod({ type: 'string', format: 'ipv4' }).schema.safeParse('192.168.1.1').success).toBe(true);
     expect(jsonSchemaToZod({ type: 'string', format: 'ipv6' }).schema.safeParse('2001:db8::1').success).toBe(true);
   });
+  it('supports base64, base64url, and emoji formats', () => {
+    expect(jsonSchemaToZod({ type: 'string', format: 'base64' }).schema.safeParse('SGVsbG8=').success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'string', format: 'base64url' }).schema.safeParse('SGVsbG8').success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'string', format: 'emoji' }).schema.safeParse('😀').success).toBe(true);
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

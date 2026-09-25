@@ -145,6 +145,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         hostname: { schema: (s) => s.regex(/^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/), code: 'regex(/^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/)' },
         ipv4: { schema: (s) => s.ip({ version: 'v4' }), code: "ip({ version: 'v4' })" },
         ipv6: { schema: (s) => s.ip({ version: 'v6' }), code: "ip({ version: 'v6' })" },
+        base64: { schema: (s) => s.base64(), code: 'base64()' },
+        'base64url': { schema: (s) => s.base64url(), code: 'base64url()' },
+        emoji: { schema: (s) => s.emoji(), code: 'emoji()' },
       };
       const format = formats[node.format];
       if (format) { try { result = { schema: format.schema(result.schema), code: `${result.code}.${format.code}` }; } catch { warnings.push(`Unsupported format: ${node.format}`); } }
