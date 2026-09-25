@@ -112,7 +112,10 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
   if (object?.type === 'array' && Array.isArray(object.prefixItems)) {
     const items = object.prefixItems.map((item: unknown, index: number) => renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root));
     const rest = object.items && typeof object.items === 'object' ? `.rest(${renderNestedSchema(object.items, `${name}Rest`, imports, stack, source, root)})` : '';
-    return `z.tuple([${items.join(', ')}])${rest}`;
+    let expression = `z.tuple([${items.join(', ')}])${rest}`;
+    if (typeof object.minItems === 'number') expression += `.refine((items) => items.length >= ${object.minItems})`;
+    if (typeof object.maxItems === 'number') expression += `.refine((items) => items.length <= ${object.maxItems})`;
+    return expression;
   }
   if (object?.type === 'array' && object.items !== undefined) {
     let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
