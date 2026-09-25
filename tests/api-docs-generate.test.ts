@@ -104,6 +104,19 @@ describe('API docs endpoint generation', () => {
     const inlineContent = await readFile(join(inlineOutputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
     expect(inlineContent).toContain('params: z.object({ "id": z.string().uuid() })');
   });
+  it('uses component references nested inside endpoint schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object', properties: { id: { $ref: '#/components/schemas/UserId' } }, required: ['id'] } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    const content = await readFile(join(outputDir, 'users', 'get', 'index.ts'), 'utf8');
+    expect(content).toContain("import { UserIdSchema } from '../../components/index';");
+    expect(content).toContain('200: z.object({ ["id"]: UserIdSchema })');
+    expect(content).not.toContain('["id"]: z.any()');
+
+    const inlineOutputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object', properties: { id: { $ref: '#/components/schemas/UserId' } }, required: ['id'] } } } } } } } } }, { outputDir: inlineOutputDir, manifest: false });
+    const inlineContent = await readFile(join(inlineOutputDir, 'users', 'get', 'index.ts'), 'utf8');
+    expect(inlineContent).toContain('200: z.object({ ["id"]: z.string().uuid() })');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });

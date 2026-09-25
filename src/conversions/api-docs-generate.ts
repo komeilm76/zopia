@@ -167,9 +167,54 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const contracts = extractOperationContracts(ir);
   const componentRefs = useComponents ? collectComponentRefs({ operation: operation.operation, parameters: ir.parameters }) : new Set<string>();
   const componentSchema = (schema: unknown, fallback: string) => {
-    const component = schema && typeof schema === 'object' ? componentExport((schema as any).$ref) : undefined;
-    if (useComponents && component) return component;
-    return schemaCode(resolveObject(schema, source), fallback);
+    if (useComponents) {
+      const replacements = new Map<string, string>(); let markerIndex = 0;
+      const rewrite = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(rewrite);
+        if (!value || typeof value !== 'object') return value;
+        const object = value as Record<string, unknown>;
+        const component = componentExport(object.$ref);
+        if (component) {
+          componentRefs.add(component);
+          let marker = `__zopia_component_reference_${markerIndex++}__`;
+          const serialized = JSON.stringify(value) ?? '';
+          while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_component_reference_${markerIndex++}__`;
+          replacements.set(marker, component);
+          const siblings = Object.fromEntries(Object.entries(object).filter(([key]) => key !== '$ref').map(([key, child]) => [key, rewrite(child)]));
+          if (Object.keys(siblings).length === 0) return { const: marker };
+          const existingAllOf = siblings.allOf; delete siblings.allOf;
+          const allOf: unknown[] = [{ const: marker }];
+          if (Array.isArray(existingAllOf)) allOf.push(...existingAllOf);
+          else if (existingAllOf !== undefined) allOf.push({ allOf: existingAllOf });
+          return { ...siblings, allOf };
+        }
+        return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, rewrite(child)]));
+      };
+      let code = schemaCode(rewrite(schema), fallback);
+      for (const [marker, component] of replacements) code = code.split(`z.literal(${JSON.stringify(marker)})`).join(component);
+      return code;
+    }
+    const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
+    const schemaObject = schema && typeof schema === 'object' && !Array.isArray(schema) ? schema as Record<string, unknown> : undefined;
+    const ownDefinitions = schemaObject?.$defs && typeof schemaObject.$defs === 'object' && !Array.isArray(schemaObject.$defs) ? schemaObject.$defs as Record<string, unknown> : {};
+    let namespace = '__zopiaComponents';
+    while (Object.prototype.hasOwnProperty.call(ownDefinitions, namespace)) namespace += '_';
+    const escapePointer = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1');
+    const normalizeRefs = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(normalizeRefs);
+      if (!value || typeof value !== 'object') return value;
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => {
+        if (key === '$ref') {
+          const target = componentTarget(child);
+          if (target !== undefined) return [key, `#/$defs/${namespace}/${escapePointer(target)}`];
+        }
+        return [key, normalizeRefs(child)];
+      }));
+    };
+    const normalized = normalizeRefs(schema);
+    if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return schemaCode(normalized, fallback);
+    const normalizedComponents = Object.fromEntries(Object.entries(schemas).map(([name, component]) => [name, normalizeRefs(component)]));
+    return schemaCode({ ...(normalized as Record<string, unknown>), $defs: { ...ownDefinitions, [namespace]: normalizedComponents } }, fallback);
   };
   const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `${JSON.stringify(p.name)}: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
   const rawRequestSchema = resolveObject(operation.operation.requestBody, source)?.content ? (Object.values(resolveObject(operation.operation.requestBody, source).content)[0] as any)?.schema : undefined;
