@@ -77,7 +77,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('Math.round(value / 0.1)');
   });
   it('warns for invalid multipleOf constraints', () => {
-    const result = jsonSchemaToZod({ type: 'number', multipleOf: 0 });
+    const result = jsonSchemaToZod({ type: 'integer', multipleOf: 0 });
     expect(result.warnings).toContain('Invalid multipleOf: expected a positive number');
   });
   it('supports unevaluated property restrictions', () => {
