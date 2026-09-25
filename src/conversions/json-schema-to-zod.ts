@@ -154,6 +154,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         ipv4: { schema: (s) => s.ip({ version: 'v4' }), code: "ip({ version: 'v4' })" },
         ipv6: { schema: (s) => s.ip({ version: 'v6' }), code: "ip({ version: 'v6' })" },
         base64: { schema: (s) => s.base64(), code: 'base64()' },
+        byte: { schema: (s) => s.base64(), code: 'base64()' },
         'base64url': { schema: (s) => s.base64url(), code: 'base64url()' },
         emoji: { schema: (s) => s.emoji(), code: 'emoji()' },
         time: { schema: (s) => s.time(), code: 'time()' },

@@ -111,6 +111,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('supports base64, base64url, and emoji formats', () => {
     expect(jsonSchemaToZod({ type: 'string', format: 'base64' }).schema.safeParse('SGVsbG8=').success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'string', format: 'byte' }).schema.safeParse('SGVsbG8=').success).toBe(true);
     expect(jsonSchemaToZod({ type: 'string', format: 'base64url' }).schema.safeParse('SGVsbG8').success).toBe(true);
     expect(jsonSchemaToZod({ type: 'string', format: 'emoji' }).schema.safeParse('😀').success).toBe(true);
     expect(jsonSchemaToZod({ type: 'string', format: 'time' }).schema.safeParse('12:30:00').success).toBe(true);
