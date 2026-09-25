@@ -109,7 +109,13 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     const choices = object.allOf.map((child: unknown, index: number) => renderNestedSchema(child, `${name}Part${index}`, imports, stack, source, root));
     return choices.length === 0 ? 'z.never()' : choices.slice(1).reduce((left: string, right: string) => `z.intersection(${left}, ${right})`, choices[0]);
   }
-  if (object?.type === 'array' && object.items !== undefined) return `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
+  if (object?.type === 'array' && object.items !== undefined) {
+    let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
+    if (typeof object.minItems === 'number') expression += `.min(${object.minItems})`;
+    if (typeof object.maxItems === 'number') expression += `.max(${object.maxItems})`;
+    if (object.uniqueItems === true) expression += `.refine((items) => new Set(items.map((item) => JSON.stringify(item))).size === items.length)`;
+    return expression;
+  }
   if (object?.type === 'object' && object.properties && typeof object.properties === 'object') {
     const required = new Set(Array.isArray(object.required) ? object.required : []);
     const fields = Object.entries(object.properties).map(([key, child]) => `${JSON.stringify(key)}: ${renderNestedSchema(child, `${name}${key}`, imports, stack)}${required.has(key) ? '' : '.optional()'}`);

@@ -72,6 +72,13 @@ describe('API docs endpoint generation', () => {
     expect(await readFile(join(outputDir, 'components', 'Strict', 'index.ts'), 'utf8')).toContain('.strict()');
     expect(await readFile(join(outputDir, 'components', 'Open', 'index.ts'), 'utf8')).toContain('.passthrough()');
   });
+  it('preserves array component constraints', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Tags: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3, uniqueItems: true } } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Tags', 'index.ts'), 'utf8');
+    expect(content).toContain('z.array(z.string()).min(1).max(3)');
+    expect(content).toContain('new Set(items.map');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
