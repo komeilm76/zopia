@@ -60,7 +60,7 @@ artifact can be converted back, so nothing is ever lost.
 - 📖 **Dual spec support** — `swagger: "2.0"` and `openapi: "3.0.x" / "3.1.x"`
 - 🧱 **`$ref` resolution** — nested component references and circular schemas (via `z.lazy()`)
 - 📂 **Two output layouts** — `directory` (path → nested folders) and `flat` (one folder per endpoint)
-- 🧩 **Component options** — `insertComponents` and recursive endpoint component-reference imports are implemented; direct self-cycles use lazy schemas, while mutual cyclic imports remain a follow-up
+- 🧩 **Component options** — `insertComponents` and recursive endpoint component-reference imports are implemented; direct and mutual cyclic imports use lazy schemas
 - ⚡ **km-api native** — every `index.ts` builds its endpoint with `makeApiConfig()` from `km-api` (0.4.x)
 - 🔒 **Lossless round-trips** — a hidden manifest (`.zopia-manifest.json`) keeps every conversion reversible
 - 🧪 **Tested by design** — Vitest suite covering the full scenario matrix, run with Bun
