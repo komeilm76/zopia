@@ -67,6 +67,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ password: 'Password1!' }).success).toBe(false);
     expect(result.schema.safeParse({ password: 'Password1!', confirmPassword: 'Password1!' }).success).toBe(true);
     expect(result.schema.safeParse({}).success).toBe(true);
+    expect(result.warnings).toEqual([]);
   });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
@@ -153,11 +154,10 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({}).success).toBe(false);
     expect(result.schema.safeParse({ a: 1, b: 2, c: 3 }).success).toBe(false);
   });
-  it('warns for unsupported applicator keywords', () => {
-    const result = jsonSchemaToZod({ type: 'object', not: { required: ['id'] }, minProperties: 1 });
-    expect(result.warnings).toEqual(expect.arrayContaining([
-      'Unsupported JSON Schema keyword: not',
-    ]));
+  it('supports applicator keywords', () => {
+    const result = jsonSchemaToZod({ type: 'object', not: { type: 'object', required: ['id'] }, minProperties: 1 });
+    expect(result.warnings).toEqual([]);
+    expect(result.schema.safeParse({ id: 1 }).success).toBe(false);
   });
   it('handles prototype-like property names safely', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { __proto__: { type: 'string' }, constructor: { type: 'number' } }, required: ['__proto__', 'constructor'] });
