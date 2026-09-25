@@ -87,6 +87,12 @@ describe('jsonSchemaToZod', () => {
     expect(typed.schema.safeParse({ extra: 'ok' }).success).toBe(true);
     expect(typed.schema.safeParse({ extra: 1 }).success).toBe(false);
   });
+  it('supports legacy boolean exclusive bounds', () => {
+    const result = jsonSchemaToZod({ type: 'number', minimum: 5, exclusiveMinimum: true });
+    expect(result.schema.safeParse(5).success).toBe(false);
+    expect(result.schema.safeParse(5.1).success).toBe(true);
+    expect(result.code).toContain('.gt(5)');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

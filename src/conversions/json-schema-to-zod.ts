@@ -155,8 +155,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       ['pattern', node.pattern, (s, v) => s.regex(new RegExp(v))],
       ['minimum', node.minimum, (s, v) => s.min(v)],
       ['maximum', node.maximum, (s, v) => s.max(v)],
-      ['exclusiveMinimum', node.exclusiveMinimum, (s, v) => s.gt(v)],
-      ['exclusiveMaximum', node.exclusiveMaximum, (s, v) => s.lt(v)],
+      ['exclusiveMinimum', typeof node.exclusiveMinimum === 'boolean' ? (node.exclusiveMinimum ? node.minimum : undefined) : node.exclusiveMinimum, (s, v) => s.gt(v)],
+      ['exclusiveMaximum', typeof node.exclusiveMaximum === 'boolean' ? (node.exclusiveMaximum ? node.maximum : undefined) : node.exclusiveMaximum, (s, v) => s.lt(v)],
       ['minItems', node.minItems, (s, v) => s.min(v)],
       ['maxItems', node.maxItems, (s, v) => s.max(v)],
     ];
