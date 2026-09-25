@@ -208,7 +208,14 @@ function rewriteSchemaVersion(value: unknown, sourceKind: string, version: '3.0'
     if (nullable) {
       if (typeof result.type === 'string') result.type = [result.type, 'null'];
       else if (Array.isArray(result.type) && !result.type.includes('null')) result.type = [...result.type, 'null'];
-      else if (!Array.isArray(result.anyOf) || !result.anyOf.some((branch: unknown) => isRecord(branch) && branch.type === 'null')) result.anyOf = [...(Array.isArray(result.anyOf) ? result.anyOf : []), { type: 'null' }];
+      else if (Array.isArray(result.anyOf)) {
+        if (!result.anyOf.some((branch: unknown) => isRecord(branch) && branch.type === 'null')) result.anyOf = [...result.anyOf, { type: 'null' }];
+      } else {
+        const annotations = new Set(['title', 'description', 'default', 'deprecated', 'readOnly', 'writeOnly', 'examples']);
+        const branch = Object.fromEntries(Object.entries(result).filter(([key]) => !annotations.has(key)));
+        for (const key of Object.keys(result)) if (!annotations.has(key)) delete result[key];
+        result.anyOf = [branch, { type: 'null' }];
+      }
     }
     if ((sourceKind === 'swagger-2.0' || sourceKind === 'openapi-3.0') && typeof result.exclusiveMinimum === 'boolean') {
       if (result.exclusiveMinimum === true && typeof result.minimum === 'number') { result.exclusiveMinimum = result.minimum; delete result.minimum; }
@@ -220,14 +227,23 @@ function rewriteSchemaVersion(value: unknown, sourceKind: string, version: '3.0'
     }
   } else {
     if (nullable) result.nullable = true;
+    if (result.type === 'null') { result.type = 'string'; result.enum = [null]; result.nullable = true; }
     if (Array.isArray(result.type) && result.type.includes('null')) {
       const nonNull = result.type.filter((type: unknown) => type !== 'null');
       if (nonNull.length === 1) { result.type = nonNull[0]; result.nullable = true; }
       else { delete result.type; result.anyOf = nonNull.map((type: unknown) => ({ type })); result.nullable = true; }
     }
     if (Object.prototype.hasOwnProperty.call(result, 'const')) { result.enum = [result.const]; delete result.const; }
-    if (sourceKind === 'openapi-3.1' && typeof result.exclusiveMinimum === 'number') { result.minimum = result.exclusiveMinimum; result.exclusiveMinimum = true; }
-    if (sourceKind === 'openapi-3.1' && typeof result.exclusiveMaximum === 'number') { result.maximum = result.exclusiveMaximum; result.exclusiveMaximum = true; }
+    if (sourceKind === 'openapi-3.1' && typeof result.exclusiveMinimum === 'number') {
+      const exclusive = result.exclusiveMinimum;
+      if (typeof result.minimum !== 'number' || exclusive >= result.minimum) { result.minimum = exclusive; result.exclusiveMinimum = true; }
+      else delete result.exclusiveMinimum;
+    }
+    if (sourceKind === 'openapi-3.1' && typeof result.exclusiveMaximum === 'number') {
+      const exclusive = result.exclusiveMaximum;
+      if (typeof result.maximum !== 'number' || exclusive <= result.maximum) { result.maximum = exclusive; result.exclusiveMaximum = true; }
+      else delete result.exclusiveMaximum;
+    }
   }
   return result;
 }
@@ -235,7 +251,8 @@ function rewriteSchemaVersion(value: unknown, sourceKind: string, version: '3.0'
 function rewriteOperationSchemas(value: unknown, sourceKind: string, version: '3.0' | '3.1'): unknown {
   if (Array.isArray(value)) return value.map((item) => rewriteOperationSchemas(item, sourceKind, version));
   if (!isRecord(value)) return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, key === 'schema' ? rewriteSchemaVersion(child, sourceKind, version) : rewriteOperationSchemas(child, sourceKind, version)]));
+  const literalKeys = new Set(['example', 'examples', 'externalValue', 'value']);
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, literalKeys.has(key) || key.startsWith('x-') ? child : key === 'schema' ? rewriteSchemaVersion(child, sourceKind, version) : rewriteOperationSchemas(child, sourceKind, version)]));
 }
 
 const SWAGGER_SCHEMA_KEYS = new Set(['type', 'format', 'items', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength', 'maxLength', 'pattern', 'enum', 'default', 'multipleOf', 'minItems', 'maxItems', 'uniqueItems']);
@@ -256,14 +273,14 @@ function swaggerHeaderToOpenApi(header: unknown, version: '3.0' | '3.1'): unknow
   return { ...metadata, schema: swaggerInlineSchema(header, 'swagger-2.0', version) };
 }
 
-function swaggerResponseToOpenApi(response: unknown, contentType: string, version: '3.0' | '3.1'): unknown {
+function swaggerResponseToOpenApi(response: unknown, contentTypes: string[], version: '3.0' | '3.1'): unknown {
   if (!isRecord(response)) return response;
   if (typeof response.$ref === 'string' && response.$ref.startsWith('#/responses/')) return { $ref: `#/components/responses/${response.$ref.slice('#/responses/'.length)}` };
   const headers = isRecord(response.headers) ? Object.fromEntries(Object.entries(response.headers).map(([name, header]) => [name, swaggerHeaderToOpenApi(header, version)])) : undefined;
   const examples = isRecord(response.examples) ? response.examples : {};
   const schema = response.schema === undefined ? undefined : rewriteSchemaVersion(response.schema, 'swagger-2.0', version);
   const mediaTypes = new Set<string>(Object.keys(examples));
-  if (schema !== undefined) mediaTypes.add(contentType);
+  if (schema !== undefined) for (const contentType of contentTypes.length ? contentTypes : ['application/json']) mediaTypes.add(contentType);
   const content = schema === undefined && mediaTypes.size === 0 ? undefined : Object.fromEntries([...mediaTypes].map((type) => [type, { ...(Object.prototype.hasOwnProperty.call(examples, type) ? { example: examples[type] } : {}), ...(schema === undefined ? {} : { schema }) }]));
   return { ...Object.fromEntries(Object.entries(response).filter(([key]) => !['schema', 'examples', 'headers'].includes(key))), ...(headers === undefined ? {} : { headers }), ...(content === undefined ? {} : { content }) };
 }
@@ -291,20 +308,24 @@ function collectManifestRefs(value: unknown, at = ''): Array<{ at: string; ref: 
 function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: ZopiaManifest, version: '3.0' | '3.1'): Record<string, any> {
   const consumes = Array.isArray(operation.consumes) ? operation.consumes : manifest.swaggerConsumes ?? [];
   const produces = Array.isArray(operation.produces) ? operation.produces : manifest.swaggerProduces ?? [];
-  const requestType = consumes[0] ?? 'application/json';
-  const responseType = produces[0] ?? 'application/json';
+  const requestTypes = consumes.length ? consumes : ['application/json'];
+  const responseTypes = produces.length ? produces : ['application/json'];
   const parameters = (Array.isArray(operation.parameters) ? operation.parameters : []).map((parameter: unknown) => isRecord(parameter) ? resolveParameter(parameter, manifest) : parameter).filter(isRecord);
   const body = parameters.find((parameter) => parameter.in === 'body');
   const form = parameters.filter((parameter) => parameter.in === 'formData');
   const ordinary = parameters.filter((parameter) => parameter.in !== 'body' && parameter.in !== 'formData').map((parameter) => swaggerParameterToOpenApi(parameter, version));
   let requestBody: Record<string, any> | undefined;
-  if (body) requestBody = { ...(body.description === undefined ? {} : { description: body.description }), required: body.required === true, content: { [requestType]: { schema: rewriteSchemaVersion(body.schema ?? {}, 'swagger-2.0', version) } } };
+  if (body) {
+    const schema = rewriteSchemaVersion(body.schema ?? {}, 'swagger-2.0', version);
+    requestBody = { ...(body.description === undefined ? {} : { description: body.description }), required: body.required === true, content: Object.fromEntries(requestTypes.map((type) => [type, { schema }])) };
+  }
   else if (form.length) {
     const properties = Object.fromEntries(form.map((parameter) => [parameter.name, rewriteSchemaVersion(parameter.type === 'file' ? { type: 'string', format: 'binary' } : swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version)]));
     const required = form.filter((parameter) => parameter.required === true).map((parameter) => parameter.name);
-    requestBody = { required: required.length > 0, content: { [requestType]: { schema: { type: 'object', properties, ...(required.length ? { required } : {}) } } } };
+    const schema = { type: 'object', properties, ...(required.length ? { required } : {}) };
+    requestBody = { required: required.length > 0, content: Object.fromEntries(requestTypes.map((type) => [type, { schema }])) };
   }
-  const responses = Object.fromEntries(Object.entries(operation.responses ?? {}).map(([status, response]) => [status, swaggerResponseToOpenApi(response, responseType, version)]));
+  const responses = Object.fromEntries(Object.entries(operation.responses ?? {}).map(([status, response]) => [status, swaggerResponseToOpenApi(response, responseTypes, version)]));
   return { ...Object.fromEntries(Object.entries(operation).filter(([key]) => !['parameters', 'responses', 'consumes', 'produces', 'schemes'].includes(key))), ...(ordinary.length ? { parameters: ordinary } : {}), ...(requestBody === undefined ? {} : { requestBody }), responses };
 }
 
@@ -329,24 +350,30 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1
   const sourceKind = manifest.source.kind;
   const targetKind = version === '3.0' ? 'openapi-3.0' : 'openapi-3.1';
   const components = (manifest.components ?? []).map((component) => ({ ...component, schema: rewriteSchemaVersion(component.schema, sourceKind, version) }));
-  if (sourceKind !== 'swagger-2.0') return {
-    ...manifest,
-    source: { ...manifest.source, kind: targetKind },
-    components,
-    componentsOverlay: manifest.componentsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.componentsOverlay, sourceKind, version) as Record<string, unknown>,
-    apis: manifest.apis.map((api) => ({
-      ...api,
-      sourceOperation: api.sourceOperation === undefined ? undefined : rewriteOperationSchemas(api.sourceOperation, sourceKind, version) as Record<string, any>,
-      overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version),
-    })),
-  };
+  const documentOverlay = version === '3.0' ? Object.fromEntries(Object.entries(manifest.documentOverlay ?? {}).filter(([key]) => key !== 'webhooks' && key !== 'jsonSchemaDialect')) : manifest.documentOverlay;
+  if (sourceKind !== 'swagger-2.0') {
+    const rewrittenComponents = manifest.componentsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.componentsOverlay, sourceKind, version) as Record<string, unknown>;
+    const componentsOverlay = version === '3.0' && rewrittenComponents ? Object.fromEntries(Object.entries(rewrittenComponents).filter(([key]) => key !== 'pathItems')) : rewrittenComponents;
+    return {
+      ...manifest,
+      source: { ...manifest.source, kind: targetKind },
+      documentOverlay,
+      components,
+      componentsOverlay,
+      apis: manifest.apis.map((api) => ({
+        ...api,
+        sourceOperation: api.sourceOperation === undefined ? undefined : rewriteOperationSchemas(api.sourceOperation, sourceKind, version) as Record<string, any>,
+        overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version),
+      })),
+    };
+  }
   const basePath = typeof manifest.servers?.[0] === 'string' ? manifest.servers[0] : '/';
   const host = manifest.swaggerHost;
   const schemes = manifest.swaggerSchemes?.length ? manifest.swaggerSchemes : ['https'];
   const servers = host ? schemes.map((scheme) => ({ url: `${scheme}://${host}${basePath === '/' ? '' : basePath}` })) : [{ url: basePath }];
   const reusableParameters = Object.fromEntries(Object.entries(manifest.swaggerParameters ?? {}).filter(([, parameter]) => !isRecord(parameter) || parameter.in !== 'body' && parameter.in !== 'formData').map(([name, parameter]) => [name, isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version) : parameter]));
-  const responseType = manifest.swaggerProduces?.[0] ?? 'application/json';
-  const reusableResponses = Object.fromEntries(Object.entries(manifest.swaggerResponses ?? {}).map(([name, response]) => [name, swaggerResponseToOpenApi(response, responseType, version)]));
+  const responseTypes = manifest.swaggerProduces?.length ? manifest.swaggerProduces : ['application/json'];
+  const reusableResponses = Object.fromEntries(Object.entries(manifest.swaggerResponses ?? {}).map(([name, response]) => [name, swaggerResponseToOpenApi(response, responseTypes, version)]));
   const componentsOverlay = { ...(manifest.componentsOverlay ?? {}), ...(Object.keys(reusableParameters).length ? { parameters: reusableParameters } : {}), ...(Object.keys(reusableResponses).length ? { responses: reusableResponses } : {}) };
   const apis = manifest.apis.map((api) => {
     const sourceOperation = api.sourceOperation === undefined ? undefined : swaggerOperationToOpenApi(api.sourceOperation, manifest, version);
@@ -356,6 +383,7 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1
   return {
     ...manifest,
     source: { ...manifest.source, kind: targetKind },
+    documentOverlay,
     servers,
     components,
     componentsOverlay,
@@ -447,7 +475,13 @@ function normalizeRuntimeSchema(value: Record<string, any>, outputKind?: string)
       const nullIndex = normalized.anyOf.findIndex((variant: unknown) => isRecord(variant) && (variant.type === 'null' || variant.nullable === true && Array.isArray(variant.enum) && variant.enum.length === 1 && variant.enum[0] === null));
       if (nullIndex >= 0) {
         const nonNull = normalized.anyOf[nullIndex === 0 ? 1 : 0];
-        if (isRecord(nonNull)) { delete normalized.anyOf; Object.assign(normalized, nonNull, { nullable: true }); }
+        if (isRecord(nonNull)) {
+          delete normalized.anyOf;
+          if (typeof nonNull.$ref === 'string') {
+            const { $ref, ...siblings } = nonNull;
+            Object.assign(normalized, siblings, { allOf: [{ $ref }], nullable: true });
+          } else Object.assign(normalized, nonNull, { nullable: true });
+        }
       }
     }
     if (normalized.minimum === -9007199254740991) delete normalized.minimum;
@@ -661,6 +695,11 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
   return parameters;
 }
 
+function sameSchema(left: unknown, right: unknown): boolean {
+  try { return JSON.stringify(left) === JSON.stringify(right); }
+  catch { return false; }
+}
+
 function resolvedRequestBody(operation: Record<string, any>, manifest: ZopiaManifest): Record<string, any> {
   if (!isRecord(operation.requestBody)) return {};
   if (typeof operation.requestBody.$ref !== 'string') return operation.requestBody;
@@ -706,7 +745,8 @@ function serializeRequestBody(operation: Record<string, any>, config: EndpointCo
   const previousType = Object.keys(previousContent)[0];
   const selectedType = contentType ?? previousType ?? 'application/json';
   const contentTypeEdited = contentType !== undefined && previousType !== undefined && contentType !== previousType;
-  const retainedContent = contentTypeEdited ? Object.fromEntries(Object.entries(previousContent).filter(([type]) => type !== previousType)) : previousContent;
+  const primaryMedia = previousType !== undefined && isRecord(previousContent[previousType]) ? previousContent[previousType] : {};
+  const retainedContent = Object.fromEntries(Object.entries(previousContent).filter(([type]) => !contentTypeEdited || type !== previousType).map(([type, media]) => [type, isRecord(media) && type !== selectedType && sameSchema(media.schema, primaryMedia.schema) ? { ...media, schema } : media]));
   const previousMedia = isRecord(previousContent[selectedType]) ? previousContent[selectedType] : {};
   const retainedMedia = Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
   const examples = isRecord(config.examples?.request) ? { examples: config.examples.request } : {};
@@ -751,7 +791,8 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
       const previousContent = isRecord(previous.content) ? previous.content : {};
       const previousType = Object.keys(previousContent)[0];
       const selectedType = contentTypeEdited ? contentType! : previousType ?? contentType ?? 'application/json';
-      const retainedContent = contentTypeEdited && previousType !== selectedType ? Object.fromEntries(Object.entries(previousContent).filter(([type]) => type !== previousType)) : previousContent;
+      const primaryMedia = previousType !== undefined && isRecord(previousContent[previousType]) ? previousContent[previousType] : {};
+      const retainedContent = Object.fromEntries(Object.entries(previousContent).filter(([type]) => !contentTypeEdited || type !== previousType || previousType === selectedType).map(([type, media]) => [type, isRecord(media) && type !== selectedType && sameSchema(media.schema, primaryMedia.schema) ? { ...media, schema } : media]));
       const previousMedia = isRecord(previousContent[selectedType]) ? previousContent[selectedType] : {};
       const retainedMedia = Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
       const runtimeExamples = isRecord(configuredExamples) ? { examples: configuredExamples } : {};

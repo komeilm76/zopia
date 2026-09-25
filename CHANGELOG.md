@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - 📤 Reverse conversion now selects OpenAPI 3.0 or 3.1 through `ZopiaReverseOptions.version`; the documented `apiDocsToOpenApi()` API and CLI default to 3.1, selected dialects drive runtime schema serialization, and Swagger manifests can be emitted as OpenAPI 3.x.
+- 🐛 Reverse dialect translation now preserves literal example/default/enum data, nullable `$ref` semantics, combined exclusive bounds, and every Swagger `consumes`/`produces` media type while omitting 3.1-only document fields from 3.0 output.
 - 🔄 File-backed reverse conversion now safely applies manifest `$ref` placement, schema `set`/`remove`/frozen-node overlays, operation overlays, and response overlays after Zod re-serialization while preserving a developer-selected different component reference.
 - 🛡️ File-backed reverse conversion now preflights every endpoint and emitted-component path before importing code, reports missing manifests as `ZOPIA_DOCS_MISSING_MANIFEST`, and reports missing or renamed generated files as `ZOPIA_DOCS_MANIFEST_MISMATCH`.
 - 🐛 File-backed reverse conversion now replaces stale media types and examples after generated-code edits, honors Swagger form-to-body transitions and legacy response examples, and rejects Swagger cookie/object parameters instead of emitting invalid documents.

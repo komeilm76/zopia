@@ -39,13 +39,14 @@ describe('manifest reverse conversion', () => {
   });
   it('selects OpenAPI 3.0 or 3.1 for file-backed runtime schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Versions', version: '1' }, components: { schemas: { MaybeName: { type: ['string', 'null'] } } }, paths: { '/name': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: ['string', 'null'] } } } } } } } } }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Versions', version: '1' }, components: { schemas: { MaybeName: { type: ['string', 'null'] }, User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } }, paths: { '/name': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: ['string', 'null'] } } } } } } }, '/user': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { anyOf: [{ $ref: '#/components/schemas/User' }, { type: 'null' }] } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const manifestFile = join(outputDir, '.zopia-manifest.json');
 
     const openApi30 = await manifestFileToOpenApi(manifestFile, { version: '3.0' }) as any;
     expect(openApi30.openapi).toBe('3.0.0');
     expect(openApi30.components.schemas.MaybeName).toMatchObject({ type: 'string', nullable: true });
     expect(openApi30.paths['/name'].get.responses['200'].content['application/json'].schema).toMatchObject({ type: 'string', nullable: true });
+    expect(openApi30.paths['/user'].get.responses['200'].content['application/json'].schema).toEqual({ allOf: [{ $ref: '#/components/schemas/User' }], nullable: true });
 
     const openApi31 = await manifestFileToOpenApi(manifestFile, { version: '3.1' }) as any;
     expect(openApi31.openapi).toBe('3.1.0');
@@ -56,25 +57,38 @@ describe('manifest reverse conversion', () => {
     expect(literalData.components.schemas.Payload.example).toEqual({ type: 'file' });
     expect(literalData.components.schemas.Payload.default).toEqual({ type: 'file' });
     expect(literalData.components.schemas.Payload.properties.choice.enum).toEqual([{ type: 'file' }]);
+
+    const nullableRef = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.0', title: 'Nullable ref', version: '1' }, components: [{ name: 'User', file: null, schema: { type: 'object' } }, { name: 'MaybeUser', file: null, schema: { $ref: '#/components/schemas/User', nullable: true } }], apis: [] }, { version: '3.1' }) as any;
+    expect(nullableRef.components.schemas.MaybeUser).toEqual({ anyOf: [{ $ref: '#/components/schemas/User' }, { type: 'null' }] });
+
+    const constrained = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Bounds', version: '1' }, documentOverlay: { webhooks: { event: {} }, jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema', 'x-value': true }, componentsOverlay: { pathItems: { Shared: {} } }, components: [{ name: 'Range', file: null, schema: { type: 'number', minimum: 5, exclusiveMinimum: 1, maximum: 5, exclusiveMaximum: 10 } }], apis: [] }, { version: '3.0' }) as any;
+    expect(constrained.components.schemas.Range).toEqual({ type: 'number', minimum: 5, maximum: 5 });
+    expect(constrained.webhooks).toBeUndefined();
+    expect(constrained.jsonSchemaDialect).toBeUndefined();
+    expect(constrained['x-value']).toBe(true);
+    expect(constrained.components.pathItems).toBeUndefined();
   });
   it('uses OpenAPI 3.1 by default in the documented apiDocsToOpenApi API', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.0.3', info: { title: 'Default version', version: '1' }, paths: { '/value': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'string', nullable: true } } } } } } } } }, { outputDir });
+    await generateApiDocsFiles({ openapi: '3.0.3', info: { title: 'Default version', version: '1' }, paths: { '/value': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { example: { schema: { type: 'file' } }, schema: { type: 'string', nullable: true } } } } } } } } }, { outputDir });
     const result = await apiDocsToOpenApi(outputDir);
     expect((result.openapi as any).openapi).toBe('3.1.0');
     expect((result.openapi as any).paths['/value'].get.responses['200'].content['application/json'].schema.type).toEqual(['string', 'null']);
+    expect((result.openapi as any).paths['/value'].get.responses['200'].content['application/json'].examples.default.value).toEqual({ schema: { type: 'file' } });
     expect(result.warnings).toEqual([]);
   });
   it('converts Swagger manifests to the selected OpenAPI output version', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy selection', version: '1' }, host: 'api.example.com', schemes: ['https'], basePath: '/v1', consumes: ['application/json'], produces: ['application/json'], securityDefinitions: { basicAuth: { type: 'basic' } }, definitions: { User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } }, paths: { '/users': { post: { parameters: [{ name: 'body', in: 'body', required: true, schema: { $ref: '#/definitions/User' } }], responses: { '200': { description: 'ok', schema: { $ref: '#/definitions/User' } }, '204': { description: 'empty' } } } } } }, { outputDir });
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy selection', version: '1' }, host: 'api.example.com', schemes: ['https'], basePath: '/v1', consumes: ['application/json', 'application/xml'], produces: ['application/json', 'application/xml'], securityDefinitions: { basicAuth: { type: 'basic' } }, definitions: { User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } }, paths: { '/users': { post: { parameters: [{ name: 'body', in: 'body', required: true, schema: { $ref: '#/definitions/User' } }], responses: { '200': { description: 'ok', schema: { $ref: '#/definitions/User' } }, '204': { description: 'empty' } } } } } }, { outputDir });
     const result = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'), { version: '3.0' }) as any;
     expect(result.swagger).toBeUndefined();
     expect(result.openapi).toBe('3.0.0');
     expect(result.servers).toEqual([{ url: 'https://api.example.com/v1' }]);
     expect(result.components.securitySchemes.basicAuth).toEqual({ type: 'http', scheme: 'basic' });
     expect(result.paths['/users'].post.requestBody.content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
+    expect(result.paths['/users'].post.requestBody.content['application/xml'].schema).toEqual({ $ref: '#/components/schemas/User' });
     expect(result.paths['/users'].post.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
+    expect(result.paths['/users'].post.responses['200'].content['application/xml'].schema).toEqual({ $ref: '#/components/schemas/User' });
     expect(result.paths['/users'].post.responses['204']).toEqual({ description: 'empty' });
     const snapshot = manifestToOpenApi(JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')), { version: '3.1' }) as any;
     expect(snapshot.paths['/users'].post.responses['204']).toEqual({ description: 'empty' });
@@ -240,7 +254,7 @@ describe('manifest reverse conversion', () => {
   });
   it('re-serializes edited Swagger request and response schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy runtime schemas', version: '1' }, consumes: ['application/json'], produces: ['application/json'], paths: { '/items/{id}': { post: {
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy runtime schemas', version: '1' }, consumes: ['application/json', 'application/xml'], produces: ['application/json', 'application/xml'], paths: { '/items/{id}': { post: {
       parameters: [
         { name: 'id', in: 'path', required: true, type: 'string' },
         { name: 'limit', in: 'query', type: 'integer' },
@@ -266,6 +280,13 @@ describe('manifest reverse conversion', () => {
     ]);
     expect(operation.responses['200']).toMatchObject({ description: 'OK', schema: { properties: { ok: { type: 'boolean' }, message: { type: 'string' } }, required: ['ok', 'message'] } });
     expect(operation.responses['204']).toEqual({ description: 'Empty' });
+
+    const selected = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'), { version: '3.1' }) as any;
+    const selectedOperation = selected.paths['/items/{id}'].post;
+    expect(selectedOperation.requestBody.content['application/json'].schema.properties.count.minimum).toBe(1);
+    expect(selectedOperation.requestBody.content['application/xml'].schema.properties.count.minimum).toBe(1);
+    expect(selectedOperation.responses['200'].content['application/json'].schema.properties.message).toEqual({ type: 'string' });
+    expect(selectedOperation.responses['200'].content['application/xml'].schema.properties.message).toEqual({ type: 'string' });
   });
   it('honors Swagger form-to-body content edits and edited legacy examples', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
