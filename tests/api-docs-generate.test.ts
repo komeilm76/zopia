@@ -135,6 +135,17 @@ describe('API docs endpoint generation', () => {
     expect(files[0].file).toBe('users/get/index.ts');
     await expect(readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')).rejects.toThrow();
   });
+  it('does not require auth when an empty security alternative allows anonymous access', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {
+      '/required': { get: { security: [{ apiKey: [] }], responses: { '200': { description: 'ok' } } } },
+      '/optional': { get: { security: [{ apiKey: [] }, {}], responses: { '200': { description: 'ok' } } } },
+    } }, { outputDir, manifest: false });
+    const required = await readFile(join(outputDir, 'required', 'get', 'index.ts'), 'utf8');
+    const optional = await readFile(join(outputDir, 'optional', 'get', 'index.ts'), 'utf8');
+    expect(required).toContain('auth: "YES"');
+    expect(optional).toContain('auth: "NO"');
+  });
   it('writes a complete endpoint file', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users/{id}': { get: { operationId: 'getUser', summary: 'Get user', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object' }, example: { id: 'u1' } } } } } } } } }, { outputDir });
