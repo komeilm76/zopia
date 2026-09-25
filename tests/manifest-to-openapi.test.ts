@@ -16,6 +16,19 @@ describe('manifest reverse conversion', () => {
     expect(document['x-vendor']).toBe(true);
     expect(document.paths['/users'].get.responses['200'].description).toBe('ok');
   });
+  it('rejects unsafe, duplicate, and malformed manifest operations', () => {
+    const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '__proto__', method: 'get' }] })).toThrow('Invalid manifest API');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get' }, { path: '/users', method: 'get' }] })).toThrow('Duplicate manifest API');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get', sourceOperation: [] as any }] })).toThrow('Invalid manifest source operation');
+  });
+  it('prevents overlays from replacing canonical manifest fields', () => {
+    const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
+    for (const key of ['paths', 'openapi', 'info']) {
+      expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, documentOverlay: { [key]: null }, apis: [] })).toThrow(`Invalid manifest documentOverlay key: ${key}`);
+    }
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, infoOverlay: { title: 'Override' }, apis: [] })).toThrow('Invalid manifest infoOverlay key: title');
+  });
   it('loads a manifest from disk', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
     const file = join(directory, 'manifest.json');

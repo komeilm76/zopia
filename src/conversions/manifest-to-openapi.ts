@@ -12,8 +12,18 @@ export async function manifestFileToOpenApi(file: string): Promise<Record<string
 }
 
 export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unknown> {
-  if (!manifest || typeof manifest !== 'object' || manifest.$schema !== 'zopia:manifest@1' || !manifest.source || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
+  const isRecord = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!isRecord(manifest) || manifest.$schema !== 'zopia:manifest@1' || !isRecord(manifest.source) || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
   if (!['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new TypeError(`Unsupported manifest source kind: ${manifest.source.kind}`);
+  if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new TypeError('Invalid manifest source title or version');
+  if (manifest.infoOverlay !== undefined && !isRecord(manifest.infoOverlay)) throw new TypeError('Invalid manifest infoOverlay');
+  if (manifest.documentOverlay !== undefined && !isRecord(manifest.documentOverlay)) throw new TypeError('Invalid manifest documentOverlay');
+  const reservedInfoKeys = new Set(['title', 'version', 'description']);
+  const invalidInfoKey = Object.keys(manifest.infoOverlay ?? {}).find((key) => reservedInfoKeys.has(key));
+  if (invalidInfoKey) throw new TypeError(`Invalid manifest infoOverlay key: ${invalidInfoKey}`);
+  const allowedDocumentKey = (key: string): boolean => key === 'externalDocs' || key === 'webhooks' || key === 'jsonSchemaDialect' || key.startsWith('x-');
+  const invalidDocumentKey = Object.keys(manifest.documentOverlay ?? {}).find((key) => !allowedDocumentKey(key));
+  if (invalidDocumentKey) throw new TypeError(`Invalid manifest documentOverlay key: ${invalidDocumentKey}`);
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const document: Record<string, any> = isSwagger
     ? { swagger: '2.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} }
@@ -38,10 +48,13 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
     else document.components = { ...(document.components ?? {}), schemas };
   }
   for (const api of manifest.apis) {
-    if (!api.path || !/^(get|post|put|delete|head|options|patch|trace)$/.test(api.method)) throw new TypeError(`Invalid manifest API: ${api.path} ${api.method}`);
+    if (!isRecord(api) || typeof api.path !== 'string' || !api.path.startsWith('/') || api.path.includes('?') || api.path.includes('#') || typeof api.method !== 'string' || !/^(get|post|put|delete|head|options|patch|trace)$/.test(api.method)) throw new TypeError(`Invalid manifest API: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
+    if (api.sourceOperation !== undefined && !isRecord(api.sourceOperation)) throw new TypeError(`Invalid manifest source operation: ${api.path} ${api.method}`);
+    const pathItem = Object.prototype.hasOwnProperty.call(document.paths, api.path) ? document.paths[api.path] : {};
+    if (Object.prototype.hasOwnProperty.call(pathItem, api.method)) throw new TypeError(`Duplicate manifest API: ${api.path} ${api.method}`);
     const operation: Record<string, any> = api.sourceOperation ? { ...api.sourceOperation } : { operationId: api.operationId, responses: { default: { description: 'Generated from manifest' } } };
     if (api.security !== undefined) operation.security = api.security;
-    document.paths[api.path] = { ...(document.paths[api.path] ?? {}), [api.method]: operation };
+    Object.defineProperty(document.paths, api.path, { value: { ...pathItem, [api.method]: operation }, enumerable: true, configurable: true, writable: true });
   }
   return document;
 }
