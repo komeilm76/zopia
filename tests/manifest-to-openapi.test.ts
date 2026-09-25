@@ -104,12 +104,20 @@ describe('manifest reverse conversion', () => {
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Unique', version: '1' }, components: { schemas: {
       Tags: { type: 'array', title: 'Tags', description: 'Unique tags', items: { type: 'string' }, uniqueItems: true },
       Constants: { type: 'object', properties: { coordinates: { const: [1, 2] }, choice: { enum: [{ kind: 'a' }, { kind: 'b' }] } }, required: ['coordinates', 'choice'] },
+      Bounded: { type: 'object', properties: { value: { type: 'string' } }, minProperties: 1, maxProperties: 2 },
+      FlexibleTuple: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }], minItems: 1, maxItems: 3 },
     } }, paths: {} }, { outputDir, insertComponents: true });
 
     const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
     expect(reversed.components.schemas.Tags).toMatchObject({ type: 'array', title: 'Tags', description: 'Unique tags', items: { type: 'string' }, uniqueItems: true });
     expect(reversed.components.schemas.Constants.properties.coordinates.const).toEqual([1, 2]);
     expect(reversed.components.schemas.Constants.properties.choice.enum).toEqual([{ kind: 'a' }, { kind: 'b' }]);
+    expect(reversed.components.schemas.Bounded).toMatchObject({ minProperties: 1, maxProperties: 2 });
+    expect(reversed.components.schemas.FlexibleTuple).toMatchObject({
+      prefixItems: [{ type: 'string' }, { type: 'number' }],
+      minItems: 1,
+      maxItems: 3,
+    });
   });
   it('converts imported components to the source Swagger dialect', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

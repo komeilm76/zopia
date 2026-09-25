@@ -95,10 +95,13 @@ describe('API docs endpoint generation', () => {
   });
   it('preserves object additional property behavior', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Strict: { type: 'object', additionalProperties: false }, Open: { type: 'object' }, ExplicitlyOpen: { type: 'object', additionalProperties: true } } }, paths: {} }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Strict: { type: 'object', additionalProperties: false }, Open: { type: 'object' }, ExplicitlyOpen: { type: 'object', additionalProperties: true }, Bounded: { type: 'object', properties: { value: { type: 'string' } }, minProperties: 1, maxProperties: 2 } } }, paths: {} }, { outputDir, insertComponents: true });
     expect(await readFile(join(outputDir, 'components', 'Strict', 'index.ts'), 'utf8')).toContain('.strict()');
     expect(await readFile(join(outputDir, 'components', 'Open', 'index.ts'), 'utf8')).toContain('.passthrough()');
     expect(await readFile(join(outputDir, 'components', 'ExplicitlyOpen', 'index.ts'), 'utf8')).toContain('.passthrough()');
+    const bounded = await readFile(join(outputDir, 'components', 'Bounded', 'index.ts'), 'utf8');
+    expect(bounded).toContain('.meta({ minProperties: 1 })');
+    expect(bounded).toContain('.meta({ maxProperties: 2 })');
   });
   it('preserves array component constraints', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -111,9 +114,16 @@ describe('API docs endpoint generation', () => {
   });
   it('renders tuple component schemas recursively', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Pair: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'integer', minimum: 5 }] } } }, paths: {} }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: {
+      Pair: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'integer', minimum: 5 }], items: false, minItems: 2 },
+      Flexible: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }], minItems: 1, maxItems: 3 },
+    } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Pair', 'index.ts'), 'utf8');
     expect(content).toContain('z.tuple([z.string(), z.number().int().min(5)])');
+    const flexible = await readFile(join(outputDir, 'components', 'Flexible', 'index.ts'), 'utf8');
+    expect(flexible).toContain('z.tuple([z.string(), z.number().optional()]).rest(z.unknown())');
+    expect(flexible).toContain('.refine((items) => items.length <= 3)');
+    expect(flexible).toContain('"prefixItems"');
   });
   it('renders tuple rest schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

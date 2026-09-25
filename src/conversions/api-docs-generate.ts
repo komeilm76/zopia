@@ -72,6 +72,12 @@ function exportName(operationId: string): string {
   if (['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield'].includes(name)) name = `${name}Endpoint`;
   return name;
 }
+function objectConstraints(expression: string, schema: Record<string, unknown>): string {
+  let constrained = expression;
+  if (typeof schema.minProperties === 'number') constrained += `.refine((value) => Object.keys(value).length >= ${schema.minProperties}).meta({ minProperties: ${schema.minProperties} })`;
+  if (typeof schema.maxProperties === 'number') constrained += `.refine((value) => Object.keys(value).length <= ${schema.maxProperties}).meta({ maxProperties: ${schema.maxProperties} })`;
+  return constrained;
+}
 function componentMetadata(expression: string, schema: unknown): string {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return expression;
   const object = schema as Record<string, unknown>;
@@ -123,13 +129,20 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     return choices.length === 0 ? 'z.never()' : choices.slice(1).reduce((left: string, right: string) => `z.intersection(${left}, ${right})`, choices[0]);
   }
   if (object?.type === 'array' && Array.isArray(object.prefixItems)) {
-    const items = object.prefixItems.map((item: unknown, index: number) => renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root));
-    const restSchema = object.items !== undefined && object.items !== false ? object.items : object.unevaluatedItems;
-    const rest = restSchema && typeof restSchema === 'object' ? `.rest(${renderNestedSchema(restSchema, `${name}Rest`, imports, stack, source, root)})` : '';
+    const minimum = typeof object.minItems === 'number' ? object.minItems : 0;
+    const items = object.prefixItems.map((item: unknown, index: number) => {
+      const rendered = renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root);
+      return index < minimum ? rendered : `${rendered}.optional()`;
+    });
+    const hasItems = Object.prototype.hasOwnProperty.call(object, 'items');
+    const restSchema = hasItems ? object.items : object.unevaluatedItems;
+    const allowsRest = restSchema !== false;
+    const rest = allowsRest ? `.rest(${restSchema && typeof restSchema === 'object' ? renderNestedSchema(restSchema, `${name}Rest`, imports, stack, source, root) : 'z.unknown()'})` : '';
     let expression = `z.tuple([${items.join(', ')}])${rest}`;
-    if (typeof object.minItems === 'number') expression += `.refine((items) => items.length >= ${object.minItems})`;
+    if (minimum > object.prefixItems.length) expression += `.refine((items) => items.length >= ${minimum})`;
     if (typeof object.maxItems === 'number') expression += `.refine((items) => items.length <= ${object.maxItems})`;
-    return expression;
+    const metadata = Object.fromEntries(['prefixItems', 'items', 'minItems', 'maxItems', 'unevaluatedItems'].filter((key) => Object.prototype.hasOwnProperty.call(object, key)).map((key) => [key, object[key]]));
+    return `${expression}.meta(${JSON.stringify(metadata)})`;
   }
   if (object?.type === 'array' && object.items !== undefined) {
     let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
@@ -143,7 +156,7 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     const fields = Object.entries(object.properties).map(([key, child]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(child, `${name}${key}`, imports, stack, source, root)}${required.has(key) ? '' : '.optional()'}`);
     const additionalValue = object.additionalProperties;
     const additional = additionalValue && typeof additionalValue === 'object' ? `.catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, stack, source, root)})` : additionalValue === false ? '.strict()' : additionalValue === undefined || additionalValue === true ? '.passthrough()' : '';
-    return `z.object({ ${fields.join(', ')} })${additional}`;
+    return objectConstraints(`z.object({ ${fields.join(', ')} })${additional}`, object);
   }
   return schemaCode(value, name);
 }
@@ -167,7 +180,7 @@ function renderComponent(name: string, schema: unknown, source: OpenApiDocument)
     const additionalValue = (schema as any).additionalProperties;
     const additional = additionalValue && typeof additionalValue === 'object' ? ` .catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, new Set([name]), source, name)})` : additionalValue === false ? ' .strict()' : additionalValue === undefined || additionalValue === true ? ' .passthrough()' : '';
     const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
-    const expression = componentMetadata(imports.has(componentName) ? `z.lazy(() => z.object({ ${fields} })${additional})` : `z.object({ ${fields} })${additional}`, schema);
+    const expression = componentMetadata(objectConstraints(imports.has(componentName) ? `z.lazy(() => z.object({ ${fields} })${additional})` : `z.object({ ${fields} })${additional}`, schema as Record<string, unknown>), schema);
     return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\nexport const ${componentName} = ${expression};\n\nexport default ${componentName};\n`;
   }
   const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
