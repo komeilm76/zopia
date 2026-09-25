@@ -81,9 +81,9 @@ describe('API docs endpoint generation', () => {
   });
   it('renders tuple component schemas recursively', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Pair: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'integer' }] } } }, paths: {} }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Pair: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'integer', minimum: 5 }] } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Pair', 'index.ts'), 'utf8');
-    expect(content).toContain('z.tuple([z.string(), z.number().int()])');
+    expect(content).toContain('z.tuple([z.string(), z.number().int().min(5)])');
   });
   it('renders tuple rest schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
