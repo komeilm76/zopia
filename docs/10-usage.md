@@ -101,7 +101,12 @@ zopia reverse  <manifest.json> [--out openapi.json] # ④ manifest → OpenAPI
 | 🚩 Command | 📝 What it does | 💡 Example |
 | --- | --- | --- |
 | `zopia generate` | generates the endpoint tree and manifest | `zopia generate swagger.json api_docs` |
-| `zopia reverse` | writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
+| `zopia reverse` | imports the manifest's endpoint modules, then writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
+
+> ⚠️ `zopia reverse` executes the TypeScript modules referenced by `apis[].file`.
+> Reverse only trusted generated trees. File paths are restricted to the manifest
+> directory (including after symlink resolution), while edited runtime km-api
+> routing and metadata take precedence over their manifest snapshots.
 
 Exit codes: `0` success · `1` user error (bad input/options — message on
 stderr, hint included) · `2` internal error (should never happen — report it).

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 describe('manifest reverse conversion', () => {
   it('reconstructs the document frame and lossless operations', () => {
@@ -34,6 +34,59 @@ describe('manifest reverse conversion', () => {
     const file = join(directory, 'manifest.json');
     await import('node:fs/promises').then(({ writeFile }) => writeFile(file, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, apis: [] }), 'utf8'));
     expect((await manifestFileToOpenApi(file) as any).openapi).toBe('3.1.0');
+  });
+  it('imports generated endpoint modules and uses edited runtime metadata', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Runtime', version: '1' }, paths: { '/users': { get: { operationId: 'listUsers', summary: 'Original summary', description: 'Original description', tags: ['users'], deprecated: true, security: [], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'string' } } } } } } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'users', 'get', 'index.ts');
+    const generated = await readFile(endpointFile, 'utf8');
+    const edited = generated
+      .replace('method: "GET"', 'method: "POST"')
+      .replace('pathShape: "/users"', 'pathShape: "/members/:memberId"')
+      .replace('operationId: "listUsers"', 'operationId: "listMembers"')
+      .replace('summary: "Original summary"', 'summary: "Edited summary"')
+      .replace('description: "Original description"', 'description: "Edited description"')
+      .replace('tags: ["#users"]', 'tags: ["#members", "public"]')
+      .replace("deprecated: 'YES'", "deprecated: 'NO'");
+    await writeFile(endpointFile, edited, 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.paths['/users']).toBeUndefined();
+    const operation = reversed.paths['/members/{memberId}'].post;
+    expect(operation.operationId).toBe('listMembers');
+    expect(operation.summary).toBe('Edited summary');
+    expect(operation.description).toBe('Edited description');
+    expect(operation.tags).toEqual(['members', 'public']);
+    expect(operation.deprecated).toBe(false);
+    expect(operation.security).toEqual([]);
+    expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
+  });
+  it('rejects missing, unsafe, and invalid generated endpoint modules', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
+    const manifestFile = join(directory, '.zopia-manifest.json');
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/x', method: 'get' }] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Manifest API file is required');
+
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: 'missing.ts', path: '/x', method: 'get' }] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unable to resolve generated endpoint file missing.ts');
+
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: join(directory, 'absolute.ts'), path: '/x', method: 'get' }] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unsafe manifest API file');
+
+    const outsideDirectory = await mkdtemp(join(tmpdir(), 'zopia-outside-'));
+    const outsideFile = join(outsideDirectory, 'outside.ts');
+    await writeFile(outsideFile, 'export default {};\n', 'utf8');
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: relative(directory, outsideFile), path: '/x', method: 'get' }] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unsafe manifest API file');
+
+    await symlink(outsideFile, join(directory, 'linked.ts'));
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: 'linked.ts', path: '/x', method: 'get' }] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unsafe manifest API file');
+
+    await writeFile(join(directory, 'invalid.ts'), 'export default {};\n', 'utf8');
+    await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: 'invalid.ts', path: '/x', method: 'get' }] }), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('does not export a unique km-api config');
   });
   it('round-trips reusable OpenAPI and Swagger component sections', async () => {
     const openApiDir = await mkdtemp(join(tmpdir(), 'zopia-'));

@@ -330,11 +330,11 @@ interface ZopiaManifest {
   $schema: 'zopia:manifest@1';
   source: { kind: string; title: string; version: string };
   components?: Array<{ name: string; schema: unknown }>;
-  apis: Array<{ path: string; method: string; sourceOperation?: Record<string, unknown> }>;
+  apis: Array<{ file: string; path: string; method: string; sourceOperation?: Record<string, unknown> }>;
 }
 ```
 
-The current implementation reconstructs from the manifest's preserved source operations; runtime endpoint-file imports and schema re-serialization are follow-up work.
+`manifestFileToOpenApi()` imports each trusted `apis[].file` relative to the manifest and lets runtime km-api metadata (method, path, operation ID, summary, description, tags, and deprecation) override the preserved source operation. `manifestToOpenApi()` remains the synchronous snapshot-only API for already-loaded manifests. Request/response Zod schema re-serialization is still follow-up work.
 
 | # | Step | Rules |
 | --- | --- | --- |
