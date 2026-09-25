@@ -17,6 +17,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
   const isSchema = (value: unknown): value is JsonSchema => typeof value === 'boolean' || (value !== null && typeof value === 'object' && !Array.isArray(value));
   const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
   const isNonNegativeInteger = (value: unknown): value is number => isFiniteNumber(value) && Number.isInteger(value) && value >= 0;
+  const canonicalJson = (value: unknown): string | undefined => {
+    try { return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item); }
+    catch { return undefined; }
+  };
   let source: JsonSchema;
   try { source = (typeof input === 'string' ? JSON.parse(input) : input) as JsonSchema; }
   catch (error) { throw new TypeError(`Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`); }
@@ -62,32 +66,63 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       if (variants.length === 1) return variants[0];
       return { schema: z.union(variants.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${variants.map((item: { code: string }) => item.code).join(', ')}])` };
     }
+    const withSiblings = (keyword: string, constrained: { schema: z.ZodType; code: string }): { schema: z.ZodType; code: string } => {
+      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => key !== keyword));
+      if (Object.keys(siblings).length === 0) return constrained;
+      const sibling = convert(siblings, resolving);
+      return { schema: (sibling.schema as any).and(constrained.schema), code: `${sibling.code}.and(${constrained.code})` };
+    };
+    const literalSchema = (value: unknown, keyword: 'enum' | 'const'): { schema: z.ZodType; code: string } | undefined => {
+      if (value === null || typeof value === 'string' || typeof value === 'boolean' || isFiniteNumber(value)) return { schema: z.literal(value as any), code: `z.literal(${JSON.stringify(value)})` };
+      if (value && typeof value === 'object') {
+        const canonical = canonicalJson(value);
+        if (canonical !== undefined) return {
+          schema: z.any().refine((candidate) => canonicalJson(candidate) === canonical),
+          code: `z.any().refine((value) => { try { return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item) === ${JSON.stringify(canonical)}; } catch { return false; } })`,
+        };
+      }
+      warnings.push(`Invalid ${keyword} value: expected a JSON value`);
+      return undefined;
+    };
     if ('oneOf' in node || 'anyOf' in node) {
       const key = 'oneOf' in node ? 'oneOf' : 'anyOf';
-      if (!Array.isArray(node[key])) { warnings.push(`Invalid ${key}: expected an array`); return { schema: z.any(), code: 'z.any()' }; }
+      if (!Array.isArray(node[key])) { warnings.push(`Invalid ${key}: expected an array`); return withSiblings(key, { schema: z.any(), code: 'z.any()' }); }
       if (key === 'oneOf') warnings.push('oneOf is approximated by z.union and does not enforce exclusivity');
       const items = node[key].map((child: JsonSchema) => convert(child, resolving));
-      if (items.length === 0) return { schema: z.never(), code: 'z.never()' };
-      if (items.length === 1) return items[0];
-      return { schema: z.union(items.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${items.map((item: { code: string }) => item.code).join(', ')}])` };
+      const combined = items.length === 0
+        ? { schema: z.never(), code: 'z.never()' }
+        : items.length === 1
+          ? items[0]
+          : { schema: z.union(items.map((item: { schema: z.ZodType }) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${items.map((item: { code: string }) => item.code).join(', ')}])` };
+      return withSiblings(key, combined);
     }
     if ('allOf' in node) {
-      if (!Array.isArray(node.allOf)) { warnings.push('Invalid allOf: expected an array'); return { schema: z.any(), code: 'z.any()' }; }
+      if (!Array.isArray(node.allOf)) { warnings.push('Invalid allOf: expected an array'); return withSiblings('allOf', { schema: z.any(), code: 'z.any()' }); }
       const items = node.allOf.map((child: JsonSchema) => convert(child, resolving));
-      if (items.length === 0) return { schema: z.any(), code: 'z.any()' };
-      const schema = items.slice(1).reduce((acc: any, item: { schema: z.ZodType }) => acc.and(item.schema), items[0].schema as any);
-      return { schema, code: items.slice(1).reduce((code: string, item: { code: string }) => `${code}.and(${item.code})`, items[0].code) };
+      const combined = items.length === 0
+        ? { schema: z.any(), code: 'z.any()' }
+        : { schema: items.slice(1).reduce((acc: any, item: { schema: z.ZodType }) => acc.and(item.schema), items[0].schema as any), code: items.slice(1).reduce((code: string, item: { code: string }) => `${code}.and(${item.code})`, items[0].code) };
+      return withSiblings('allOf', combined);
     }
     if ('enum' in node) {
-      if (!Array.isArray(node.enum)) { warnings.push('Invalid enum: expected an array'); return { schema: z.any(), code: 'z.any()' }; }
-      if (node.enum.length === 0) return { schema: z.never(), code: 'z.never()' };
-      if (node.enum.every((v: unknown) => typeof v === 'string')) return { schema: z.enum(node.enum as [string, ...string[]]), code: `z.enum(${JSON.stringify(node.enum)})` };
-      const values = node.enum.map((v: unknown) => JSON.stringify(v)).join(', ');
-      const literals = node.enum.map((v: unknown) => z.literal(v as any));
-      if (literals.length === 1) return { schema: literals[0], code: `z.literal(${values})` };
-      return { schema: z.union(literals as unknown as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${node.enum.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])` };
+      if (!Array.isArray(node.enum)) { warnings.push('Invalid enum: expected an array'); return withSiblings('enum', { schema: z.any(), code: 'z.any()' }); }
+      let combined: { schema: z.ZodType; code: string };
+      if (node.enum.length === 0) combined = { schema: z.never(), code: 'z.never()' };
+      else if (node.enum.every((value: unknown) => typeof value === 'string')) combined = { schema: z.enum(node.enum as [string, ...string[]]), code: `z.enum(${JSON.stringify(node.enum)})` };
+      else {
+        const literals = node.enum.map((value: unknown) => literalSchema(value, 'enum')).filter((item: { schema: z.ZodType; code: string } | undefined): item is { schema: z.ZodType; code: string } => item !== undefined);
+        combined = literals.length === 0
+          ? { schema: z.never(), code: 'z.never()' }
+          : literals.length === 1
+            ? literals[0]
+            : { schema: z.union(literals.map((item) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${literals.map((item) => item.code).join(', ')}])` };
+      }
+      return withSiblings('enum', combined);
     }
-    if ('const' in node) return { schema: z.literal(node.const), code: `z.literal(${JSON.stringify(node.const)})` };
+    if ('const' in node) {
+      const literal = literalSchema(node.const, 'const') ?? { schema: z.any(), code: 'z.any()' };
+      return withSiblings('const', literal);
+    }
     let result: { schema: z.ZodType; code: string };
     switch (node.type) {
       case 'object': {

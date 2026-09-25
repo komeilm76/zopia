@@ -163,6 +163,23 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
   });
+  it('supports structured enum and const values by JSON equality', () => {
+    const objectEnum = jsonSchemaToZod({ enum: [{ nested: { a: 1, b: 2 } }] });
+    expect(objectEnum.schema.safeParse({ nested: { b: 2, a: 1 } }).success).toBe(true);
+    expect(objectEnum.schema.safeParse({ nested: { a: 2, b: 1 } }).success).toBe(false);
+    const arrayConst = jsonSchemaToZod({ const: [1, 2] });
+    expect(arrayConst.schema.safeParse([1, 2]).success).toBe(true);
+    expect(arrayConst.schema.safeParse([2, 1]).success).toBe(false);
+    expect(() => new Function('z', objectEnum.code)).not.toThrow();
+    expect(() => new Function('z', arrayConst.code)).not.toThrow();
+  });
+  it('preserves sibling constraints around enums, constants, and combinators', () => {
+    expect(jsonSchemaToZod({ type: 'string', minLength: 3, enum: ['a', 'abc'] }).schema.safeParse('a').success).toBe(false);
+    expect(jsonSchemaToZod({ type: 'string', minLength: 3, const: 'a' }).schema.safeParse('a').success).toBe(false);
+    expect(jsonSchemaToZod({ type: 'string', minLength: 3, anyOf: [{ type: 'string', pattern: '^a' }] }).schema.safeParse('a').success).toBe(false);
+    expect(jsonSchemaToZod({ type: 'string', minLength: 3, allOf: [{ type: 'string', pattern: '^a' }] }).schema.safeParse('a').success).toBe(false);
+    expect(jsonSchemaToZod({ type: 'number', minimum: 10, oneOf: [{ type: 'number' }] }).schema.safeParse(5).success).toBe(false);
+  });
   it('warns when oneOf exclusivity is approximated', () => {
     const result = jsonSchemaToZod({ oneOf: [{ type: 'string' }, { type: 'number' }] });
     expect(result.warnings).toContain('oneOf is approximated by z.union and does not enforce exclusivity');
