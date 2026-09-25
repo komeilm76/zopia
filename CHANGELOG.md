@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 Manifest reverse conversion now preserves non-schema OpenAPI component sections and reusable Swagger parameter and response definitions.
 - 🔒 Generated component and parameter Zod shapes now use computed property keys, while example metadata is reconstructed with `JSON.parse`, preserving `__proto__` as ordinary data at runtime.
 - 🔒 Endpoint generation now preserves prototype-like request example names without mutating the examples object's prototype or dropping metadata.
 - 🔒 Endpoint generation now escapes line terminators in source metadata comments, preventing malformed or injected generated TypeScript.

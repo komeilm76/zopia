@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
+export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
 
 /** Reconstruct an OpenAPI document from a lossless zopia manifest. */
 /** Read a manifest JSON file and reconstruct its OpenAPI document. */
@@ -18,6 +18,10 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
   if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new TypeError('Invalid manifest source title or version');
   if (manifest.infoOverlay !== undefined && !isRecord(manifest.infoOverlay)) throw new TypeError('Invalid manifest infoOverlay');
   if (manifest.documentOverlay !== undefined && !isRecord(manifest.documentOverlay)) throw new TypeError('Invalid manifest documentOverlay');
+  if (manifest.componentsOverlay !== undefined && !isRecord(manifest.componentsOverlay)) throw new TypeError('Invalid manifest componentsOverlay');
+  if (manifest.swaggerParameters !== undefined && !isRecord(manifest.swaggerParameters)) throw new TypeError('Invalid manifest swaggerParameters');
+  if (manifest.swaggerResponses !== undefined && !isRecord(manifest.swaggerResponses)) throw new TypeError('Invalid manifest swaggerResponses');
+  if (manifest.componentsOverlay && ('schemas' in manifest.componentsOverlay || 'securitySchemes' in manifest.componentsOverlay)) throw new TypeError('Invalid manifest componentsOverlay: schemas and securitySchemes are reserved');
   const reservedInfoKeys = new Set(['title', 'version', 'description']);
   const invalidInfoKey = Object.keys(manifest.infoOverlay ?? {}).find((key) => reservedInfoKeys.has(key));
   if (invalidInfoKey) throw new TypeError(`Invalid manifest infoOverlay key: ${invalidInfoKey}`);
@@ -35,11 +39,13 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
   if (manifest.documentOverlay) assignOverlay(document, manifest.documentOverlay);
   if (manifest.servers?.length && !isSwagger) document.servers = manifest.servers;
   if (manifest.servers?.length && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
-  if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes?.length) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces?.length) document.produces = manifest.swaggerProduces; }
+  if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes?.length) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces?.length) document.produces = manifest.swaggerProduces; if (manifest.swaggerParameters) document.parameters = manifest.swaggerParameters; if (manifest.swaggerResponses) document.responses = manifest.swaggerResponses; }
+  else if (manifest.componentsOverlay && Object.keys(manifest.componentsOverlay).length) document.components = { ...manifest.componentsOverlay };
   if (manifest.tags?.length) document.tags = manifest.tags;
   if (manifest.securitySchemes) {
+    if (!isRecord(manifest.securitySchemes)) throw new TypeError('Invalid manifest securitySchemes');
     if (isSwagger) document.securityDefinitions = manifest.securitySchemes;
-    else document.components = { securitySchemes: manifest.securitySchemes };
+    else document.components = { ...(document.components ?? {}), securitySchemes: manifest.securitySchemes };
   }
   if (manifest.defaultSecurity !== undefined) document.security = manifest.defaultSecurity;
   const schemas = Object.fromEntries((manifest.components ?? []).map((component) => [component.name, component.schema]));

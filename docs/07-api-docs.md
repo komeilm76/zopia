@@ -286,6 +286,8 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `source` | 🏷️ rebuild `info`; verify the tree matches the spec it claims to come from |
 | `servers`, `tags`, `securitySchemes` | 🌍🏷️🔐 document frame that has no home in Zod (R-656/R-657) |
 | `components[].schema` | 🧱 the **full** component JSON Schema — restored verbatim into `components.schemas` (R-655/R-751) |
+| `componentsOverlay` | 🧰 non-schema OpenAPI component sections such as reusable parameters, responses, headers, examples, links, callbacks, and path items |
+| `swaggerParameters`, `swaggerResponses` | 🧰 Swagger 2.0 reusable parameter and response definitions, restored at the document root |
 | `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, the imported file wins over `schema` (developer edits) |
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — the single source of truth for engine ④ |
 | `defaultSecurity` | 🔐 the spec-level `security` requirement list, verbatim — applies to every operation unless the operation declares its own `security`; key absent ⇔ the source had no global `security` |
