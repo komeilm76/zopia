@@ -65,7 +65,7 @@ describe('manifest reverse conversion', () => {
   });
   it('imports emitted component modules and uses edited Zod schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Components', version: '1' }, components: { schemas: { User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, Group: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } }, required: ['owner'] }, UserAlias: { $ref: '#/components/schemas/User' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Components', version: '1' }, components: { schemas: { User: { type: 'object', title: 'User', description: 'A user', properties: { id: { type: 'string' } }, required: ['id'] }, Group: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } }, required: ['owner'] }, UserAlias: { $ref: '#/components/schemas/User' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const manifestFile = join(outputDir, '.zopia-manifest.json');
     const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
     expect((manifestToOpenApi(manifest) as any).components.schemas.User.properties.id.type).toBe('string');
@@ -79,6 +79,7 @@ describe('manifest reverse conversion', () => {
     expect(reversed.components.schemas.User.properties.id).toMatchObject({ type: 'integer', minimum: 1 });
     expect(reversed.components.schemas.User.properties.active).toEqual({ type: 'boolean' });
     expect(reversed.components.schemas.User.required).toEqual(['id', 'active']);
+    expect(reversed.components.schemas.User).toMatchObject({ title: 'User', description: 'A user' });
     expect(reversed.components.schemas.Group.properties.owner).toEqual({ $ref: '#/components/schemas/User' });
     expect(reversed.components.schemas.UserAlias).toEqual({ $ref: '#/components/schemas/User' });
     expect(reversed.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
@@ -86,6 +87,29 @@ describe('manifest reverse conversion', () => {
     await writeFile(componentFile, (await readFile(componentFile, 'utf8')).replace('.min(1)', '.min(2)'), 'utf8');
     const rereversed = await manifestFileToOpenApi(manifestFile) as any;
     expect(rereversed.components.schemas.User.properties.id.minimum).toBe(2);
+  });
+  it('imports nested cyclic component graphs without eager initialization failures', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Cycles', version: '1' }, components: { schemas: {
+      Left: { type: 'object', properties: { nested: { type: 'object', properties: { right: { $ref: '#/components/schemas/Right' } }, required: ['right'] } }, required: ['nested'] },
+      Right: { type: 'object', properties: { nested: { type: 'object', properties: { left: { $ref: '#/components/schemas/Left' } }, required: ['left'] } }, required: ['nested'] },
+    } }, paths: {} }, { outputDir, insertComponents: true });
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.components.schemas.Left.properties.nested.properties.right).toEqual({ $ref: '#/components/schemas/Right' });
+    expect(reversed.components.schemas.Right.properties.nested.properties.left).toEqual({ $ref: '#/components/schemas/Left' });
+  });
+  it('preserves unique array semantics through imported component schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Unique', version: '1' }, components: { schemas: {
+      Tags: { type: 'array', title: 'Tags', description: 'Unique tags', items: { type: 'string' }, uniqueItems: true },
+      Constants: { type: 'object', properties: { coordinates: { const: [1, 2] }, choice: { enum: [{ kind: 'a' }, { kind: 'b' }] } }, required: ['coordinates', 'choice'] },
+    } }, paths: {} }, { outputDir, insertComponents: true });
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.components.schemas.Tags).toMatchObject({ type: 'array', title: 'Tags', description: 'Unique tags', items: { type: 'string' }, uniqueItems: true });
+    expect(reversed.components.schemas.Constants.properties.coordinates.const).toEqual([1, 2]);
+    expect(reversed.components.schemas.Constants.properties.choice.enum).toEqual([{ kind: 'a' }, { kind: 'b' }]);
   });
   it('converts imported components to the source Swagger dialect', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

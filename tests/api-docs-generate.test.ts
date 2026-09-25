@@ -39,7 +39,7 @@ describe('API docs endpoint generation', () => {
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Group: { type: 'object', properties: { profile: { type: 'object', properties: { users: { type: 'array', items: { $ref: '#/components/schemas/User' } } } } } } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Group', 'index.ts'), 'utf8');
     expect(content).toContain('z.array(UserSchema)');
-    expect(content).toContain('z.object({');
+    expect(content).toContain('z.object({ ["users"]: z.array(UserSchema).optional() }).passthrough()');
   });
   it('renders nested composition references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -58,16 +58,20 @@ describe('API docs endpoint generation', () => {
   });
   it('renders nested enum, const, and nullable schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Profile: { type: 'object', properties: { role: { enum: ['admin', 'user'] }, active: { const: true }, nickname: { type: 'string', nullable: true } } } } }, paths: {} }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Profile: { type: 'object', properties: { role: { enum: ['admin', 'user'] }, active: { const: true }, coordinates: { const: [1, 2] }, choices: { enum: [{ kind: 'a' }, { kind: 'b' }] }, nickname: { type: 'string', nullable: true } } } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Profile', 'index.ts'), 'utf8');
     expect(content).toContain('z.enum(["admin","user"])');
     expect(content).toContain('z.literal(true)');
+    expect(content).not.toContain('z.literal([1,2])');
+    expect(content).toContain('.meta({ const: [1,2] })');
+    expect(content).toContain('.meta({ enum: [{"kind":"a"},{"kind":"b"}] })');
     expect(content).toContain('z.nullable(z.string())');
   });
   it('renders additional property component references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Directory: { type: 'object', additionalProperties: { $ref: '#/components/schemas/User' } } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Directory', 'index.ts'), 'utf8');
+    expect(content).toContain('import { UserSchema } from "../User/index";');
     expect(content).toContain('.catchall(UserSchema)');
   });
   it('uses lazy references for mutual component cycles', async () => {
@@ -78,18 +82,32 @@ describe('API docs endpoint generation', () => {
     expect(user).toContain('z.lazy(() => OrganizationSchema)');
     expect(organization).toContain('z.lazy(() => UserSchema)');
   });
+  it('keeps mutual component cycles lazy through nested object properties', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: {
+      Left: { type: 'object', properties: { nested: { type: 'object', properties: { right: { $ref: '#/components/schemas/Right' } } } } },
+      Right: { type: 'object', properties: { nested: { type: 'object', properties: { left: { $ref: '#/components/schemas/Left' } } } } },
+    } }, paths: {} }, { outputDir, insertComponents: true });
+    const left = await readFile(join(outputDir, 'components', 'Left', 'index.ts'), 'utf8');
+    const right = await readFile(join(outputDir, 'components', 'Right', 'index.ts'), 'utf8');
+    expect(left).toContain('z.lazy(() => RightSchema)');
+    expect(right).toContain('z.lazy(() => LeftSchema)');
+  });
   it('preserves object additional property behavior', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Strict: { type: 'object', additionalProperties: false }, Open: { type: 'object' } } }, paths: {} }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Strict: { type: 'object', additionalProperties: false }, Open: { type: 'object' }, ExplicitlyOpen: { type: 'object', additionalProperties: true } } }, paths: {} }, { outputDir, insertComponents: true });
     expect(await readFile(join(outputDir, 'components', 'Strict', 'index.ts'), 'utf8')).toContain('.strict()');
     expect(await readFile(join(outputDir, 'components', 'Open', 'index.ts'), 'utf8')).toContain('.passthrough()');
+    expect(await readFile(join(outputDir, 'components', 'ExplicitlyOpen', 'index.ts'), 'utf8')).toContain('.passthrough()');
   });
   it('preserves array component constraints', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Tags: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3, uniqueItems: true } } }, paths: {} }, { outputDir, insertComponents: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Tags: { type: 'array', title: 'Tags', description: 'Unique tags', items: { type: 'string' }, minItems: 1, maxItems: 3, uniqueItems: true } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Tags', 'index.ts'), 'utf8');
     expect(content).toContain('z.array(z.string()).min(1).max(3)');
     expect(content).toContain('new Set(items.map');
+    expect(content).toContain('.meta({ uniqueItems: true })');
+    expect(content).toContain('.meta({"title":"Tags","description":"Unique tags"})');
   });
   it('renders tuple component schemas recursively', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

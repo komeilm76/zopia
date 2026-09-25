@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 Generated component schemas now import `additionalProperties` references, keep deeply nested cycles lazy, preserve open-object behavior and annotations, and round-trip unique arrays plus structured `const`/`enum` values.
+- 🐛 OpenAPI 3.1 Zod conversion now emits JSON Schema 2020-12 shapes instead of falling through to legacy tuple forms.
 - 🧱 File-based reverse conversion now securely imports emitted component modules, converts edited Zod schemas to the source API dialect, and preserves references between imported components.
 - 🐛 Generated component modules and their barrel now contain real newlines, keeping the emitted TypeScript executable at runtime.
 - 🔄 File-based reverse conversion now securely imports generated endpoint TypeScript modules and lets edited km-api method, path, operation ID, summary, description, tags, and deprecation metadata override manifest snapshots.

@@ -72,6 +72,14 @@ function exportName(operationId: string): string {
   if (['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield'].includes(name)) name = `${name}Endpoint`;
   return name;
 }
+function componentMetadata(expression: string, schema: unknown): string {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return expression;
+  const object = schema as Record<string, unknown>;
+  const metadata: Record<string, unknown> = {};
+  for (const key of ['title', 'description', 'examples'] as const) if (Object.prototype.hasOwnProperty.call(object, key)) metadata[key] = object[key];
+  if (!Object.prototype.hasOwnProperty.call(metadata, 'examples') && Object.prototype.hasOwnProperty.call(object, 'example')) metadata.examples = [object.example];
+  return Object.keys(metadata).length ? `${expression}.meta(${JSON.stringify(metadata)})` : expression;
+}
 function componentReaches(source: OpenApiDocument, from: string, target: string, seen = new Set<string>()): boolean {
   if (from === target) return true;
   if (seen.has(from)) return false;
@@ -86,10 +94,15 @@ function componentReaches(source: OpenApiDocument, from: string, target: string,
 }
 function renderNestedSchema(value: unknown, name: string, imports: Map<string, string>, stack = new Set<string>(), source?: OpenApiDocument, root?: string): string {
   const object = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : undefined;
-  if (object?.const !== undefined) return `z.literal(${JSON.stringify(object.const)})`;
+  if (object?.const !== undefined) {
+    const value = object.const;
+    return value === null || ['string', 'number', 'boolean'].includes(typeof value) ? `z.literal(${JSON.stringify(value)})` : `${schemaCode(object, name)}.meta({ const: ${JSON.stringify(value)} })`;
+  }
   if (Array.isArray(object?.enum)) {
     const values = object.enum;
-    return values.every((value: unknown) => typeof value === 'string') ? `z.enum(${JSON.stringify(values)})` : `z.union([${values.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])`;
+    if (values.every((value: unknown) => typeof value === 'string')) return `z.enum(${JSON.stringify(values)})`;
+    if (values.every((value: unknown) => value === null || ['string', 'number', 'boolean'].includes(typeof value))) return `z.union([${values.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])`;
+    return `${schemaCode(object, name)}.meta({ enum: ${JSON.stringify(values)} })`;
   }
   if (object?.nullable === true) {
     const withoutNullable = { ...object }; delete withoutNullable.nullable;
@@ -122,13 +135,15 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
     if (typeof object.minItems === 'number') expression += `.min(${object.minItems})`;
     if (typeof object.maxItems === 'number') expression += `.max(${object.maxItems})`;
-    if (object.uniqueItems === true) expression += `.refine((items) => new Set(items.map((item) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value))).size === items.length)`;
+    if (object.uniqueItems === true) expression += `.refine((items) => new Set(items.map((item) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value))).size === items.length).meta({ uniqueItems: true })`;
     return expression;
   }
   if (object?.type === 'object' && object.properties && typeof object.properties === 'object') {
     const required = new Set(Array.isArray(object.required) ? object.required : []);
-    const fields = Object.entries(object.properties).map(([key, child]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(child, `${name}${key}`, imports, stack)}${required.has(key) ? '' : '.optional()'}`);
-    return `z.object({ ${fields.join(', ')} })`;
+    const fields = Object.entries(object.properties).map(([key, child]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(child, `${name}${key}`, imports, stack, source, root)}${required.has(key) ? '' : '.optional()'}`);
+    const additionalValue = object.additionalProperties;
+    const additional = additionalValue && typeof additionalValue === 'object' ? `.catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, stack, source, root)})` : additionalValue === false ? '.strict()' : additionalValue === undefined || additionalValue === true ? '.passthrough()' : '';
+    return `z.object({ ${fields.join(', ')} })${additional}`;
   }
   return schemaCode(value, name);
 }
@@ -140,7 +155,7 @@ function renderComponent(name: string, schema: unknown, source: OpenApiDocument)
   if (directRef === componentName) return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n\nexport const ${componentName} = z.lazy(() => ${componentName});\n\nexport default ${componentName};\n`;
   if (schema && typeof schema === 'object' && !Array.isArray(schema) && (schema as any).type === 'array') {
     const imports = new Map<string, string>();
-    const expression = renderNestedSchema(schema, name, imports, new Set([name]), source, name);
+    const expression = componentMetadata(renderNestedSchema(schema, name, imports, new Set([name]), source, name), schema);
     const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
     return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\nexport const ${componentName} = ${expression};\n\nexport default ${componentName};\n`;
   }
@@ -149,10 +164,10 @@ function renderComponent(name: string, schema: unknown, source: OpenApiDocument)
     const imports = new Map<string, string>();
     const required = new Set(Array.isArray((schema as any).required) ? (schema as any).required : []);
     const fields = Object.entries(properties).map(([key, value]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(value, `${name}${key}`, imports, new Set([name]), source, name)}${required.has(key) ? '' : '.optional()'}`).join(', ');
-    const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
     const additionalValue = (schema as any).additionalProperties;
-    const additional = additionalValue && typeof additionalValue === 'object' ? ` .catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports)})` : additionalValue === false ? ' .strict()' : additionalValue === undefined ? ' .passthrough()' : '';
-    const expression = imports.has(componentName) ? `z.lazy(() => z.object({ ${fields} })${additional})` : `z.object({ ${fields} })${additional}`;
+    const additional = additionalValue && typeof additionalValue === 'object' ? ` .catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, new Set([name]), source, name)})` : additionalValue === false ? ' .strict()' : additionalValue === undefined || additionalValue === true ? ' .passthrough()' : '';
+    const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
+    const expression = componentMetadata(imports.has(componentName) ? `z.lazy(() => z.object({ ${fields} })${additional})` : `z.object({ ${fields} })${additional}`, schema);
     return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\nexport const ${componentName} = ${expression};\n\nexport default ${componentName};\n`;
   }
   const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
