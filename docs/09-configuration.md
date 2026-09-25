@@ -37,7 +37,7 @@ interface ZopiaGenerateOptions {
 | `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](07-api-docs.md) |
 | `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` |
 | `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact component schema references in endpoints and recursively renders nested component references; direct and mutual cycles use lazy schemas; **requires** `insertComponents: true` |
-| `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only |
+| `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
 
 ### ✅ Validation rules
 
@@ -54,6 +54,8 @@ interface ZopiaGenerateOptions {
 interface ZopiaReverseOptions {
   /** 🏷️ Spec version to emit. @default '3.1' (D-09) */
   version?: '3.0' | '3.1';
+  /** ⚠️ Receive every normalized reverse-conversion warning. */
+  onWarning?: (warning: ZopiaWarning) => void;
 }
 ```
 

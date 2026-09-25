@@ -493,11 +493,13 @@ export async function writeZopiaManifest(outputDir: string, manifest: ZopiaManif
   const temporary = `${file}.tmp`;
   const content = serializeZopiaManifest(manifest);
   await mkdir(root, { recursive: true });
+  let temporaryWritten = false;
   try {
-    await writeFile(temporary, content, 'utf8');
+    await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' });
+    temporaryWritten = true;
     await rename(temporary, file);
   } catch (error) {
-    await rm(temporary, { force: true }).catch(() => undefined);
+    if (temporaryWritten) await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
   return file;

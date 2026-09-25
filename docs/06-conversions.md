@@ -350,9 +350,13 @@ interface ZopiaGenerateResult {
 The public wrapper validates all options before filesystem access, reads file
 inputs, rejects missing/external references with stable `ZopiaError` codes,
 preflights every operation contract, and returns paths sorted independently of
-source document order. Re-generating a directory from a changed source emits
-`ZOPIA_WARN_STALE_TREE`; `manifest: false` omits both the manifest file and
-`manifestPath`.
+source document order. Before regeneration it compares the existing manifest's
+canonical source hash, layout, component options, and owned-file presence.
+Any drift (or an invalid manifest) emits one `ZOPIA_WARN_STALE_TREE`; after new
+files are written, obsolete files claimed by the previous valid manifest are
+pruned without touching custom files. Symlinked ancestors are rejected with
+`ZOPIA_FS_OUTSIDE_OUTDIR`. `manifest: false` removes a previous manifest and
+omits both the new manifest file and `manifestPath`.
 
 ---
 

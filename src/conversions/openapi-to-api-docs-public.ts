@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { ZopiaError } from '../errors';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { generateApiDocsFiles } from './api-docs-generate';
@@ -10,6 +9,7 @@ import { resolveOpenApiLocalRef } from './openapi-ref';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 import { jsonSchemaToZod, type JsonSchema } from './json-schema-to-zod';
 import { hashOpenApiDocument, ZOPIA_MANIFEST_FILE } from './manifest-writer';
+import { formatManifestStaleness, inspectZopiaManifestStaleness } from './manifest-staleness';
 
 /** Options for generating an api-docs tree from Swagger or OpenAPI. */
 export interface ZopiaGenerateOptions {
@@ -303,13 +303,21 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
     for (const operation of operations) extractOperationContracts(operation);
   } catch (error) { throw mapGenerationError(error); }
 
-  if (config.manifest) {
-    try {
-      const previous = JSON.parse(await readFile(join(config.outDir, ZOPIA_MANIFEST_FILE), 'utf8')) as any;
-      if (typeof previous?.source?.sha256 === 'string' && previous.source.sha256 !== hash) warnings.push({ code: 'ZOPIA_WARN_STALE_TREE', at: ZOPIA_MANIFEST_FILE, message: 'the existing generated tree came from a different input document and will be overwritten' });
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', 'unable to inspect the existing output manifest', { at: config.outDir, cause: error });
-    }
+  try {
+    const staleness = await inspectZopiaManifestStaleness(config.outDir, {
+      sourceSha256: hash,
+      mode: config.mode,
+      insertComponents: config.insertComponents,
+      useComponentAsReference: config.useComponentAsReference,
+      manifest: config.manifest,
+    });
+    if (staleness.status === 'stale') warnings.push({
+      code: 'ZOPIA_WARN_STALE_TREE',
+      at: ZOPIA_MANIFEST_FILE,
+      message: formatManifestStaleness(staleness.reasons),
+    });
+  } catch (error) {
+    throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', 'unable to inspect the existing output manifest', { at: config.outDir, cause: error });
   }
 
   let generated;
@@ -322,7 +330,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
       manifest: config.manifest,
     });
   } catch (error: any) {
-    if (error?.code === 'EACCES' || error?.code === 'EPERM' || error?.code === 'EROFS' || error?.code === 'ENOSPC') throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', `unable to write api-docs tree: ${error.message}`, { at: config.outDir, cause: error });
+    if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'EEXIST', 'EISDIR', 'ENOTDIR'].includes(String(error?.code))) throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', `unable to write api-docs tree: ${error.message}`, { at: config.outDir, cause: error });
     throw mapGenerationError(error);
   }
 

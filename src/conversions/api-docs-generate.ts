@@ -1,12 +1,14 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { lstat, mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { ZopiaError } from '../errors';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { extractOperationContracts } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
 import { planApiDocsFiles } from './api-docs-plan';
 import type { ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
-import { createZopiaManifest, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
+import { createZopiaManifest, hashOpenApiDocument, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
+import { inspectZopiaManifestStaleness, removeObsoleteManifestFiles } from './manifest-staleness';
 import { formatZopiaWarningComment } from '../warnings';
 import { decodeJsonPointerSegment, resolveOpenApiLocalRef } from './openapi-ref';
 
@@ -68,6 +70,46 @@ function generatedWarningComments(schema: unknown, name: string): string {
 }
 
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
+
+const isMissingPath = (error: unknown): boolean => Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'ENOENT');
+function outputPathError(file: string): ZopiaError {
+  return new ZopiaError('ZOPIA_FS_OUTSIDE_OUTDIR', `generated path is unsafe: ${file}`, { at: file, hint: 'remove symlinks or non-directory ancestors from the output tree' });
+}
+function isInside(root: string, candidate: string): boolean {
+  const fromRoot = relative(root, candidate);
+  return fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot);
+}
+async function writeGeneratedFile(root: string, file: string, content: string, previouslyOwned: ReadonlySet<string>): Promise<string> {
+  const absolutePath = resolve(root, ...file.split('/'));
+  if (!isInside(root, absolutePath) || absolutePath === root) throw outputPathError(file);
+  const parent = dirname(absolutePath);
+  const parentRelative = relative(root, parent);
+  let cursor = root;
+  for (const segment of parentRelative ? parentRelative.split(sep) : []) {
+    cursor = join(cursor, segment);
+    try {
+      const metadata = await lstat(cursor);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw outputPathError(file);
+    } catch (error) {
+      if (isMissingPath(error)) break;
+      throw error;
+    }
+  }
+  await mkdir(parent, { recursive: true });
+  try {
+    const metadata = await lstat(absolutePath);
+    if (metadata.isDirectory()) throw outputPathError(file);
+    if (metadata.isSymbolicLink()) {
+      if (!previouslyOwned.has(file)) throw outputPathError(file);
+      await rm(absolutePath, { force: true });
+    }
+  } catch (error) {
+    if (!isMissingPath(error)) throw error;
+  }
+  await writeFile(absolutePath, content, 'utf8');
+  return absolutePath;
+}
+
 function resolveObject(value: unknown, source: OpenApiDocument): any {
   let current = value; const seen = new Set<string>();
   while (current && typeof current === 'object' && !Array.isArray(current) && '$ref' in current) {
@@ -298,14 +340,27 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
   if (!options || typeof options.outputDir !== 'string' || !options.outputDir) throw new TypeError('outputDir is required');
   const source = typeof input === 'string' ? JSON.parse(input) : input;
   if (options.useComponentAsReference && !options.insertComponents) throw new TypeError('useComponentAsReference requires insertComponents');
-  const plans = planApiDocsFiles(source, options.mode ?? 'directory');
-  const manifest = options.manifest === false ? undefined : createZopiaManifest(source, plans, {
-    mode: options.mode ?? 'directory',
-    insertComponents: options.insertComponents === true,
-    useComponentAsReference: options.useComponentAsReference === true,
+  const mode = options.mode ?? 'directory';
+  const insertComponents = options.insertComponents === true;
+  const useComponentAsReference = options.useComponentAsReference === true;
+  const retainManifest = options.manifest !== false;
+  const plans = planApiDocsFiles(source, mode);
+  const previous = await inspectZopiaManifestStaleness(options.outputDir, {
+    sourceSha256: hashOpenApiDocument(source),
+    mode,
+    insertComponents,
+    useComponentAsReference,
+    manifest: retainManifest,
   });
-  const root = resolve(options.outputDir); const generated: GeneratedApiDocsFile[] = [];
-  if (options.insertComponents) {
+  const manifest = retainManifest ? createZopiaManifest(source, plans, {
+    mode,
+    insertComponents,
+    useComponentAsReference,
+  }) : undefined;
+  const root = resolve(options.outputDir);
+  const previouslyOwned = new Set(previous.ownedFiles);
+  const generated: GeneratedApiDocsFile[] = [];
+  if (insertComponents) {
     const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
     const names = Object.keys(schemas).sort();
     const componentExports = new Map<string, string>();
@@ -320,25 +375,23 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
       return { name, content: renderComponent(name, schemas[name], source) };
     });
     for (const { name, content } of renderedComponents) {
-      const file = `components/${name}/index.ts`; const absolutePath = join(root, file);
-      await mkdir(resolve(absolutePath, '..'), { recursive: true });
-      await writeFile(absolutePath, content, 'utf8');
+      const file = `components/${name}/index.ts`;
+      const absolutePath = await writeGeneratedFile(root, file, content, previouslyOwned);
       generated.push({ file, absolutePath, operationId: name });
     }
     const barrel = names.map((name) => `export { ${exportName(name)}Schema } from ${JSON.stringify(`./${name}/index`)};`).join('\n') + (names.length ? '\n' : '');
     const barrelFile = 'components/index.ts';
-    const barrelPath = join(root, barrelFile); await mkdir(resolve(barrelPath, '..'), { recursive: true }); await writeFile(barrelPath, barrel, 'utf8');
+    const barrelPath = await writeGeneratedFile(root, barrelFile, barrel, previouslyOwned);
     generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: 'components' });
   }
   for (const plan of plans) {
-    const absolutePath = join(root, plan.file);
-    await mkdir(resolve(absolutePath, '..'), { recursive: true });
-    await writeFile(absolutePath, renderEndpoint(plan, source, options.mode ?? 'directory', options.useComponentAsReference === true), 'utf8');
+    const absolutePath = await writeGeneratedFile(root, plan.file, renderEndpoint(plan, source, mode, useComponentAsReference), previouslyOwned);
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
   }
   if (manifest) {
     const manifestPath = await writeZopiaManifest(root, manifest);
     generated.push({ file: ZOPIA_MANIFEST_FILE, absolutePath: manifestPath, operationId: 'manifest' });
   }
+  await removeObsoleteManifestFiles(root, previous.ownedFiles, generated.map(({ file }) => file));
   return generated;
 }

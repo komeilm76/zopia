@@ -78,7 +78,7 @@ export function openApiToApiDocs(
 
 | # | Rule |
 | --- | --- |
-| R-151 | **outDir guard** (R-406) — canonicalize + prefix-check every path; unit-tested with traversal attempts |
+| R-151 | **outDir guard** (R-406) — canonicalize + prefix-check every path, reject symlinked generated ancestors, exclusively create manifest temporary files, and prune only paths owned by a validated prior manifest; unit-tested with traversal/symlink attempts |
 | R-152 | **Trusted-input contract (D-08)** — engine ④ imports generated `.ts`; the manifest is the trust marker. Documented loudly in [Usage](10-usage.md) and in the CLI help |
 | R-153 | **No secret handling** — zopia reads specs and writes docs; it never touches credentials, never sends data anywhere (no network at all) |
 | R-154 | **Predictable failure** — partial generation on error leaves a *consistent* tree: files are written to a temp dir and moved into place atomically at the end |

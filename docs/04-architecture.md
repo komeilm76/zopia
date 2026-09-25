@@ -308,7 +308,7 @@ interface ZopiaWarning {
 | `ZOPIA_WARN_ONE_OF`, `ZOPIA_WARN_NOT`, `ZOPIA_WARN_UNIQUE_ITEMS`, `ZOPIA_WARN_FROZEN_SUBTREE` | an applicator or refinement needs an approximation or frozen manifest restoration |
 | `ZOPIA_WARN_REF` | a recoverable schema-reference conversion cannot be exact |
 | `ZOPIA_WARN_MULTI_CONTENT`, `ZOPIA_WARN_SERVER_VARIABLES`, `ZOPIA_WARN_WEBHOOKS` | an OpenAPI document fact has no direct generated-code representation |
-| `ZOPIA_WARN_STALE_TREE` | generation found a manifest from different source content |
+| `ZOPIA_WARN_STALE_TREE` | regeneration found source/config drift, missing owned files, manifest disablement, or invalid existing metadata |
 | `ZOPIA_WARN_DEFAULT_INFO`, `ZOPIA_WARN_DEFAULT_SECURITY` | reverse conversion synthesized documented fallback metadata or security |
 | `ZOPIA_WARN_DIALECT_DOWNGRADE` | OpenAPI 3.1-only content is omitted from 3.0 output |
 
@@ -327,10 +327,10 @@ on stdout parseable.
 | # | Rule | Where enforced |
 | --- | --- | --- |
 | R-405 | **Pure core** — no `fs`, `process`, or `Date` inside `engines/*`; only public input adapters/wrappers and the CLI touch the outside world (`jsonSchemaToZod()` resolves its documented `.json` path before entering the emitter) | architecture (module boundaries) + import-lint in tests |
-| R-406 | **outDir guard** — every path joined to `outDir` is canonicalized and verified to stay inside it; `..` in spec-derived segment names is impossible because segments are template literals, and flat names are sanitized (see [API docs → Naming](07-api-docs.md#-naming-conventions-fixed)) | `fs/guard.ts` |
+| R-406 | **outDir guard** — every generated path is canonicalized and verified to stay inside `outDir`; regeneration refuses symlinked path ancestors, and manifest temporary writes use exclusive creation so stale symlinks cannot redirect output. Obsolete cleanup trusts only a fully validated manifest and never recursively deletes an output root | generation + manifest boundaries |
 | R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `loader.ts` |
 | R-408 | **No silent loss** — every lossy/unsupported conversion produces a normalized `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144). Public wrappers return or callback each warning; engine ② and generated api-doc files mirror schema warnings as canonical `// @zopia:warn …` comments; CLI diagnostics go only to stderr | every engine + CLI |
-| R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; engine ④ output is canonical (R-401) | round-trip tests |
+| R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; stale source/config/incomplete-tree state is warned and repaired, while only obsolete manifest-owned files are pruned; engine ④ output is canonical (R-401) | round-trip + staleness tests |
 
 ## 📏 Performance
 

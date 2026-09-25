@@ -151,7 +151,7 @@ stderr, hint included) · `2` internal error (should never happen — report it)
 | # | Practice | Rule |
 | --- | --- | --- |
 | R-101 | 📂 **Import, don't re-type** — your app imports the generated `index.ts` files; their Zod schemas *are* the validation | — |
-| R-102 | 🔄 **Spec changed?** re-run `zopia generate` — output is idempotent (P-1) and the manifest warns on stale input (`ZOPIA_WARN_STALE_TREE`) | — |
+| R-102 | 🔄 **Spec or generation options changed?** re-run `zopia generate` — output is idempotent (P-1); manifest staleness warns on source/config/incomplete-tree drift and safely prunes only obsolete manifest-owned files (`ZOPIA_WARN_STALE_TREE`) | [07 → Regeneration](07-api-docs.md#-regeneration--manual-edits-phase-1-policy) |
 | R-103 | ✍️ **Hand edits** — Phase 1 overwrites them on regeneration (see the file banner); the merge-safe custom layer arrives in Phase 3 | [07 → Regeneration](07-api-docs.md#-regeneration--manual-edits-phase-1-policy) |
 | R-104 | 🧪 **km-api helpers** — `makeFullPath`, `makeParams`, `convertResponseType`, … are available on every generated config for free | [Concepts → km-api](05-concepts.md#-km-api) |
 | R-105 | 🚫 **No zopia import in app code** — generated files depend only on `zod` + `km-api` (R-502) | — |

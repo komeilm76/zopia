@@ -300,7 +300,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree), exact local `ref`, and schema component name when applicable (R-752/R-659); `$ref`-looking literal data inside examples/defaults/enums/consts/extensions is excluded |
 | `apis[].overlay` | 🩹 keyword-level restorations & frozen subtrees — the non-representable facts, verbatim (R-753/R-635) |
 | `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` and future non-schema fields, restored after code-derived response schemas/content (R-754) |
-| `source.sha256` | 🆔 staleness detection: regeneration warns when the tree's manifest hash differs from the new input |
+| `source.sha256` | 🆔 canonical source identity: regeneration compares it with the normalized new input, alongside `mode` and component options, to detect a stale tree without false positives from object-key order |
 
 Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[].file` and every non-null `components[].file` still resolves to a regular file inside the manifest directory. Missing or renamed entries fail the whole preflight with `ZOPIA_DOCS_MANIFEST_MISMATCH`; no earlier module is executed.
 
@@ -350,9 +350,9 @@ Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[]
 
 | # | Rule |
 | --- | --- |
-| R-741 | ♻️ **Idempotent** — same input + options ⇒ byte-identical tree (P-1); safe to re-run any time |
-| R-742 | ✍️ **Overwrite** — Phase 1 overwrites generated files; the header banner says so. A merge-safe custom layer (companion `custom` files) is a Phase 3 feature |
-| R-743 | ⚠️ **Stale input** — if the new input spec's hash differs from the manifest, generation proceeds **and** the result carries warning `ZOPIA_WARN_STALE_TREE` |
+| R-741 | ♻️ **Idempotent** — same input + options ⇒ byte-identical tree (P-1); canonical hashing ignores object-key order, so a semantically identical reorder is not stale |
+| R-742 | ✍️ **Overwrite & prune ownership** — Phase 1 overwrites generated files; after a successful generation it removes obsolete files listed by the previous valid manifest and then removes only empty generated directories. Unlisted/custom files are never pruned. A merge-safe custom layer (companion `custom` files) is a Phase 3 feature |
+| R-743 | ⚠️ **Stale tree** — source-hash drift, layout/component-option drift, missing manifest-owned files, disabling manifest output, and invalid existing manifests produce one deterministic `ZOPIA_WARN_STALE_TREE` at `.zopia-manifest.json`. Invalid manifests are replaced/removed but are not trusted to identify old artifacts. Unsafe symlinked path ancestors instead fail with `ZOPIA_FS_OUTSIDE_OUTDIR` before that path is written |
 
 ## 🔗 Next
 

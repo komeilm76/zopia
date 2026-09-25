@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { planApiDocsFiles } from '../src/conversions/api-docs-plan';
@@ -257,6 +257,17 @@ describe('dedicated manifest writer', () => {
     await mkdir(join(blockedDir, ZOPIA_MANIFEST_FILE));
     await expect(writeZopiaManifest(blockedDir, manifest)).rejects.toThrow();
     expect(await readdir(blockedDir)).toEqual([ZOPIA_MANIFEST_FILE]);
+  });
+
+  it('does not follow a pre-existing manifest temporary-file symlink', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-'));
+    const outsideDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-outside-'));
+    const outside = join(outsideDir, 'protected.txt');
+    await writeFile(outside, 'protected\n', 'utf8');
+    await symlink(outside, join(outputDir, `${ZOPIA_MANIFEST_FILE}.tmp`));
+
+    await expect(writeZopiaManifest(outputDir, build())).rejects.toMatchObject({ code: 'EEXIST' });
+    expect(await readFile(outside, 'utf8')).toBe('protected\n');
   });
 
   it('remains compatible with manifest-driven reverse conversion', () => {
