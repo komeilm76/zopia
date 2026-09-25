@@ -142,7 +142,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         uri: { schema: (s) => s.url(), code: 'url()' },
         'date-time': { schema: (s) => s.datetime(), code: 'datetime()' },
         date: { schema: (s) => s.date(), code: 'date()' },
-        hostname: { schema: (s) => s.regex(/^[A-Za-z0-9.-]+$/), code: 'regex(/^[A-Za-z0-9.-]+$/)' },
+        hostname: { schema: (s) => s.regex(/^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/), code: 'regex(/^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/)' },
         ipv4: { schema: (s) => s.ip({ version: 'v4' }), code: "ip({ version: 'v4' })" },
         ipv6: { schema: (s) => s.ip({ version: 'v6' }), code: "ip({ version: 'v6' })" },
       };

@@ -105,6 +105,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('supports hostname and IP address formats', () => {
     expect(jsonSchemaToZod({ type: 'string', format: 'hostname' }).schema.safeParse('api.example.com').success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'string', format: 'hostname' }).schema.safeParse('bad..host').success).toBe(false);
     expect(jsonSchemaToZod({ type: 'string', format: 'ipv4' }).schema.safeParse('192.168.1.1').success).toBe(true);
     expect(jsonSchemaToZod({ type: 'string', format: 'ipv6' }).schema.safeParse('2001:db8::1').success).toBe(true);
   });
