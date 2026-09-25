@@ -146,6 +146,13 @@ describe('API docs endpoint generation', () => {
     expect(required).toContain('auth: "YES"');
     expect(optional).toContain('auth: "NO"');
   });
+  it('escapes source metadata in generated comments', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test\nexport const injected = true;\u2028', version: '1' }, paths: { '/safe': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir, manifest: false });
+    const content = await readFile(join(outputDir, 'safe', 'get', 'index.ts'), 'utf8');
+    expect(content).not.toContain('\nexport const injected = true;');
+    expect(content).toContain('// Source: "Test\\nexport const injected = true;\\u2028 v1"');
+  });
   it('writes a complete endpoint file', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users/{id}': { get: { operationId: 'getUser', summary: 'Get user', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object' }, example: { id: 'u1' } } } } } } } } }, { outputDir });

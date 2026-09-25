@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🔒 Endpoint generation now escapes line terminators in source metadata comments, preventing malformed or injected generated TypeScript.
 - 🐛 Generated endpoint auth is now `NO` when an OpenAPI security requirement contains an empty alternative that permits anonymous access.
 - 🐛 Endpoint generation now honors `useComponentAsReference` for operation- and path-level parameter schemas, preserves nested component references in endpoint schemas, imports their component definitions, and inlines direct or nested local schema references when component imports are disabled.
 - 🐛 OpenAPI operation collection now resolves parameter references before duplicate detection and override merging; referenced Swagger body and form-data parameters are extracted correctly.
