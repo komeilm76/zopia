@@ -174,12 +174,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const min = node.minProperties; const max = node.maxProperties;
       result = { schema: result.schema.refine((value: any) => Object.keys(value).length >= (min ?? 0) && (max === undefined || Object.keys(value).length <= max)), code: `${result.code}.refine((value) => Object.keys(value).length >= ${min ?? 0}${max === undefined ? '' : ` && Object.keys(value).length <= ${max}`})` };
     }
-    if (node.type === 'object' && node.propertyNames && typeof (node.propertyNames as any).pattern === 'string') {
-      const pattern = (node.propertyNames as any).pattern;
-      try {
-        const expression = new RegExp(pattern);
-        result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => expression.test(key))), code: `${result.code}.refine((value) => Object.keys(value).every((key) => new RegExp(${JSON.stringify(pattern)}).test(key)))` };
-      } catch { warnings.push(`Unsupported propertyNames pattern: ${pattern}`); }
+    if (node.type === 'object' && node.propertyNames && typeof node.propertyNames === 'object') {
+      const propertyDefinition = node.propertyNames as Record<string, unknown>;
+      const propertySchema = convert((propertyDefinition.type === undefined && ('pattern' in propertyDefinition || 'minLength' in propertyDefinition || 'maxLength' in propertyDefinition)) ? { ...propertyDefinition, type: 'string' } as JsonSchema : node.propertyNames as JsonSchema, resolving);
+      result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => propertySchema.schema.safeParse(key).success)), code: `${result.code}.refine((value) => Object.keys(value).every((key) => (${propertySchema.code}).safeParse(key).success))` };
     }
     if (node.type === 'object' && node.dependentRequired !== undefined && (!node.dependentRequired || typeof node.dependentRequired !== 'object' || Array.isArray(node.dependentRequired))) warnings.push('Invalid dependentRequired: expected an object of string arrays');
     if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object' && !Array.isArray(node.dependentRequired)) {

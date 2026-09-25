@@ -36,7 +36,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('reports invalid property name patterns without throwing', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '[' } });
-    expect(result.warnings).toContain('Unsupported propertyNames pattern: [');
+    expect(result.warnings).toContain('Unsupported constraint: pattern');
   });
   it('combines multiple password rules through allOf', () => {
     const result = jsonSchemaToZod({ allOf: [
