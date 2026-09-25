@@ -69,6 +69,16 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({}).success).toBe(true);
     expect(result.warnings).toEqual([]);
   });
+  it('supports positive multipleOf constraints', () => {
+    const result = jsonSchemaToZod({ type: 'number', multipleOf: 0.5 });
+    expect(result.schema.safeParse(1.5).success).toBe(true);
+    expect(result.schema.safeParse(1.25).success).toBe(false);
+    expect(result.code).toContain('Number.isInteger(value / 0.5)');
+  });
+  it('warns for invalid multipleOf constraints', () => {
+    const result = jsonSchemaToZod({ type: 'number', multipleOf: 0 });
+    expect(result.warnings).toContain('Invalid multipleOf: expected a positive number');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

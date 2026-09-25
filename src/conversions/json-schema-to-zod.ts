@@ -164,7 +164,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       try { const method = name === 'pattern' ? `regex(new RegExp(${JSON.stringify(value)}))` : `${name === 'exclusiveMinimum' ? 'gt' : name === 'exclusiveMaximum' ? 'lt' : name === 'minItems' ? 'min' : name === 'maxItems' ? 'max' : name === 'minLength' ? 'min' : name === 'maxLength' ? 'max' : name === 'minimum' ? 'min' : name === 'maximum' ? 'max' : name}(${JSON.stringify(value)})`; result = { schema: apply(result.schema, value), code: `${result.code}.${method}` }; }
       catch { warnings.push(`Unsupported constraint: ${name}`); }
     }
-    if (node.multipleOf !== undefined && node.type === 'number') warnings.push('multipleOf is not represented by a basic Zod method');
+    if (node.multipleOf !== undefined && (node.type === 'number' || node.type === 'integer') && typeof node.multipleOf === 'number' && node.multipleOf > 0) {
+      const multiple = node.multipleOf;
+      result = { schema: result.schema.refine((value: unknown) => typeof value === 'number' && Number.isInteger(value / multiple)), code: `${result.code}.refine((value) => Number.isInteger(value / ${multiple}))` };
+    } else if (node.multipleOf !== undefined && node.type === 'number') warnings.push('Invalid multipleOf: expected a positive number');
     if (node.contains === undefined && (node.minContains !== undefined || node.maxContains !== undefined)) warnings.push('minContains/maxContains require contains and were ignored');
     if (node.additionalItems !== undefined && !Array.isArray(node.items) && !Array.isArray(node.prefixItems)) warnings.push('additionalItems applies only to tuple schemas and was ignored');
     if (node.type === 'object' && (node.minProperties !== undefined || node.maxProperties !== undefined)) {
