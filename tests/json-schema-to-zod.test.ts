@@ -70,10 +70,11 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([]);
   });
   it('supports positive multipleOf constraints', () => {
-    const result = jsonSchemaToZod({ type: 'number', multipleOf: 0.5 });
+    const result = jsonSchemaToZod({ type: 'number', multipleOf: 0.1 });
     expect(result.schema.safeParse(1.5).success).toBe(true);
+    expect(result.schema.safeParse(0.3).success).toBe(true);
     expect(result.schema.safeParse(1.25).success).toBe(false);
-    expect(result.code).toContain('Number.isInteger(value / 0.5)');
+    expect(result.code).toContain('Math.round(value / 0.1)');
   });
   it('warns for invalid multipleOf constraints', () => {
     const result = jsonSchemaToZod({ type: 'number', multipleOf: 0 });

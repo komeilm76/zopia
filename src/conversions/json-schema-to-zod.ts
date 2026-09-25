@@ -166,7 +166,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     }
     if (node.multipleOf !== undefined && (node.type === 'number' || node.type === 'integer') && typeof node.multipleOf === 'number' && node.multipleOf > 0) {
       const multiple = node.multipleOf;
-      result = { schema: result.schema.refine((value: unknown) => typeof value === 'number' && Number.isInteger(value / multiple)), code: `${result.code}.refine((value) => Number.isInteger(value / ${multiple}))` };
+      result = { schema: result.schema.refine((value: unknown) => typeof value === 'number' && Math.abs(value / multiple - Math.round(value / multiple)) <= Number.EPSILON * Math.max(1, Math.abs(value / multiple))), code: `${result.code}.refine((value) => Math.abs(value / ${multiple} - Math.round(value / ${multiple})) <= Number.EPSILON * Math.max(1, Math.abs(value / ${multiple})))` };
     } else if (node.multipleOf !== undefined && node.type === 'number') warnings.push('Invalid multipleOf: expected a positive number');
     if (node.contains === undefined && (node.minContains !== undefined || node.maxContains !== undefined)) warnings.push('minContains/maxContains require contains and were ignored');
     if (node.additionalItems !== undefined && !Array.isArray(node.items) && !Array.isArray(node.prefixItems)) warnings.push('additionalItems applies only to tuple schemas and was ignored');
