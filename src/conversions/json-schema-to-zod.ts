@@ -174,6 +174,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const min = node.minProperties; const max = node.maxProperties;
       result = { schema: result.schema.refine((value: any) => Object.keys(value).length >= (min ?? 0) && (max === undefined || Object.keys(value).length <= max)), code: `${result.code}.refine((value) => Object.keys(value).length >= ${min ?? 0}${max === undefined ? '' : ` && Object.keys(value).length <= ${max}`})` };
     }
+    if (node.type === 'object' && node.propertyNames && typeof (node.propertyNames as any).pattern === 'string') {
+      const pattern = (node.propertyNames as any).pattern;
+      result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => new RegExp(pattern).test(key))), code: `${result.code}.refine((value) => Object.keys(value).every((key) => new RegExp(${JSON.stringify(pattern)}).test(key)))` };
+    }
     if (node.type === 'array' && node.contains) {
       const contained = convert(node.contains as JsonSchema, resolving);
       const min = node.minContains ?? 1; const max = node.maxContains;
