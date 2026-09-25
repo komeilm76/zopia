@@ -30,6 +30,27 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([]);
     expect(result.code).toContain('z.union([z.object(');
   });
+  it('applies keyword-only string, array, and numeric schemas to matching instances', () => {
+    const stringSchema = jsonSchemaToZod({ minLength: 2, pattern: '^a' });
+    expect(stringSchema.schema.safeParse('a').success).toBe(false);
+    expect(stringSchema.schema.safeParse('ab').success).toBe(true);
+    expect(stringSchema.schema.safeParse(1).success).toBe(true);
+
+    const arraySchema = jsonSchemaToZod({ items: { type: 'string' }, minItems: 1 });
+    expect(arraySchema.schema.safeParse([]).success).toBe(false);
+    expect(arraySchema.schema.safeParse(['x']).success).toBe(true);
+    expect(arraySchema.schema.safeParse([1]).success).toBe(false);
+    expect(arraySchema.schema.safeParse({}).success).toBe(true);
+
+    const mixed = jsonSchemaToZod({ minLength: 2, minimum: 5 });
+    expect(mixed.schema.safeParse('a').success).toBe(false);
+    expect(mixed.schema.safeParse('ab').success).toBe(true);
+    expect(mixed.schema.safeParse(4).success).toBe(false);
+    expect(mixed.schema.safeParse(5).success).toBe(true);
+    expect(mixed.schema.safeParse(false).success).toBe(true);
+    expect(mixed.warnings).toEqual([]);
+    expect(() => new Function('z', mixed.code)).not.toThrow();
+  });
   it('supports pattern properties and property count constraints', () => {
     const result = jsonSchemaToZod({ type: 'object', patternProperties: { '^x-': { type: 'string' } }, minProperties: 1, maxProperties: 2 });
     expect(result.code).toContain('.catchall(z.string())');
@@ -344,13 +365,19 @@ describe('jsonSchemaToZod', () => {
     expect(untypedObject.schema.safeParse({ kind: 'text', value: 1 }).success).toBe(true);
     expect(untypedObject.schema.safeParse('non-object values remain valid').success).toBe(true);
     expect(untypedObject.warnings).toEqual([]);
+
+    const untypedString = jsonSchemaToZod({ if: { minLength: 2 }, then: { pattern: '^x' } });
+    expect(untypedString.schema.safeParse('ab').success).toBe(false);
+    expect(untypedString.schema.safeParse('xb').success).toBe(true);
+    expect(untypedString.schema.safeParse('a').success).toBe(true);
+    expect(untypedString.schema.safeParse(1).success).toBe(true);
+    expect(untypedString.warnings).toEqual([]);
   });
   it('warns for malformed or detached conditional branches', () => {
     expect(jsonSchemaToZod({ type: 'string', then: { minLength: 2 } }).warnings).toContain('then/else require if and were ignored');
     expect(jsonSchemaToZod({ type: 'string', if: [] }).warnings).toContain('Invalid if: expected a schema');
     expect(jsonSchemaToZod({ type: 'string', if: true, then: [] }).warnings).toContain('Invalid then: expected a schema');
     expect(jsonSchemaToZod({ type: 'string', if: false, else: [] }).warnings).toContain('Invalid else: expected a schema');
-    expect(jsonSchemaToZod({ if: { minLength: 2 }, then: { pattern: '^x' } }).warnings).toContain('Conditional schema without an explicit parent or branch type may approximate type-specific keyword semantics');
   });
   it('handles prototype-like property names safely', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { __proto__: { type: 'string' }, constructor: { type: 'number' } }, required: ['__proto__', 'constructor'] });

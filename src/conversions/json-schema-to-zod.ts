@@ -129,15 +129,30 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const literal = literalSchema(node.const, 'const') ?? { schema: z.any(), code: 'z.any()' };
       return withSiblings('const', literal);
     }
-    const objectKeywords = new Set(['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'minProperties', 'maxProperties', 'dependentRequired', 'dependentSchemas', 'unevaluatedProperties']);
-    if (node.type === undefined && Object.keys(node).some((key) => objectKeywords.has(key))) {
-      const objectNode = { type: 'object', ...Object.fromEntries(Object.entries(node).filter(([key]) => objectKeywords.has(key))) } as JsonSchema;
-      const objectResult = convert(objectNode, resolving);
+    const keywordGroups = [
+      { type: 'object', keywords: new Set(['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'minProperties', 'maxProperties', 'dependentRequired', 'dependentSchemas', 'unevaluatedProperties']) },
+      { type: 'array', keywords: new Set(['items', 'prefixItems', 'additionalItems', 'unevaluatedItems', 'contains', 'minContains', 'maxContains', 'minItems', 'maxItems', 'uniqueItems']) },
+      { type: 'string', keywords: new Set(['minLength', 'maxLength', 'pattern', 'format', 'contentEncoding']) },
+      { type: 'number', keywords: new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf']) },
+    ] as const;
+    const keywordGroup = node.type === undefined ? keywordGroups.find((group) => Object.keys(node).some((key) => group.keywords.has(key))) : undefined;
+    if (keywordGroup) {
+      const typedNode = { type: keywordGroup.type, ...Object.fromEntries(Object.entries(node).filter(([key]) => keywordGroup.keywords.has(key))) } as JsonSchema;
+      const typedResult = convert(typedNode, resolving);
+      const jsonTypes = [
+        { type: 'object', schema: z.object({}).passthrough(), code: 'z.object({}).passthrough()' },
+        { type: 'array', schema: z.array(z.any()), code: 'z.array(z.any())' },
+        { type: 'string', schema: z.string(), code: 'z.string()' },
+        { type: 'number', schema: z.number(), code: 'z.number()' },
+        { type: 'boolean', schema: z.boolean(), code: 'z.boolean()' },
+        { type: 'null', schema: z.null(), code: 'z.null()' },
+      ];
+      const alternatives = [{ type: keywordGroup.type, schema: typedResult.schema, code: typedResult.code }, ...jsonTypes.filter((candidate) => candidate.type !== keywordGroup.type)];
       const applicable = {
-        schema: z.union([objectResult.schema, z.string(), z.number(), z.boolean(), z.null(), z.array(z.any())]),
-        code: `z.union([${objectResult.code}, z.string(), z.number(), z.boolean(), z.null(), z.array(z.any())])`,
+        schema: z.union(alternatives.map((candidate) => candidate.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]),
+        code: `z.union([${alternatives.map((candidate) => candidate.code).join(', ')}])`,
       };
-      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => !objectKeywords.has(key)));
+      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => !keywordGroup.keywords.has(key)));
       if (Object.keys(siblings).length === 0) return applicable;
       const siblingResult = convert(siblings, resolving);
       return { schema: (siblingResult.schema as any).and(applicable.schema), code: `${siblingResult.code}.and(${applicable.code})` };
@@ -325,11 +340,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       else {
         const contextualize = (schema: JsonSchema): JsonSchema => {
           if (typeof schema === 'boolean' || schema.type !== undefined) return schema;
-          if (typeof node.type === 'string') return { ...schema, type: node.type };
-          const typeSpecificKeywords = ['items', 'prefixItems', 'contains', 'minItems', 'maxItems', 'minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'];
-          const warning = 'Conditional schema without an explicit parent or branch type may approximate type-specific keyword semantics';
-          if (typeSpecificKeywords.some((key) => Object.prototype.hasOwnProperty.call(schema, key)) && !warnings.includes(warning)) warnings.push(warning);
-          return schema;
+          return typeof node.type === 'string' ? { ...schema, type: node.type } : schema;
         };
         const condition = convert(contextualize(node.if), resolving);
         let whenTrue: { schema: z.ZodType; code: string } | undefined;
