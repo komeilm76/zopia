@@ -49,6 +49,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse('Password1!').success).toBe(true);
     expect(result.schema.safeParse('password1!').success).toBe(false);
     expect(result.schema.safeParse('PasswordOnly').success).toBe(false);
+    expect(result.code).toContain('.regex(new RegExp("[A-Z]"))');
     expect(result.code).toContain('.and(');
   });
   it('supports dependent required properties', () => {

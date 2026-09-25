@@ -164,7 +164,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     ];
     for (const [name, value, apply] of methods) {
       if (value === undefined) continue;
-      try { result = { schema: apply(result.schema, value), code: `${result.code}.${name === 'exclusiveMinimum' ? 'gt' : name === 'exclusiveMaximum' ? 'lt' : name === 'minItems' ? 'min' : name === 'maxItems' ? 'max' : name === 'minLength' ? 'min' : name === 'maxLength' ? 'max' : name === 'minimum' ? 'min' : name === 'maximum' ? 'max' : name}(${JSON.stringify(value)})` }; }
+      try { const method = name === 'pattern' ? `regex(new RegExp(${JSON.stringify(value)}))` : `${name === 'exclusiveMinimum' ? 'gt' : name === 'exclusiveMaximum' ? 'lt' : name === 'minItems' ? 'min' : name === 'maxItems' ? 'max' : name === 'minLength' ? 'min' : name === 'maxLength' ? 'max' : name === 'minimum' ? 'min' : name === 'maximum' ? 'max' : name}(${JSON.stringify(value)})`; result = { schema: apply(result.schema, value), code: `${result.code}.${method}` }; }
       catch { warnings.push(`Unsupported constraint: ${name}`); }
     }
     if (node.multipleOf !== undefined && node.type === 'number') warnings.push('multipleOf is not represented by a basic Zod method');
