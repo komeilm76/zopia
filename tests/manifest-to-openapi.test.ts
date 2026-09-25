@@ -173,6 +173,12 @@ describe('manifest reverse conversion', () => {
     await writeFile(componentFile, (await readFile(componentFile, 'utf8')).replace('.min(1)', '.min(2)'), 'utf8');
     const rereversed = await manifestFileToOpenApi(manifestFile) as any;
     expect(rereversed.components.schemas.User.properties.id.minimum).toBe(2);
+
+    const endpointFile = join(outputDir, 'users', 'get', 'index.ts');
+    const endpoint = await readFile(endpointFile, 'utf8');
+    await writeFile(endpointFile, endpoint.replace('{ UserAliasSchema }', '{ GroupSchema }').replace('200: UserAliasSchema', '200: GroupSchema'), 'utf8');
+    const referenceEdited = await manifestFileToOpenApi(manifestFile) as any;
+    expect(referenceEdited.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/Group' });
   });
   it('imports nested cyclic component graphs without eager initialization failures', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

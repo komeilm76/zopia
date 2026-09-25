@@ -303,9 +303,10 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 > file takes precedence (the code is the truth, D-08).
 >
 > 📌 **Rule R-752** — `refs` entries address **the source operation subtree**
-> (pointer relative to `paths.<path>.<method>`). Engine ④ applies them after
-> conversion, so `$ref` placement — including refs *inside* inlined schemas —
-> is restored exactly (R-659).
+> (pointer relative to `paths.<path>.<method>`) and preserve the source snapshot.
+> File-based reverse conversion derives live `$ref`s from imported Zod schema
+> identities instead: a manifest ref may document an unchanged target, but it
+> never replaces a different component selected by developer-edited code.
 >
 > 📌 **Rule R-753** — `overlay` entries are `{ at, set?, remove?, node? }`
 > (R-635). `node`-form entries freeze a subtree to its original form; the

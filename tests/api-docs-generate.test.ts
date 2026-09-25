@@ -26,6 +26,7 @@ describe('API docs endpoint generation', () => {
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, 'User Profile': { $ref: '#/components/schemas/User' } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'User Profile', 'index.ts'), 'utf8');
     expect(content).toContain('from "../User/index"');
+    expect(content).toContain('z.lazy(() => UserSchema)');
   });
   it('imports direct nested array component references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

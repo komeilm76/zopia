@@ -191,26 +191,6 @@ function normalizeRuntimeSchema(value: Record<string, any>): Record<string, any>
   return visit(value) as Record<string, any>;
 }
 
-function restoreComponentRefs(runtime: unknown, source: unknown): unknown {
-  if (Array.isArray(runtime)) return runtime.map((value, index) => restoreComponentRefs(value, Array.isArray(source) ? source[index] : undefined));
-  if (!isRecord(runtime)) return runtime;
-  if (isRecord(source) && componentRefTarget(source) !== undefined && componentRefTarget(runtime) !== undefined) return { ...runtime, $ref: source.$ref };
-  return Object.fromEntries(Object.entries(runtime).map(([key, value]) => [key, restoreComponentRefs(value, isRecord(source) ? source[key] : undefined)]));
-}
-
-function parameterSchema(parameter: Record<string, any>): unknown {
-  if (parameter.schema !== undefined) return parameter.schema;
-  if (isRecord(parameter.content)) {
-    const media = Object.values(parameter.content).find(isRecord);
-    return media?.schema;
-  }
-  if (parameter.type !== undefined) {
-    const { type, format, items, ...rest } = parameter;
-    return { type: type === 'file' ? 'string' : type, ...(format === undefined ? {} : { format }), ...(items === undefined ? {} : { items }), ...Object.fromEntries(Object.entries(rest).filter(([key]) => ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength', 'maxLength', 'pattern', 'enum', 'default', 'multipleOf', 'minItems', 'maxItems', 'uniqueItems'].includes(key))) };
-  }
-  return undefined;
-}
-
 function resolveParameter(parameter: Record<string, any>, manifest: ZopiaManifest): Record<string, any> {
   if (typeof parameter.$ref !== 'string') return parameter;
   const openApiPrefix = '#/components/parameters/';
@@ -248,7 +228,7 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
     if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || typeof parameter.name !== 'string') { parameters.push(raw); continue; }
     const group = groups.get(parameter.in)!;
     if (!Object.prototype.hasOwnProperty.call(group.properties, parameter.name)) continue;
-    const schema = restoreComponentRefs(group.properties[parameter.name], parameterSchema(parameter));
+    const schema = group.properties[parameter.name];
     used.get(parameter.in)!.add(parameter.name);
     if (isSwagger) {
       const metadata = Object.fromEntries(Object.entries(parameter).filter(([key]) => !SWAGGER_PARAMETER_SCHEMA_KEYS.has(key) && key !== '$ref'));
@@ -276,20 +256,12 @@ function resolvedRequestBody(operation: Record<string, any>, manifest: ZopiaMani
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(operation.requestBody).filter(([key]) => key !== '$ref')) } : {};
 }
 
-function existingBodySchema(operation: Record<string, any>, manifest: ZopiaManifest): unknown {
-  if (manifest.source.kind === 'swagger-2.0') return (Array.isArray(operation.parameters) ? operation.parameters : []).map((value: unknown) => isRecord(value) ? value : {}).find((value: Record<string, any>) => value.in === 'body')?.schema;
-  const content = resolvedRequestBody(operation, manifest).content;
-  if (!isRecord(content)) return undefined;
-  const media = Object.values(content).find(isRecord);
-  return media?.schema;
-}
-
 function serializeRequestBody(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, parameters: Record<string, any>[]): void {
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const body = config.request.body;
   if (!isComponentSchema(body)) throw new TypeError('Invalid generated endpoint body schema');
   if (schemaKind(body) === 'any') { delete operation.requestBody; operation.parameters = parameters; return; }
-  const schema = restoreComponentRefs(convertRuntimeSchema(body, 'input', manifest, references, 'request body'), existingBodySchema(operation, manifest));
+  const schema = convertRuntimeSchema(body, 'input', manifest, references, 'request body');
   const contentType = typeof config.requestContentType === 'string' && config.requestContentType ? config.requestContentType : undefined;
   if (isSwagger) {
     const original = (Array.isArray(operation.parameters) ? operation.parameters : []).filter(isRecord);
@@ -330,12 +302,6 @@ function resolveResponse(response: Record<string, any>, manifest: ZopiaManifest)
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(response).filter(([key]) => key !== '$ref')) } : {};
 }
 
-function responseSchema(response: Record<string, any>, isSwagger: boolean): unknown {
-  if (isSwagger) return response.schema;
-  if (!isRecord(response.content)) return undefined;
-  return Object.values(response.content).find(isRecord)?.schema;
-}
-
 function serializeResponses(operation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>): void {
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const original = isRecord(operation.responses) ? operation.responses : {};
@@ -350,7 +316,7 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
     const previous = isRecord(original[status]) ? resolveResponse(original[status], manifest) : {};
     const response: Record<string, any> = { ...previous, description: typeof previous.description === 'string' && previous.description ? previous.description : 'Generated response' };
     if (schemaKind(runtimeSchema) === 'void') { delete response.content; delete response.schema; responses[status] = response; continue; }
-    const schema = restoreComponentRefs(convertRuntimeSchema(runtimeSchema, 'output', manifest, references, `response ${status}`), responseSchema(previous, isSwagger));
+    const schema = convertRuntimeSchema(runtimeSchema, 'output', manifest, references, `response ${status}`);
     if (isSwagger) response.schema = schema;
     else {
       const previousContent = isRecord(previous.content) ? previous.content : {};

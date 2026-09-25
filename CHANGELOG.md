@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🧬 Runtime endpoint and component schemas now take precedence over manifest schema snapshots, including developer edits that switch a `$ref` to a different component.
+- 🐛 Direct component aliases now use distinct lazy Zod schemas so reverse conversion can distinguish an unchanged alias from a developer-selected target.
 - 🔄 File-based reverse conversion now re-serializes edited endpoint body, parameter, and response Zod schemas through Engine ① with request-input and response-output semantics across OpenAPI 3.x and Swagger 2.0.
 - 🐛 Runtime endpoint imports now support generated directories containing `{path}` segments, and Swagger body schemas are emitted from normalized operation contracts instead of falling back to `z.any()`.
 - 🐛 Generated component schemas now import `additionalProperties` references, keep deeply nested cycles lazy, preserve open-object behavior, annotations, property-count bounds, and flexible tuple cardinality, and round-trip unique arrays plus structured `const`/`enum` values.
