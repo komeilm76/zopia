@@ -270,9 +270,9 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
       //    top-level `defaultSecurity` applies (an operation that *does*
       //    declare `security` — even `[]` — gets its own key here, verbatim)
       "refs": [
-        { "at": "/responses/200/content/application/json/schema", "component": "User" },
-        { "at": "/responses/401/content/application/json/schema", "component": "Error" },
-        { "at": "/responses/404/content/application/json/schema", "component": "Error" }
+        { "at": "/responses/200/content/application~1json/schema/$ref", "component": "User" },
+        { "at": "/responses/401/content/application~1json/schema/$ref", "component": "Error" },
+        { "at": "/responses/404/content/application~1json/schema/$ref", "component": "Error" }
       ],
       "overlay": [],         // ⤵ empty — the Admin API uses no lossy keywords (asserted in tests)
       "responseOverlay": []  // ⤵ response facts with no km-api home (e.g. response headers)
@@ -294,7 +294,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `apis[].security` | 🔐 the operation's own `security` requirement list — present only when the operation declares the key (including an explicit `[]` = "no security"); km-api's config can store only the `auth` boolean, so the actual requirement (which schemes, which scopes) lives here (R-653/R-656) |
 | `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree) → component name (R-752/R-659) |
 | `apis[].overlay` | 🩹 keyword-level restorations & frozen subtrees — the non-representable facts, verbatim (R-753/R-635) |
-| `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` (and any future non-expressible response fields) — full Response Objects, re-emitted verbatim (R-754) |
+| `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` and future non-schema fields, restored after code-derived response schemas/content (R-754) |
 | `source.sha256` | 🆔 staleness detection: regeneration warns when the tree's manifest hash differs from the new input |
 
 Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[].file` and every non-null `components[].file` still resolves to a regular file inside the manifest directory. Missing or renamed entries fail the whole preflight with `ZOPIA_DOCS_MANIFEST_MISMATCH`; no earlier module is executed.
@@ -305,10 +305,12 @@ Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[]
 > file takes precedence (the code is the truth, D-08).
 >
 > 📌 **Rule R-752** — `refs` entries address **the source operation subtree**
-> (pointer relative to `paths.<path>.<method>`) and preserve the source snapshot.
-> File-based reverse conversion derives live `$ref`s from imported Zod schema
-> identities instead: a manifest ref may document an unchanged target, but it
-> never replaces a different component selected by developer-edited code.
+> with RFC 6901 pointers relative to `paths.<path>.<method>` (so `/` inside a
+> media type is encoded as `~1`). File-based reverse conversion restores that
+> placement after schema serialization. If runtime code already emits a
+> different component `$ref`, both the source ref and overlays beneath it are
+> skipped so the developer-selected target wins. Older manifests whose media
+> type segments were not escaped remain readable.
 >
 > 📌 **Rule R-753** — `overlay` entries are `{ at, set?, remove?, node? }`
 > (R-635). `node`-form entries freeze a subtree to its original form; the
@@ -317,10 +319,10 @@ Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[]
 >
 > 📌 **Rule R-754** — `apis[].responseOverlay` records the response facts that
 > have no home in km-api (today: response `headers`; any future
-> non-expressible response field joins it). Entries are full OpenAPI Response
-> Objects keyed by status code (or `default`); engine ④ re-emits them verbatim
-> (R-654c), so the boundary is a *code* convenience, never a data loss.
-> Everything else km-api can express — incl. `trace` operations, custom status
+> non-expressible response field joins it). Engine ④ merges those fields into
+> response statuses that still exist after code conversion; code-derived
+> `content`, Swagger `schema`, examples, and changed/removed statuses remain
+> authoritative. Everything else km-api can express — incl. `trace` operations, custom status
 > codes, `default` responses, and arbitrary media types (km-api ≥ 0.4.1, R-642)
 > — lives in the generated code.
 

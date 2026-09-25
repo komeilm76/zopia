@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
 
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
+export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; refs?: unknown; overlay?: unknown; responseOverlay?: unknown; security?: unknown[] }>; }
 
 type EndpointConfig = Record<string, any>;
 type ComponentSchema = Parameters<typeof zodToJsonSchema>[0];
@@ -245,6 +245,151 @@ function normalizeRuntimeSchema(value: Record<string, any>): Record<string, any>
   return visit(value) as Record<string, any>;
 }
 
+function manifestPointerTokens(pointer: unknown, kind: string): string[] {
+  if (typeof pointer !== 'string' || pointer !== '' && !pointer.startsWith('/')) throw new TypeError(`Invalid manifest ${kind} pointer: ${String(pointer)}`);
+  if (pointer === '') return [];
+  return pointer.slice(1).split('/').map((token) => decodeJsonPointerSegment(token, pointer));
+}
+
+function legacyPointerTokens(root: unknown, pointer: string): string[] | undefined {
+  if (!pointer.startsWith('/')) return undefined;
+  const parts = pointer.slice(1).split('/').map((token) => decodeJsonPointerSegment(token, pointer));
+  const visit = (value: unknown, index: number): string[] | undefined => {
+    if (index === parts.length) return [];
+    if (Array.isArray(value)) {
+      const token = parts[index];
+      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= value.length) return undefined;
+      const tail = visit(value[Number(token)], index + 1);
+      return tail === undefined ? undefined : [token, ...tail];
+    }
+    if (!isRecord(value)) return undefined;
+    for (let end = parts.length; end > index; end -= 1) {
+      const key = parts.slice(index, end).join('/');
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      const tail = visit(value[key], end);
+      if (tail !== undefined) return [key, ...tail];
+    }
+    return undefined;
+  };
+  const tokens = visit(root, 0);
+  if (tokens === undefined) return undefined;
+  return tokens;
+}
+
+function pointerValue(root: unknown, tokens: string[]): unknown {
+  let value = root;
+  for (const token of tokens) {
+    if (Array.isArray(value)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= value.length) return undefined;
+      value = value[Number(token)];
+    } else if (isRecord(value) && Object.prototype.hasOwnProperty.call(value, token)) value = value[token];
+    else return undefined;
+  }
+  return value;
+}
+
+function setPointerValue(root: unknown, tokens: string[], value: unknown): boolean {
+  if (tokens.length === 0) return false;
+  const parent = pointerValue(root, tokens.slice(0, -1));
+  const key = tokens[tokens.length - 1];
+  if (Array.isArray(parent)) {
+    if (!/^(?:0|[1-9]\d*)$/.test(key) || Number(key) >= parent.length) return false;
+    parent[Number(key)] = value;
+    return true;
+  }
+  if (!isRecord(parent)) return false;
+  Object.defineProperty(parent, key, { value, enumerable: true, configurable: true, writable: true });
+  return true;
+}
+
+function pointerStartsWith(tokens: string[], prefix: string[]): boolean {
+  return prefix.length <= tokens.length && prefix.every((token, index) => tokens[index] === token);
+}
+
+function applyManifestRefs(operation: Record<string, any>, sourceOperation: Record<string, any>, api: ZopiaManifest['apis'][number], manifest: ZopiaManifest): string[][] {
+  if (api.refs === undefined) return [];
+  if (!Array.isArray(api.refs)) throw new TypeError('Invalid manifest refs');
+  const skipped: string[][] = [];
+  for (const entry of api.refs) {
+    if (!isRecord(entry)) throw new TypeError('Invalid manifest ref entry');
+    let tokens = manifestPointerTokens(entry.at, 'ref');
+    if (typeof entry.at === 'string' && pointerValue(sourceOperation, tokens) === undefined) tokens = legacyPointerTokens(sourceOperation, entry.at) ?? tokens;
+    const ref = typeof entry.ref === 'string' && entry.ref
+      ? entry.ref
+      : typeof entry.component === 'string' && entry.component ? referenceUri(manifest, entry.component) : undefined;
+    if (ref === undefined || ref !== '#' && !ref.startsWith('#/')) throw new TypeError(`Invalid manifest ref: ${String(entry.ref ?? entry.component)}`);
+    if (ref.startsWith('#/')) manifestPointerTokens(ref.slice(1), 'ref target');
+    const nodeTokens = tokens[tokens.length - 1] === '$ref' ? tokens.slice(0, -1) : tokens;
+    if (nodeTokens.length === 0) throw new TypeError(`Invalid manifest ref pointer: ${String(entry.at)}`);
+    const runtimeNode = pointerValue(operation, nodeTokens);
+    if (!isRecord(runtimeNode)) continue;
+    if (typeof runtimeNode.$ref === 'string' && runtimeNode.$ref !== ref) { skipped.push(nodeTokens); continue; }
+    const sourceNode = pointerValue(sourceOperation, nodeTokens);
+    const replacement = isRecord(sourceNode) && sourceNode.$ref === ref ? { ...sourceNode } : { $ref: ref };
+    setPointerValue(operation, nodeTokens, replacement);
+  }
+  return skipped;
+}
+
+function applyManifestSchemaOverlays(operation: Record<string, any>, api: ZopiaManifest['apis'][number], skippedRefs: string[][]): Record<string, any> {
+  if (api.overlay === undefined) return operation;
+  if (!Array.isArray(api.overlay)) throw new TypeError('Invalid manifest schema overlays');
+  let result = operation;
+  for (const entry of api.overlay) {
+    if (!isRecord(entry)) throw new TypeError('Invalid manifest schema overlay entry');
+    if (typeof entry.key === 'string' && Object.prototype.hasOwnProperty.call(entry, 'value')) {
+      if (!['callbacks', 'servers', 'externalDocs', 'links'].includes(entry.key)) throw new TypeError(`Invalid manifest operation overlay key: ${entry.key}`);
+      Object.defineProperty(result, entry.key, { value: entry.value, enumerable: true, configurable: true, writable: true });
+      continue;
+    }
+    const tokens = manifestPointerTokens(entry.at, 'schema overlay');
+    if (skippedRefs.some((prefix) => pointerStartsWith(tokens, prefix))) continue;
+    if (entry.set !== undefined && !isRecord(entry.set)) throw new TypeError('Invalid manifest schema overlay set');
+    if (entry.remove !== undefined && (!Array.isArray(entry.remove) || !entry.remove.every((key: unknown) => typeof key === 'string'))) throw new TypeError('Invalid manifest schema overlay remove');
+    const hasNode = Object.prototype.hasOwnProperty.call(entry, 'node');
+    if (!hasNode && entry.set === undefined && entry.remove === undefined) throw new TypeError('Invalid manifest schema overlay entry');
+    if (hasNode) {
+      if (tokens.length === 0) {
+        if (!isRecord(entry.node)) throw new TypeError('Invalid manifest root schema overlay node');
+        result = { ...entry.node };
+      } else setPointerValue(result, tokens, entry.node);
+      continue;
+    }
+    const target = pointerValue(result, tokens);
+    if (!isRecord(target)) continue;
+    for (const key of entry.remove ?? []) delete target[key];
+    for (const [key, value] of Object.entries(entry.set ?? {})) Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+  }
+  return result;
+}
+
+function applyManifestResponseOverlays(operation: Record<string, any>, api: ZopiaManifest['apis'][number]): void {
+  if (api.responseOverlay === undefined) return;
+  const entries: Array<{ status: string; overlay: Record<string, any> }> = [];
+  if (Array.isArray(api.responseOverlay)) {
+    for (const entry of api.responseOverlay) {
+      if (!isRecord(entry) || typeof entry.status !== 'string') throw new TypeError('Invalid manifest response overlay entry');
+      const overlay = isRecord(entry.response) ? entry.response : Object.fromEntries(Object.entries(entry).filter(([key]) => key !== 'status'));
+      entries.push({ status: entry.status, overlay });
+    }
+  } else if (isRecord(api.responseOverlay)) {
+    for (const [status, overlay] of Object.entries(api.responseOverlay)) {
+      if (!isRecord(overlay)) throw new TypeError('Invalid manifest response overlay entry');
+      entries.push({ status, overlay });
+    }
+  } else throw new TypeError('Invalid manifest response overlays');
+  if (!isRecord(operation.responses)) return;
+  for (const { status, overlay } of entries) {
+    if (!Object.prototype.hasOwnProperty.call(operation.responses, status)) continue;
+    const response = operation.responses[status];
+    if (!isRecord(response)) continue;
+    for (const [key, value] of Object.entries(overlay)) {
+      if (key === '$ref' || key === 'schema' || key === 'content' || key === 'examples') continue;
+      Object.defineProperty(response, key, { value, enumerable: true, configurable: true, writable: true });
+    }
+  }
+}
+
 function resolveParameter(parameter: Record<string, any>, manifest: ZopiaManifest): Record<string, any> {
   if (typeof parameter.$ref !== 'string') return parameter;
   const openApiPrefix = '#/components/parameters/';
@@ -422,7 +567,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   if (config.deprecated !== undefined && config.deprecated !== 'YES' && config.deprecated !== 'NO') throw new TypeError(`Invalid generated endpoint deprecated status: ${String(config.deprecated)}`);
   if (config.auth !== undefined && config.auth !== 'YES' && config.auth !== 'NO') throw new TypeError(`Invalid generated endpoint auth status: ${String(config.auth)}`);
 
-  const operation = { ...sourceOperation };
+  let operation = { ...sourceOperation };
   if (Object.prototype.hasOwnProperty.call(sourceOperation, 'operationId') || config.operationId !== api.operationId) {
     if (config.operationId === undefined) delete operation.operationId;
     else operation.operationId = config.operationId;
@@ -445,6 +590,9 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   serializeRequestBody(operation, config, manifest, references, parameters);
   serializeResponses(operation, config, manifest, references);
   if (Array.isArray(operation.parameters) && operation.parameters.length === 0) delete operation.parameters;
+  const skippedRefs = applyManifestRefs(operation, sourceOperation, api, manifest);
+  operation = applyManifestSchemaOverlays(operation, api, skippedRefs);
+  applyManifestResponseOverlays(operation, api);
   return { path, method, operation };
 }
 

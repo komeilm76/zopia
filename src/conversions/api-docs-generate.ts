@@ -32,7 +32,7 @@ function collectRefs(value: unknown, at = ''): Array<{ at: string; ref: string; 
   const refs: Array<{ at: string; ref: string; component?: string }> = [];
   if (Array.isArray(value)) value.forEach((child, index) => refs.push(...collectRefs(child, `${at}/${index}`)));
   else if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {
-    const location = `${at}/${key}`;
+    const location = `${at}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
     if (key === '$ref' && typeof child === 'string') refs.push({ at: location, ref: child, ...(componentExport(child) ? { component: componentExport(child)!.replace(/Schema$/, '') } : {}) });
     else refs.push(...collectRefs(child, location));
   }

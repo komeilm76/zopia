@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🔄 File-backed reverse conversion now safely applies manifest `$ref` placement, schema `set`/`remove`/frozen-node overlays, operation overlays, and response overlays after Zod re-serialization while preserving a developer-selected different component reference.
 - 🛡️ File-backed reverse conversion now preflights every endpoint and emitted-component path before importing code, reports missing manifests as `ZOPIA_DOCS_MISSING_MANIFEST`, and reports missing or renamed generated files as `ZOPIA_DOCS_MANIFEST_MISMATCH`.
 - 🐛 File-backed reverse conversion now replaces stale media types and examples after generated-code edits, honors Swagger form-to-body transitions and legacy response examples, and rejects Swagger cookie/object parameters instead of emitting invalid documents.
 - 🐛 Escaped JSON Pointer component and reusable-object names now resolve correctly; direct component aliases preserve `$ref` siblings, and generated `~` directories can be imported at runtime.

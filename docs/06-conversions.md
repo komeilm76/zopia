@@ -330,7 +330,7 @@ interface ZopiaManifest {
   $schema: 'zopia:manifest@1';
   source: { kind: string; title: string; version: string };
   components?: Array<{ name: string; file: string | null; schema: unknown }>;
-  apis: Array<{ file: string; path: string; method: string; sourceOperation?: Record<string, unknown> }>;
+  apis: Array<{ file: string; path: string; method: string; sourceOperation?: Record<string, unknown>; refs?: Array<{ at: string; ref?: string; component?: string }>; overlay?: Array<{ at?: string; set?: Record<string, unknown>; remove?: string[]; node?: unknown; key?: string; value?: unknown }>; responseOverlay?: unknown }>;
 }
 ```
 
@@ -346,7 +346,7 @@ interface ZopiaManifest {
 | R-656 | 🔐 **Security** | `securitySchemes` **and the requirement lists** (top-level `defaultSecurity`, per-operation `apis[].security`) restored from the manifest — an operation emits its own `security` key iff `apis[].security` is present (an explicit `[]` is re-emitted as `security: []`), otherwise the global `security` is re-emitted from `defaultSecurity`. If an operation has `auth: YES` but the manifest records no requirement (e.g. a hand-edited tree) → a default `bearerAuth` (http/bearer) scheme **and** requirement are added **plus warning** `ZOPIA_WARN_DEFAULT_SECURITY`. |
 | R-657 | 🏷️ **Document frame** | `info` from the manifest `source` (title/version/description); `servers`, `tags` from the manifest; fallbacks (`title: 'Zopia API'`, `version: '0.0.0'`) + warning when the manifest lacks them. |
 | R-658 | 📏 **Shape** | key order per R-401; paths sorted; method order per R-401; `openapi: '3.1'` / `'3.0'` per option (D-09). |
-| R-659 | 🩹 **Refs & overlay applied last** | file-backed conversion derives live component refs from imported Zod identities; `apis[].refs` remains a source snapshot and cannot replace a different target selected in code. Non-schema overlays (R-635) are then restored so frozen, non-representable facts remain intact. |
+| R-659 | 🩹 **Refs & overlays applied last** | after Zod serialization, file-backed conversion restores each `apis[].refs` entry at its RFC 6901 pointer, then applies schema overlays (`set`/`remove` or frozen `node`), operation overlays, and `responseOverlay`. A source ref is not restored when runtime code already points at a different component, and overlays beneath that skipped ref are skipped too; developer-selected reference changes therefore win. Response overlays restore non-schema response facts without replacing code-derived `content`, Swagger `schema`, or examples. |
 
 ### 🔁 Why the round-trip closes
 
@@ -357,7 +357,7 @@ Two sources of truth, one rule each:
 | 📄 **the generated code** | schema *content* — what developers may edit. Converted back by engine ① + serializer normalizations (R-654) |
 | 📦 **the manifest** | *placement & non-representable facts* — full component schemas, `$ref` pointers (`refs`), keyword-level restorations (`overlay`: format aliases, `time`, boolean exclusive bounds, `discriminator`, `uniqueItems`, parameter extras, …) and frozen subtrees (`overlay.node`: `allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …), km-api-less response facts (`apis[].responseOverlay`: response `headers` — R-754), plus the document frame (info, servers, tags, security schemes, security requirements, non-primary media types, titles, examples) |
 
-Engine ④ applies them in the fixed order **convert → refs → overlay**
+Engine ④ applies them in the fixed order **convert → refs → schema/operation overlay → response overlay**
 (R-659). The union reproduces the original document; the only remaining
 difference is key order, which canonicalization (R-401) resolves. That is
 tested as a property for every fixture
