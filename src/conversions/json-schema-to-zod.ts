@@ -130,7 +130,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       return withSiblings('const', literal);
     }
     const keywordGroups = [
-      { type: 'object', keywords: new Set(['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'minProperties', 'maxProperties', 'dependentRequired', 'dependentSchemas', 'unevaluatedProperties']) },
+      { type: 'object', keywords: new Set(['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'minProperties', 'maxProperties', 'dependencies', 'dependentRequired', 'dependentSchemas', 'unevaluatedProperties']) },
       { type: 'array', keywords: new Set(['items', 'prefixItems', 'additionalItems', 'unevaluatedItems', 'contains', 'minContains', 'maxContains', 'minItems', 'maxItems', 'uniqueItems']) },
       { type: 'string', keywords: new Set(['minLength', 'maxLength', 'pattern', 'format', 'contentEncoding']) },
       { type: 'number', keywords: new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf']) },
@@ -305,6 +305,25 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         const propertySchema = convert((propertyDefinition?.type === undefined && propertyDefinition && ('pattern' in propertyDefinition || 'minLength' in propertyDefinition || 'maxLength' in propertyDefinition)) ? { ...propertyDefinition, type: 'string' } as JsonSchema : node.propertyNames as JsonSchema, resolving);
         result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => propertySchema.schema.safeParse(key).success)), code: `${result.code}.refine((value) => Object.keys(value).every((key) => (${propertySchema.code}).safeParse(key).success))` };
       } else warnings.push('Invalid propertyNames: expected a schema');
+    }
+    if (node.type === 'object' && node.dependencies !== undefined) {
+      if (!node.dependencies || typeof node.dependencies !== 'object' || Array.isArray(node.dependencies)) warnings.push('Invalid dependencies: expected an object');
+      else for (const [key, dependency] of Object.entries(node.dependencies as Record<string, unknown>)) {
+        if (Array.isArray(dependency)) {
+          if (!dependency.every((item) => typeof item === 'string')) { warnings.push('Invalid dependencies entry: expected a string array or schema'); continue; }
+          const requiredKeys = dependency as string[];
+          if (requiredKeys.length) result = {
+            schema: result.schema.refine((value: any) => !Object.prototype.hasOwnProperty.call(value, key) || requiredKeys.every((requiredKey) => Object.prototype.hasOwnProperty.call(value, requiredKey))),
+            code: `${result.code}.refine((value) => !Object.prototype.hasOwnProperty.call(value, ${JSON.stringify(key)}) || ${JSON.stringify(requiredKeys)}.every((requiredKey) => Object.prototype.hasOwnProperty.call(value, requiredKey)))`,
+          };
+        } else if (isSchema(dependency)) {
+          const dependent = convert(dependency, resolving);
+          result = {
+            schema: result.schema.refine((value: any) => !Object.prototype.hasOwnProperty.call(value, key) || dependent.schema.safeParse(value).success),
+            code: `${result.code}.refine((value) => !Object.prototype.hasOwnProperty.call(value, ${JSON.stringify(key)}) || (${dependent.code}).safeParse(value).success)`,
+          };
+        } else warnings.push('Invalid dependencies entry: expected a string array or schema');
+      }
     }
     if (node.type === 'object' && node.dependentRequired !== undefined && (!node.dependentRequired || typeof node.dependentRequired !== 'object' || Array.isArray(node.dependentRequired))) warnings.push('Invalid dependentRequired: expected an object of string arrays');
     if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object' && !Array.isArray(node.dependentRequired)) {

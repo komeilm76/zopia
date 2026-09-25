@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- ✨ JSON Schema conversion now supports draft-04/06/07 `dependencies` with both property arrays and schema dependencies, including boolean schemas and malformed-entry warnings.
 - ✨ Keyword-only object, array, string, and numeric schemas now enforce constraints only for matching JSON instance types while leaving other types valid.
 - ✨ JSON Schema conversion now enforces `if`/`then`/`else` conditionals, including boolean branches, typed-parent context, exact keyword-only branch applicability, and malformed-definition warnings.
 - 🐛 Manifest reverse conversion now preserves non-schema OpenAPI component sections and reusable Swagger parameter and response definitions.

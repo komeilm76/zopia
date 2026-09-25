@@ -147,6 +147,8 @@ used in tests as an independent cross-check.
 | `{ "additionalProperties": false }` | `z.object({…}).strict()` | R-630 |
 | `{ "additionalProperties": S }` | `z.object({…}).catchall(⟦S⟧)` | R-630 |
 | `{ "additionalProperties": true }` *(or absent)* | plain `z.object({…})` | R-630 |
+| `{ "dependencies": { "a": ["b"] } }` *(draft-04/06/07)* | object refinement requiring `b` whenever `a` is present | R-630 |
+| `{ "dependencies": { "a": S } }` *(draft-04/06/07)* | object refinement applying schema `S` whenever `a` is present; boolean schemas are supported | R-630 |
 | `{ "oneOf": [A, B, …] }` | `z.union([⟦A⟧, ⟦B⟧, …])` | R-631 |
 | `{ "oneOf": […], "discriminator": {"propertyName": k} }` | `z.discriminatedUnion(k, [⟦…⟧])` — every member must be an object with a literal/enum at `k`, otherwise fall back to `z.union` + warning; the `discriminator` keyword itself is restored by an overlay entry (R-635) | R-631 |
 | `{ "anyOf": […] }` | `z.union([…])` | R-631 |

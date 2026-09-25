@@ -111,6 +111,32 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({}).success).toBe(true);
     expect(result.warnings).toEqual([]);
   });
+  it('supports legacy property and schema dependencies', () => {
+    const result = jsonSchemaToZod({
+      properties: { creditCard: { type: 'string' }, billingAddress: { type: 'string' }, country: { type: 'string' }, postalCode: { type: 'string' } },
+      dependencies: {
+        creditCard: ['billingAddress'],
+        country: { properties: { postalCode: { type: 'string', minLength: 3 } }, required: ['postalCode'] },
+      },
+    });
+    expect(result.schema.safeParse({ creditCard: '1234' }).success).toBe(false);
+    expect(result.schema.safeParse({ creditCard: '1234', billingAddress: 'Main St' }).success).toBe(true);
+    expect(result.schema.safeParse({ country: 'US' }).success).toBe(false);
+    expect(result.schema.safeParse({ country: 'US', postalCode: '123' }).success).toBe(true);
+    expect(result.schema.safeParse('non-object').success).toBe(true);
+    expect(result.warnings).toEqual([]);
+    expect(result.code).toContain('Object.prototype.hasOwnProperty.call');
+    expect(() => new Function('z', result.code)).not.toThrow();
+
+    const falseDependency = jsonSchemaToZod({ type: 'object', dependencies: { forbidden: false } });
+    expect(falseDependency.schema.safeParse({}).success).toBe(true);
+    expect(falseDependency.schema.safeParse({ forbidden: true }).success).toBe(false);
+  });
+  it('warns for malformed legacy dependencies', () => {
+    expect(jsonSchemaToZod({ type: 'object', dependencies: [] }).warnings).toContain('Invalid dependencies: expected an object');
+    expect(jsonSchemaToZod({ type: 'object', dependencies: { key: ['valid', 1] } }).warnings).toContain('Invalid dependencies entry: expected a string array or schema');
+    expect(jsonSchemaToZod({ type: 'object', dependencies: { key: 'invalid' } }).warnings).toContain('Invalid dependencies entry: expected a string array or schema');
+  });
   it('supports positive multipleOf constraints', () => {
     const result = jsonSchemaToZod({ type: 'number', multipleOf: 0.1 });
     expect(result.schema.safeParse(1.5).success).toBe(true);
