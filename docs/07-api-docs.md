@@ -288,7 +288,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `components[].schema` | 🧱 the **full** component JSON Schema — restored verbatim into `components.schemas` (R-655/R-751) |
 | `componentsOverlay` | 🧰 non-schema OpenAPI component sections such as reusable parameters, responses, headers, examples, links, callbacks, and path items |
 | `swaggerParameters`, `swaggerResponses` | 🧰 Swagger 2.0 reusable parameter and response definitions, restored at the document root |
-| `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, the imported file wins over `schema` (developer edits) |
+| `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, `manifestFileToOpenApi()` imports its Zod schema and converts it to the source dialect, so developer edits win while cross-component references remain `$ref`s |
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — `manifestFileToOpenApi()` imports each file and uses its runtime km-api metadata; the manifest supplies the preserved schema/overlay facts |
 | `defaultSecurity` | 🔐 the spec-level `security` requirement list, verbatim — applies to every operation unless the operation declares its own `security`; key absent ⇔ the source had no global `security` |
 | `apis[].security` | 🔐 the operation's own `security` requirement list — present only when the operation declares the key (including an explicit `[]` = "no security"); km-api's config can store only the `auth` boolean, so the actual requirement (which schemes, which scopes) lives here (R-653/R-656) |

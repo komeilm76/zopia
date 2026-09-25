@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🧱 File-based reverse conversion now securely imports emitted component modules, converts edited Zod schemas to the source API dialect, and preserves references between imported components.
+- 🐛 Generated component modules and their barrel now contain real newlines, keeping the emitted TypeScript executable at runtime.
 - 🔄 File-based reverse conversion now securely imports generated endpoint TypeScript modules and lets edited km-api method, path, operation ID, summary, description, tags, and deprecation metadata override manifest snapshots.
 - 🐛 JSON Schema conversion now warns for malformed `not` schemas, ignores malformed mixed `dependentRequired` entries instead of partially enforcing them, and uses own-property dependency checks.
 - ✨ JSON Schema conversion now supports draft-04/06/07 `dependencies` with both property arrays and schema dependencies, including boolean schemas and malformed-entry warnings.

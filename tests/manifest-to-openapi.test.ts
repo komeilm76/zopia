@@ -32,8 +32,10 @@ describe('manifest reverse conversion', () => {
   it('loads a manifest from disk', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
     const file = join(directory, 'manifest.json');
-    await import('node:fs/promises').then(({ writeFile }) => writeFile(file, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, apis: [] }), 'utf8'));
-    expect((await manifestFileToOpenApi(file) as any).openapi).toBe('3.1.0');
+    await import('node:fs/promises').then(({ writeFile }) => writeFile(file, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, components: [{ name: 'Inline', file: null, schema: { type: 'string' } }], apis: [] }), 'utf8'));
+    const document = await manifestFileToOpenApi(file) as any;
+    expect(document.openapi).toBe('3.1.0');
+    expect(document.components.schemas.Inline).toEqual({ type: 'string' });
   });
   it('imports generated endpoint modules and uses edited runtime metadata', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -61,6 +63,40 @@ describe('manifest reverse conversion', () => {
     expect(operation.security).toEqual([]);
     expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
   });
+  it('imports emitted component modules and uses edited Zod schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Components', version: '1' }, components: { schemas: { User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }, Group: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } }, required: ['owner'] }, UserAlias: { $ref: '#/components/schemas/User' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    const manifestFile = join(outputDir, '.zopia-manifest.json');
+    const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+    expect((manifestToOpenApi(manifest) as any).components.schemas.User.properties.id.type).toBe('string');
+
+    const componentFile = join(outputDir, 'components', 'User', 'index.ts');
+    const generated = await readFile(componentFile, 'utf8');
+    expect(generated).not.toContain('\\n');
+    await writeFile(componentFile, generated.replace('["id"]: z.string()', '["id"]: z.number().int().min(1), ["active"]: z.boolean()'), 'utf8');
+
+    const reversed = await manifestFileToOpenApi(manifestFile) as any;
+    expect(reversed.components.schemas.User.properties.id).toMatchObject({ type: 'integer', minimum: 1 });
+    expect(reversed.components.schemas.User.properties.active).toEqual({ type: 'boolean' });
+    expect(reversed.components.schemas.User.required).toEqual(['id', 'active']);
+    expect(reversed.components.schemas.Group.properties.owner).toEqual({ $ref: '#/components/schemas/User' });
+    expect(reversed.components.schemas.UserAlias).toEqual({ $ref: '#/components/schemas/User' });
+    expect(reversed.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
+
+    await writeFile(componentFile, (await readFile(componentFile, 'utf8')).replace('.min(1)', '.min(2)'), 'utf8');
+    const rereversed = await manifestFileToOpenApi(manifestFile) as any;
+    expect(rereversed.components.schemas.User.properties.id.minimum).toBe(2);
+  });
+  it('converts imported components to the source Swagger dialect', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy components', version: '1' }, definitions: { Limit: { type: 'number' } }, paths: {} }, { outputDir, insertComponents: true });
+    const componentFile = join(outputDir, 'components', 'Limit', 'index.ts');
+    const generated = await readFile(componentFile, 'utf8');
+    await writeFile(componentFile, generated.replace('z.number()', 'z.number().gt(1)'), 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.definitions.Limit).toEqual({ type: 'number', minimum: 1, exclusiveMinimum: true });
+  });
   it('rejects missing, unsafe, and invalid generated endpoint modules', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
     const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
@@ -87,6 +123,22 @@ describe('manifest reverse conversion', () => {
     await writeFile(join(directory, 'invalid.ts'), 'export default {};\n', 'utf8');
     await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: 'invalid.ts', path: '/x', method: 'get' }] }), 'utf8');
     await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('does not export a unique km-api config');
+  });
+  it('rejects missing, unsafe, and invalid generated component modules', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
+    const manifestFile = join(directory, '.zopia-manifest.json');
+    const manifest = (file: string) => ({ $schema: 'zopia:manifest@1', source, components: [{ name: 'User', file, schema: { type: 'string' } }], apis: [] });
+
+    await writeFile(manifestFile, JSON.stringify(manifest('missing.ts')), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unable to resolve generated component file missing.ts');
+
+    await writeFile(manifestFile, JSON.stringify(manifest(join(directory, 'absolute.ts'))), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('Unsafe manifest component file');
+
+    await writeFile(join(directory, 'invalid-component.ts'), 'export default {};\n', 'utf8');
+    await writeFile(manifestFile, JSON.stringify(manifest('invalid-component.ts')), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('does not export a unique Zod schema');
   });
   it('round-trips reusable OpenAPI and Swagger component sections', async () => {
     const openApiDir = await mkdtemp(join(tmpdir(), 'zopia-'));

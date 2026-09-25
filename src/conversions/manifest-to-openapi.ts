@@ -1,10 +1,12 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
+export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; security?: unknown[] }>; }
 
 type EndpointConfig = Record<string, any>;
+type ComponentSchema = Parameters<typeof zodToJsonSchema>[0];
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace']);
 
@@ -19,6 +21,10 @@ function isFileWithinRoot(root: string, file: string): boolean {
   return Boolean(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot);
 }
 
+function isComponentSchema(value: unknown): value is ComponentSchema {
+  return isRecord(value) && isRecord(value._zod) && typeof value._zod.run === 'function' && typeof value.parse === 'function';
+}
+
 function selectEndpointConfig(module: Record<string, unknown>, operationId: string | undefined, file: string): EndpointConfig {
   if (isEndpointConfig(module.default)) return module.default;
   const candidates = [...new Set(Object.values(module).filter(isEndpointConfig))];
@@ -28,42 +34,108 @@ function selectEndpointConfig(module: Record<string, unknown>, operationId: stri
   throw new TypeError(`Generated endpoint module does not export a unique km-api config: ${file}`);
 }
 
-async function importEndpointConfigs(manifest: ZopiaManifest, manifestFile: string): Promise<Map<number, EndpointConfig>> {
-  const root = await realpath(dirname(resolve(manifestFile)));
-  const modules = new Map<string, Record<string, unknown>>();
+function selectComponentSchema(module: Record<string, unknown>, file: string): ComponentSchema {
+  if (isComponentSchema(module.default)) return module.default;
+  const candidates = [...new Set(Object.values(module).filter(isComponentSchema))];
+  if (candidates.length === 1) return candidates[0];
+  throw new TypeError(`Generated component module does not export a unique Zod schema: ${file}`);
+}
+
+async function importGeneratedModule(root: string, file: string, kind: 'endpoint' | 'component', modules: Map<string, Record<string, unknown>>, cacheBust = true): Promise<Record<string, unknown>> {
+  const manifestKind = kind === 'endpoint' ? 'API' : 'component';
+  if (isAbsolute(file)) throw new TypeError(`Unsafe manifest ${manifestKind} file: ${file}`);
+  const requested = resolve(root, file);
+  if (!isFileWithinRoot(root, requested)) throw new TypeError(`Unsafe manifest ${manifestKind} file: ${file}`);
+  let generatedFile: string;
+  try { generatedFile = await realpath(requested); }
+  catch (error) { throw new TypeError(`Unable to resolve generated ${kind} file ${file}: ${error instanceof Error ? error.message : String(error)}`); }
+  if (!isFileWithinRoot(root, generatedFile)) throw new TypeError(`Unsafe manifest ${manifestKind} file: ${file}`);
+  const moduleKey = `${generatedFile}\0${cacheBust ? 'fresh' : 'shared'}`;
+  let generatedModule = modules.get(moduleKey);
+  if (!generatedModule) {
+    try {
+      const url = pathToFileURL(generatedFile);
+      if (cacheBust) {
+        const metadata = await stat(generatedFile);
+        url.searchParams.set('zopia-reverse', `${metadata.mtimeMs}-${metadata.size}`);
+      }
+      generatedModule = await import(url.href) as Record<string, unknown>;
+    } catch (error) { throw new TypeError(`Unable to import generated ${kind} file ${file}: ${error instanceof Error ? error.message : String(error)}`); }
+    modules.set(moduleKey, generatedModule);
+  }
+  return generatedModule;
+}
+
+async function importEndpointConfigs(manifest: ZopiaManifest, root: string, modules: Map<string, Record<string, unknown>>): Promise<Map<number, EndpointConfig>> {
   const configs = new Map<number, EndpointConfig>();
   for (const [index, api] of manifest.apis.entries()) {
     if (!isRecord(api) || typeof api.file !== 'string' || !api.file) throw new TypeError(`Manifest API file is required: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
-    if (isAbsolute(api.file)) throw new TypeError(`Unsafe manifest API file: ${api.file}`);
-    const requested = resolve(root, api.file);
-    if (!isFileWithinRoot(root, requested)) throw new TypeError(`Unsafe manifest API file: ${api.file}`);
-    let endpointFile: string;
-    try { endpointFile = await realpath(requested); }
-    catch (error) { throw new TypeError(`Unable to resolve generated endpoint file ${api.file}: ${error instanceof Error ? error.message : String(error)}`); }
-    if (!isFileWithinRoot(root, endpointFile)) throw new TypeError(`Unsafe manifest API file: ${api.file}`);
-    let endpointModule = modules.get(endpointFile);
-    if (!endpointModule) {
-      try {
-        const metadata = await stat(endpointFile);
-        const url = pathToFileURL(endpointFile); url.searchParams.set('zopia-reverse', `${metadata.mtimeMs}-${metadata.size}`);
-        endpointModule = await import(url.href) as Record<string, unknown>;
-      } catch (error) { throw new TypeError(`Unable to import generated endpoint file ${api.file}: ${error instanceof Error ? error.message : String(error)}`); }
-      modules.set(endpointFile, endpointModule);
-    }
+    const endpointModule = await importGeneratedModule(root, api.file, 'endpoint', modules);
     configs.set(index, selectEndpointConfig(endpointModule, api.operationId, api.file));
   }
   return configs;
 }
 
-/** Read a manifest, import its generated endpoint modules, and reconstruct the API document. */
+async function importComponentSchemas(manifest: ZopiaManifest, root: string, modules: Map<string, Record<string, unknown>>): Promise<Map<number, Record<string, unknown>>> {
+  const shared = new Map<number, ComponentSchema>();
+  const imported = new Map<number, ComponentSchema>();
+  for (const [index, component] of (manifest.components ?? []).entries()) {
+    if (component.file === undefined || component.file === null) continue;
+    const sharedModule = await importGeneratedModule(root, component.file, 'component', modules, false);
+    shared.set(index, selectComponentSchema(sharedModule, component.file));
+    const freshModule = await importGeneratedModule(root, component.file, 'component', modules);
+    imported.set(index, selectComponentSchema(freshModule, component.file));
+  }
+  if (imported.size === 0) return new Map();
+
+  const indexByName = new Map((manifest.components ?? []).map((component, index) => [component.name, index]));
+  const aliases = new Set<number>();
+  for (const [index, schema] of imported) {
+    const target = componentRefTarget(manifest.components![index].schema);
+    const targetIndex = target === undefined ? undefined : indexByName.get(target);
+    if (targetIndex !== undefined && (schema === shared.get(targetIndex) || schema === imported.get(targetIndex))) aliases.add(index);
+  }
+
+  const namedSchemas: Array<readonly [string, ComponentSchema]> = [];
+  for (const [index, schema] of shared) if (!aliases.has(index)) namedSchemas.push([manifest.components![index].name, schema]);
+  for (const [index, schema] of imported) if (!aliases.has(index)) namedSchemas.push([manifest.components![index].name, schema]);
+  const target = manifest.source.kind === 'swagger-2.0' ? 'draft-4' : manifest.source.kind === 'openapi-3.0' ? 'openapi-3.0' : 'openapi-3.1';
+  const referenceRoot = manifest.source.kind === 'swagger-2.0' ? '#/definitions/' : '#/components/schemas/';
+  let converted: Record<string, Record<string, unknown>>;
+  try { converted = zodSchemasToJsonSchema(namedSchemas, { target, $schema: false }, (name) => `${referenceRoot}${name.replace(/~/g, '~0').replace(/\//g, '~1')}`); }
+  catch (error) { throw new TypeError(`Unable to convert generated component files: ${error instanceof Error ? error.message : String(error)}`); }
+
+  const schemas = new Map<number, Record<string, unknown>>();
+  for (const [index] of imported) {
+    const component = manifest.components![index];
+    if (aliases.has(index)) schemas.set(index, component.schema as Record<string, unknown>);
+    else {
+      const schema = converted[component.name];
+      if (!schema) throw new TypeError(`Unable to convert generated component file ${String(component.file)}`);
+      schemas.set(index, schema);
+    }
+  }
+  return schemas;
+}
+
+function componentRefTarget(schema: unknown): string | undefined {
+  if (!isRecord(schema) || typeof schema.$ref !== 'string') return undefined;
+  const prefix = schema.$ref.startsWith('#/components/schemas/') ? '#/components/schemas/' : schema.$ref.startsWith('#/definitions/') ? '#/definitions/' : undefined;
+  return prefix ? schema.$ref.slice(prefix.length) : undefined;
+}
+
+/** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
 export async function manifestFileToOpenApi(file: string): Promise<Record<string, unknown>> {
   if (typeof file !== 'string' || !file) throw new TypeError('Manifest file path is required');
   let parsed: unknown;
   try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`); }
   const manifest = parsed as ZopiaManifest;
   reconstructOpenApi(manifest);
-  const endpointConfigs = await importEndpointConfigs(manifest, file);
-  return reconstructOpenApi(manifest, endpointConfigs);
+  const root = await realpath(dirname(resolve(file)));
+  const modules = new Map<string, Record<string, unknown>>();
+  const endpointConfigs = await importEndpointConfigs(manifest, root, modules);
+  const componentSchemas = await importComponentSchemas(manifest, root, modules);
+  return reconstructOpenApi(manifest, endpointConfigs, componentSchemas);
 }
 
 /** Reconstruct an API document from in-memory manifest snapshots without importing generated files. */
@@ -105,7 +177,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   return { path, method, operation };
 }
 
-function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<number, EndpointConfig>()): Record<string, unknown> {
+function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<number, EndpointConfig>(), componentSchemas = new Map<number, Record<string, unknown>>()): Record<string, unknown> {
   if (!isRecord(manifest) || manifest.$schema !== 'zopia:manifest@1' || !isRecord(manifest.source) || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
   if (!['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new TypeError(`Unsupported manifest source kind: ${manifest.source.kind}`);
   if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new TypeError('Invalid manifest source title or version');
@@ -114,6 +186,13 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
   if (manifest.componentsOverlay !== undefined && !isRecord(manifest.componentsOverlay)) throw new TypeError('Invalid manifest componentsOverlay');
   if (manifest.swaggerParameters !== undefined && !isRecord(manifest.swaggerParameters)) throw new TypeError('Invalid manifest swaggerParameters');
   if (manifest.swaggerResponses !== undefined && !isRecord(manifest.swaggerResponses)) throw new TypeError('Invalid manifest swaggerResponses');
+  if (manifest.components !== undefined && !Array.isArray(manifest.components)) throw new TypeError('Invalid manifest components');
+  const componentNames = new Set<string>();
+  for (const component of manifest.components ?? []) {
+    if (!isRecord(component) || typeof component.name !== 'string' || !component.name || !Object.prototype.hasOwnProperty.call(component, 'schema') || component.file !== undefined && component.file !== null && (typeof component.file !== 'string' || !component.file)) throw new TypeError('Invalid manifest component');
+    if (componentNames.has(component.name)) throw new TypeError(`Duplicate manifest component: ${component.name}`);
+    componentNames.add(component.name);
+  }
   if (manifest.componentsOverlay && ('schemas' in manifest.componentsOverlay || 'securitySchemes' in manifest.componentsOverlay)) throw new TypeError('Invalid manifest componentsOverlay: schemas and securitySchemes are reserved');
   const reservedInfoKeys = new Set(['title', 'version', 'description']);
   const invalidInfoKey = Object.keys(manifest.infoOverlay ?? {}).find((key) => reservedInfoKeys.has(key));
@@ -141,7 +220,7 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
     else document.components = { ...(document.components ?? {}), securitySchemes: manifest.securitySchemes };
   }
   if (manifest.defaultSecurity !== undefined) document.security = manifest.defaultSecurity;
-  const schemas = Object.fromEntries((manifest.components ?? []).map((component) => [component.name, component.schema]));
+  const schemas = Object.fromEntries((manifest.components ?? []).map((component, index) => [component.name, componentSchemas.has(index) ? componentSchemas.get(index) : component.schema]));
   if (Object.keys(schemas).length) {
     if (isSwagger) document.definitions = schemas;
     else document.components = { ...(document.components ?? {}), schemas };
