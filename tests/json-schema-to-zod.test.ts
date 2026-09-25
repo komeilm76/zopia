@@ -16,6 +16,12 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('z.number().int()');
     expect(result.schema.safeParse({ id: 1 }).success).toBe(true);
   });
+  it('supports pattern properties and property count constraints', () => {
+    const result = jsonSchemaToZod({ type: 'object', patternProperties: { '^x-': { type: 'string' } }, minProperties: 1, maxProperties: 2 });
+    expect(result.code).toContain('.catchall(z.string())');
+    expect(result.code).toContain('Object.keys(value).length >= 1');
+    expect(result.code).toContain('Object.keys(value).length <= 2');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

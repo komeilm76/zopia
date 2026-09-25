@@ -100,8 +100,13 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         const shape: Record<string, z.ZodType> = Object.create(null); const parts: string[] = [];
         for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving); const required = Array.isArray(node.required) && node.required.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`[${JSON.stringify(key)}]: ${required ? item.code : `${item.code}.optional()`}`); }
         if (Array.isArray(node.required)) for (const key of node.required) if (!(key in shape)) { shape[key] = z.unknown(); parts.push(`[${JSON.stringify(key)}]: z.unknown()`); }
-        if (node.patternProperties) warnings.push('patternProperties is not represented by the basic object converter');
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
+        if (node.additionalProperties === undefined && node.patternProperties && typeof node.patternProperties === 'object') {
+          const patternSchemas = Object.values(node.patternProperties as Record<string, JsonSchema>);
+          if (patternSchemas.length) { const pattern = convert(patternSchemas[0], resolving); objectSchema = objectSchema.catchall(pattern.schema); objectCode += `.catchall(${pattern.code})`; }
+        }
+        if (typeof node.minProperties === 'number') { objectSchema = objectSchema.refine((value) => Object.keys(value).length >= node.minProperties); objectCode += `.refine((value) => Object.keys(value).length >= ${node.minProperties})`; }
+        if (typeof node.maxProperties === 'number') { objectSchema = objectSchema.refine((value) => Object.keys(value).length <= node.maxProperties); objectCode += `.refine((value) => Object.keys(value).length <= ${node.maxProperties})`; }
         if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
         else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
         else { objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()'; }
