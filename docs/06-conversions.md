@@ -155,7 +155,7 @@ used in tests as an independent cross-check.
 | `{ "title": t }` / `{ "description": d }` / `{ "example": v }` / `{ "examples": […] }` | a single `.meta({ title?, description?, examples? })` call on the schema (only the fields present) — verified copied verbatim back by ① (R-612), plus a JSDoc comment for human readers. `example` (single) is normalized to `examples: [v]` | R-633 |
 | `{ "$ref": "#/…/schemas/X" }` | component mode: import `XSchema`; default mode: local const (R-403) | R-402/R-634 |
 | `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order | R-634 |
-| `{ "if": …, "then": …, "else": … }` | ⚠️ `z.any()` + warning `ZOPIA_WARN_IF_THEN_ELSE` + overlay `node` (Phase 2: real support) | D-12 |
+| `{ "if": I, "then": T, "else": E }` | base schema plus a refinement that validates `T` when `I` succeeds and `E` otherwise; boolean branches are supported and a typed parent supplies context to keyword-only branches. Untyped type-specific branches and malformed/detached branches warn | R-632 |
 | `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | ⚠️ nearest approximation (`z.record(z.string(), z.unknown())` where sensible) + warnings + overlay `node` for the unsupported keywords | D-12 |
 
 > ⟦S⟧ = "the Zod code of the sub-schema S" (recursion).

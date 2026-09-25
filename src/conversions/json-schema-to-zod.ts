@@ -305,6 +305,38 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         result = { schema: result.schema.refine((items: any) => { const count = items.filter((item: any) => contained.schema.safeParse(item).success).length; return count >= min && (max === undefined || count <= max); }), code: `${result.code}.refine((items) => { const count = items.filter((item) => ${contained.code}.safeParse(item).success).length; return count >= ${min}${max === undefined ? '' : ` && count <= ${max}`}; })` };
       } else warnings.push('Invalid contains: expected a schema');
     }
+    const hasIf = Object.prototype.hasOwnProperty.call(node, 'if');
+    if (!hasIf && (Object.prototype.hasOwnProperty.call(node, 'then') || Object.prototype.hasOwnProperty.call(node, 'else'))) warnings.push('then/else require if and were ignored');
+    if (hasIf) {
+      if (!isSchema(node.if)) warnings.push('Invalid if: expected a schema');
+      else {
+        const contextualize = (schema: JsonSchema): JsonSchema => {
+          if (typeof schema === 'boolean' || schema.type !== undefined) return schema;
+          if (typeof node.type === 'string') return { ...schema, type: node.type };
+          const typeSpecificKeywords = ['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames', 'dependentRequired', 'dependentSchemas', 'items', 'prefixItems', 'contains', 'minItems', 'maxItems', 'minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'];
+          const warning = 'Conditional schema without an explicit parent or branch type may approximate type-specific keyword semantics';
+          if (typeSpecificKeywords.some((key) => Object.prototype.hasOwnProperty.call(schema, key)) && !warnings.includes(warning)) warnings.push(warning);
+          return schema;
+        };
+        const condition = convert(contextualize(node.if), resolving);
+        let whenTrue: { schema: z.ZodType; code: string } | undefined;
+        let whenFalse: { schema: z.ZodType; code: string } | undefined;
+        if (Object.prototype.hasOwnProperty.call(node, 'then')) {
+          if (!isSchema(node.then)) warnings.push('Invalid then: expected a schema');
+          else whenTrue = convert(contextualize(node.then), resolving);
+        }
+        if (Object.prototype.hasOwnProperty.call(node, 'else')) {
+          if (!isSchema(node.else)) warnings.push('Invalid else: expected a schema');
+          else whenFalse = convert(contextualize(node.else), resolving);
+        }
+        if (whenTrue || whenFalse) {
+          result = {
+            schema: result.schema.refine((value: unknown) => condition.schema.safeParse(value).success ? !whenTrue || whenTrue.schema.safeParse(value).success : !whenFalse || whenFalse.schema.safeParse(value).success),
+            code: `${result.code}.refine((value) => (${condition.code}).safeParse(value).success ? ${whenTrue ? `(${whenTrue.code}).safeParse(value).success` : 'true'} : ${whenFalse ? `(${whenFalse.code}).safeParse(value).success` : 'true'})`,
+          };
+        }
+      }
+    }
     if (node.contentEncoding === 'base64' && node.type === 'string') result = { schema: (result.schema as any).base64(), code: `${result.code}.base64()` };
     else if (node.contentEncoding === 'base64url' && node.type === 'string') result = { schema: (result.schema as any).base64url(), code: `${result.code}.base64url()` };
     else if (node.contentEncoding === 'hex' && node.type === 'string') result = { schema: (result.schema as any).regex(/^(?:[0-9A-Fa-f]{2})*$/), code: `${result.code}.regex(/^(?:[0-9A-Fa-f]{2})*$/)` };

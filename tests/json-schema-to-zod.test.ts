@@ -306,6 +306,35 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([]);
     expect(result.schema.safeParse({ id: 1 }).success).toBe(false);
   });
+  it('supports conditional if, then, and else schemas', () => {
+    const result = jsonSchemaToZod({
+      type: 'object',
+      properties: { kind: { type: 'string' }, value: { type: 'string' }, count: { type: 'number' } },
+      if: { properties: { kind: { const: 'text' } }, required: ['kind'] },
+      then: { properties: { value: { type: 'string', minLength: 2 } }, required: ['value'] },
+      else: { properties: { count: { type: 'number', minimum: 1 } }, required: ['count'] },
+    });
+    expect(result.schema.safeParse({ kind: 'text', value: 'ok' }).success).toBe(true);
+    expect(result.schema.safeParse({ kind: 'text', value: 'x' }).success).toBe(false);
+    expect(result.schema.safeParse({ kind: 'count', count: 1 }).success).toBe(true);
+    expect(result.schema.safeParse({ kind: 'count', count: 0 }).success).toBe(false);
+    expect(result.code).toContain('.safeParse(value).success ?');
+    expect(() => new Function('z', result.code)).not.toThrow();
+
+    const falseCondition = jsonSchemaToZod({ type: 'number', if: false, else: { minimum: 10 } });
+    expect(falseCondition.schema.safeParse(5).success).toBe(false);
+    expect(falseCondition.schema.safeParse(10).success).toBe(true);
+    const falseThen = jsonSchemaToZod({ type: 'number', if: { minimum: 0 }, then: false });
+    expect(falseThen.schema.safeParse(1).success).toBe(false);
+    expect(falseThen.schema.safeParse(-1).success).toBe(true);
+  });
+  it('warns for malformed or detached conditional branches', () => {
+    expect(jsonSchemaToZod({ type: 'string', then: { minLength: 2 } }).warnings).toContain('then/else require if and were ignored');
+    expect(jsonSchemaToZod({ type: 'string', if: [] }).warnings).toContain('Invalid if: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', if: true, then: [] }).warnings).toContain('Invalid then: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', if: false, else: [] }).warnings).toContain('Invalid else: expected a schema');
+    expect(jsonSchemaToZod({ if: { properties: { kind: { const: 'x' } } }, then: { required: ['value'] } }).warnings).toContain('Conditional schema without an explicit parent or branch type may approximate type-specific keyword semantics');
+  });
   it('handles prototype-like property names safely', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { __proto__: { type: 'string' }, constructor: { type: 'number' } }, required: ['__proto__', 'constructor'] });
     expect(result.schema.safeParse({ ['__proto__']: 'x', constructor: 1 }).success).toBe(true);
