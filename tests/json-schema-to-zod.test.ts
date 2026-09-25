@@ -135,6 +135,12 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'number', contentEncoding: 'base64' });
     expect(result.warnings).toContain('Invalid contentEncoding: expected a string schema');
   });
+  it('supports OpenAPI integer formats', () => {
+    const result = jsonSchemaToZod({ type: 'number', format: 'int64' });
+    expect(result.schema.safeParse(12.5).success).toBe(false);
+    expect(result.schema.safeParse(12).success).toBe(true);
+    expect(result.code).toContain('.int()');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

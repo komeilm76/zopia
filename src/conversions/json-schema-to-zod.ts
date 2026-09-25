@@ -135,6 +135,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       const excluded = convert(node.not as JsonSchema, resolving);
       result = { schema: result.schema.refine((value: unknown) => !excluded.schema.safeParse(value).success), code: `${result.code}.refine((value) => !(${excluded.code}).safeParse(value).success)` };
     }
+    if ((node.format === 'int32' || node.format === 'int64') && (node.type === 'integer' || node.type === 'number')) result = { schema: (result.schema as any).int(), code: `${result.code}.int()` };
     if (node.format && node.type === 'string') {
       const formats: Record<string, { schema: (s: any) => any; code: string }> = {
         email: { schema: (s) => s.email(), code: 'email()' },
