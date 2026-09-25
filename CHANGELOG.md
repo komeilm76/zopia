@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🔄 File-based reverse conversion now re-serializes edited endpoint body, parameter, and response Zod schemas through Engine ① with request-input and response-output semantics across OpenAPI 3.x and Swagger 2.0.
+- 🐛 Runtime endpoint imports now support generated directories containing `{path}` segments, and Swagger body schemas are emitted from normalized operation contracts instead of falling back to `z.any()`.
 - 🐛 Generated component schemas now import `additionalProperties` references, keep deeply nested cycles lazy, preserve open-object behavior, annotations, property-count bounds, and flexible tuple cardinality, and round-trip unique arrays plus structured `const`/`enum` values.
 - 🐛 OpenAPI 3.1 Zod conversion now emits JSON Schema 2020-12 shapes instead of falling through to legacy tuple forms.
 - 🧱 File-based reverse conversion now securely imports emitted component modules, converts edited Zod schemas to the source API dialect, and preserves references between imported components.

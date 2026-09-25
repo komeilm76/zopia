@@ -334,7 +334,7 @@ interface ZopiaManifest {
 }
 ```
 
-`manifestFileToOpenApi()` imports each trusted `apis[].file` and every emitted `components[].file` relative to the manifest. Runtime km-api metadata (method, path, operation ID, summary, description, tags, and deprecation) overrides the preserved source operation, while imported component Zod schemas override their manifest snapshots and preserve references to other imported components. `manifestToOpenApi()` remains the synchronous snapshot-only API for already-loaded manifests. Request/response Zod schema re-serialization is still follow-up work.
+`manifestFileToOpenApi()` imports each trusted `apis[].file` and every emitted `components[].file` relative to the manifest. Runtime km-api metadata and edited request/response Zod schemas override their manifest snapshots; request-side schemas use Engine ① input semantics, response-side schemas use output semantics, and imported component references remain `$ref`s. `manifestToOpenApi()` remains the synchronous snapshot-only API for already-loaded manifests.
 
 | # | Step | Rules |
 | --- | --- | --- |

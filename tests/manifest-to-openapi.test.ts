@@ -63,9 +63,95 @@ describe('manifest reverse conversion', () => {
     expect(operation.security).toEqual([]);
     expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
   });
+  it('re-serializes edited request and response Zod schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Runtime schemas', version: '1' }, paths: { '/users/{id}': { post: {
+      parameters: [
+        { name: 'id', in: 'path', required: true, description: 'User ID', schema: { type: 'string' } },
+        { name: 'limit', in: 'query', schema: { type: 'integer' } },
+      ],
+      requestBody: { required: true, description: 'Payload', content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } } },
+      responses: {
+        '201': { description: 'Created', headers: { 'X-Trace': { schema: { type: 'string' } } }, content: { 'application/json': { schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } } },
+        '204': { description: 'No content' },
+        '400': { description: 'Problem', content: { 'application/problem+json': { schema: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] } } } },
+        '4XX': { description: 'Any client error' },
+      },
+    } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'users', '{id}', 'post', 'index.ts');
+    const generated = await readFile(endpointFile, 'utf8');
+    const edited = generated
+      .replace('body: z.object({ ["name"]: z.string() }).passthrough()', 'body: z.object({ ["name"]: z.string(), ["age"]: z.number().int().min(18), ["role"]: z.string().default("user") }).passthrough()')
+      .replace('params: z.object({ ["id"]: z.string() })', 'params: z.object({ ["id"]: z.uuid() })')
+      .replace('query: z.object({ ["limit"]: z.number().int().optional() })', 'query: z.object({ ["limit"]: z.number().int().min(1) })')
+      .replace('201: z.object({ ["id"]: z.string() }).passthrough()', '201: z.object({ ["id"]: z.uuid(), ["active"]: z.boolean(), ["version"]: z.string().default("1") }).passthrough()')
+      .replace('204: z.void()', '202: z.array(z.string()), 204: z.void()');
+    await writeFile(endpointFile, edited, 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    const operation = reversed.paths['/users/{id}'].post;
+    expect(operation.parameters).toEqual([
+      expect.objectContaining({ name: 'id', in: 'path', required: true, description: 'User ID', schema: expect.objectContaining({ type: 'string', format: 'uuid' }) }),
+      expect.objectContaining({ name: 'limit', in: 'query', required: true, schema: expect.objectContaining({ type: 'integer', minimum: 1 }) }),
+    ]);
+    expect(operation.requestBody).toMatchObject({ required: true, description: 'Payload', content: { 'application/json': { schema: {
+      type: 'object',
+      properties: { name: { type: 'string' }, age: expect.objectContaining({ type: 'integer', minimum: 18 }), role: { type: 'string', default: 'user' } },
+      required: ['name', 'age'],
+    } } } });
+    expect(operation.responses['201']).toMatchObject({ description: 'Created', headers: { 'X-Trace': { schema: { type: 'string' } } }, content: { 'application/json': { schema: {
+      type: 'object', properties: { id: expect.objectContaining({ type: 'string', format: 'uuid' }), active: { type: 'boolean' }, version: { type: 'string', default: '1' } }, required: ['id', 'active', 'version'],
+    } } } });
+    expect(operation.responses['202']).toMatchObject({ description: 'Generated response', content: { 'application/json': { schema: { type: 'array', items: { type: 'string' } } } } });
+    expect(operation.responses['204']).toEqual({ description: 'No content' });
+    expect(Object.keys(operation.responses['400'].content)).toEqual(['application/problem+json']);
+    expect(operation.responses['400'].content['application/problem+json'].schema.properties.message).toEqual({ type: 'string' });
+    expect(operation.responses['4XX']).toEqual({ description: 'Any client error' });
+
+    const withoutContent = edited
+      .replace('body: z.object({ ["name"]: z.string(), ["age"]: z.number().int().min(18), ["role"]: z.string().default("user") }).passthrough()', 'body: z.any()')
+      .replace('params: z.object({ ["id"]: z.uuid() })', 'params: z.object({})')
+      .replace('query: z.object({ ["limit"]: z.number().int().min(1) })', 'query: z.object({})')
+      .replace('201: z.object({ ["id"]: z.uuid(), ["active"]: z.boolean(), ["version"]: z.string().default("1") }).passthrough()', '201: z.void()');
+    await writeFile(endpointFile, withoutContent, 'utf8');
+    const rereversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    const stripped = rereversed.paths['/users/{id}'].post;
+    expect(stripped.requestBody).toBeUndefined();
+    expect(stripped.parameters).toBeUndefined();
+    expect(stripped.responses['201']).toEqual({ description: 'Created', headers: { 'X-Trace': { schema: { type: 'string' } } } });
+  });
+  it('re-serializes edited Swagger request and response schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy runtime schemas', version: '1' }, consumes: ['application/json'], produces: ['application/json'], paths: { '/items/{id}': { post: {
+      parameters: [
+        { name: 'id', in: 'path', required: true, type: 'string' },
+        { name: 'limit', in: 'query', type: 'integer' },
+        { name: 'payload', in: 'body', required: true, schema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      ],
+      responses: { '200': { description: 'OK', schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] } }, '204': { description: 'Empty' } },
+    } } } }, { outputDir });
+    const endpointFile = join(outputDir, 'items', '{id}', 'post', 'index.ts');
+    const generated = await readFile(endpointFile, 'utf8');
+    const edited = generated
+      .replace('body: z.object({ ["name"]: z.string() }).passthrough()', 'body: z.object({ ["count"]: z.number().int().min(1) }).passthrough()')
+      .replace('params: z.object({ ["id"]: z.string() })', 'params: z.object({ ["id"]: z.uuid() })')
+      .replace('query: z.object({ ["limit"]: z.number().int().optional() })', 'query: z.object({ ["limit"]: z.number().int().min(2) })')
+      .replace('200: z.object({ ["ok"]: z.boolean() }).passthrough()', '200: z.object({ ["ok"]: z.boolean(), ["message"]: z.string() }).passthrough()');
+    await writeFile(endpointFile, edited, 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    const operation = reversed.paths['/items/{id}'].post;
+    expect(operation.parameters).toEqual([
+      expect.objectContaining({ name: 'id', in: 'path', required: true, type: 'string', format: 'uuid' }),
+      expect.objectContaining({ name: 'limit', in: 'query', required: true, type: 'integer', minimum: 2 }),
+      expect.objectContaining({ name: 'payload', in: 'body', required: true, schema: expect.objectContaining({ properties: { count: expect.objectContaining({ type: 'integer', minimum: 1 }) }, required: ['count'] }) }),
+    ]);
+    expect(operation.responses['200']).toMatchObject({ description: 'OK', schema: { properties: { ok: { type: 'boolean' }, message: { type: 'string' } }, required: ['ok', 'message'] } });
+    expect(operation.responses['204']).toEqual({ description: 'Empty' });
+  });
   it('imports emitted component modules and uses edited Zod schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
-    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Components', version: '1' }, components: { schemas: { User: { type: 'object', title: 'User', description: 'A user', properties: { id: { type: 'string' } }, required: ['id'] }, Group: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } }, required: ['owner'] }, UserAlias: { $ref: '#/components/schemas/User' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Components', version: '1' }, components: { schemas: { User: { type: 'object', title: 'User', description: 'A user', properties: { id: { type: 'string' } }, required: ['id'] }, Group: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } }, required: ['owner'] }, UserAlias: { $ref: '#/components/schemas/User' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/UserAlias' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const manifestFile = join(outputDir, '.zopia-manifest.json');
     const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
     expect((manifestToOpenApi(manifest) as any).components.schemas.User.properties.id.type).toBe('string');
@@ -82,7 +168,7 @@ describe('manifest reverse conversion', () => {
     expect(reversed.components.schemas.User).toMatchObject({ title: 'User', description: 'A user' });
     expect(reversed.components.schemas.Group.properties.owner).toEqual({ $ref: '#/components/schemas/User' });
     expect(reversed.components.schemas.UserAlias).toEqual({ $ref: '#/components/schemas/User' });
-    expect(reversed.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
+    expect(reversed.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/UserAlias' });
 
     await writeFile(componentFile, (await readFile(componentFile, 'utf8')).replace('.min(1)', '.min(2)'), 'utf8');
     const rereversed = await manifestFileToOpenApi(manifestFile) as any;

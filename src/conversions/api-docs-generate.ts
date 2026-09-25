@@ -245,7 +245,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
     return schemaCode({ ...(normalized as Record<string, unknown>), $defs: { ...ownDefinitions, [namespace]: normalizedComponents } }, fallback);
   };
   const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `[${JSON.stringify(p.name)}]: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
-  const rawRequestSchema = resolveObject(operation.operation.requestBody, source)?.content ? (Object.values(resolveObject(operation.operation.requestBody, source).content)[0] as any)?.schema : undefined;
+  const rawRequestSchema = contracts.requestBody?.schema;
   const request = `request: { body: ${contracts.requestBody ? componentSchema(rawRequestSchema, 'requestBody') : 'z.any()'},  params: z.object({ ${params('path')} }), query: z.object({ ${params('query')} }), headers: z.object({ ${params('header')} }), cookies: z.object({ ${params('cookie')} }) }`;
   const response = contracts.responses.map((r) => { const raw = resolveObject(operation.operation.responses?.[r.status], source); const rawSchema = raw?.content ? (Object.values(raw.content)[0] as any)?.schema : raw?.schema; return `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : componentSchema(rawSchema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`; }).join(', ');
   const responseContentType = contracts.responses.find((r) => r.contentType)?.contentType;

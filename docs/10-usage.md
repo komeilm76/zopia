@@ -106,8 +106,8 @@ zopia reverse  <manifest.json> [--out openapi.json] # ④ manifest → OpenAPI
 > ⚠️ `zopia reverse` executes the TypeScript modules referenced by `apis[].file`
 > and non-null `components[].file` entries. Reverse only trusted generated trees.
 > File paths are restricted to the manifest directory (including after symlink
-> resolution), while edited runtime km-api metadata and component Zod schemas
-> take precedence over their manifest snapshots.
+> resolution), while edited runtime km-api metadata and endpoint/component Zod
+> schemas take precedence over their manifest snapshots.
 
 Exit codes: `0` success · `1` user error (bad input/options — message on
 stderr, hint included) · `2` internal error (should never happen — report it).
