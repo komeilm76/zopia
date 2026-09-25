@@ -147,7 +147,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       else warnings.push(`Unsupported format: ${node.format}`);
     }
     if (node.uniqueItems === true && node.type === 'array') {
-      result = { schema: result.schema.refine((items: any) => new Set(items.map((item: any) => JSON.stringify(item, item !== null && typeof item === 'object' ? Object.keys(item).sort() : undefined)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, item !== null && typeof item === 'object' ? Object.keys(item).sort() : undefined))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
+      result = { schema: result.schema.refine((items: any) => new Set(items.map((item: any) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
     }
     const methods: Array<[string, unknown, (schema: any, value: any) => any]> = [
       ['minLength', node.minLength, (s, v) => s.min(v)],
