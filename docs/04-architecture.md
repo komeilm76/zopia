@@ -252,20 +252,21 @@ All errors extend one base class — **no raw `Error`, no thrown strings**
 (standards → Errors):
 
 ```ts
-export interface ZopiaError extends Error {
+export class ZopiaError extends Error {
   /** 🆔 Stable machine-readable code, e.g. 'ZOPIA_REF_NOT_FOUND'. */
-  code: ZopiaErrorCode;
+  readonly code: ZopiaErrorCode;
   /** 📍 JSON-pointer or file location where the problem was found, if any. */
-  at?: string;
+  readonly at?: string;
   /** 💡 Actionable, human-readable suggestion. */
-  hint?: string;
+  readonly hint?: string;
 }
 ```
 
 | 🆔 Code | 📍 Where | 💥 When | 💡 Hint pattern |
 | --- | --- | --- | --- |
 | `ZOPIA_CONFIG_INVALID` | options validation | e.g. `useComponentAsReference: true` without `insertComponents: true` | "enable `insertComponents` first" |
-| `ZOPIA_SPEC_INVALID_JSON` | engine ③ entry | input is not valid JSON | "fix the syntax at …" |
+| `ZOPIA_SPEC_INVALID_JSON` | engine ③ entry | input is unreadable or is not valid JSON | "fix the syntax at …" |
+| `ZOPIA_SPEC_INVALID` | engine ③ validation | the parsed document violates the supported Swagger/OpenAPI shape | "fix the invalid Swagger/OpenAPI document" |
 | `ZOPIA_SPEC_UNSUPPORTED_VERSION` | `detect()` | neither `swagger: "2.0"` nor `openapi: "3.x"` | "supported: swagger 2.0, openapi 3.0/3.1" |
 | `ZOPIA_SPEC_MISSING_PATHS` | normalizers | document has no `paths` | — |
 | `ZOPIA_SPEC_PATH_REF` | normalizers | reserved for unsupported path-item reference cases | "path-item references must be valid local references" |
@@ -275,6 +276,7 @@ export interface ZopiaError extends Error {
 | `ZOPIA_DOCS_MANIFEST_MISMATCH` | engine ④ | manifest `apis` entry file missing/renamed | "restore the generated file" |
 | `ZOPIA_DOCS_IMPORT_FAILED` | engine ④ | imported `index.ts` fails to load or has no `makeApiConfig` export | "the file was hand-broken?" |
 | `ZOPIA_FS_OUTSIDE_OUTDIR` | `fs/guard.ts` | a computed write path escapes `outDir` | never happens by construction — defense in depth |
+| `ZOPIA_FS_WRITE_FAILED` | engine ③ public writer | the output directory cannot be inspected or written | "provide a writable output directory" |
 
 > 📌 **Rule R-404** — every error is thrown as a `ZopiaError` with a stable
 > code, a location (`at`) when discoverable, and a `hint`. Tests assert on

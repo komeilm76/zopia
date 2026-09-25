@@ -1,3 +1,4 @@
+export { ZopiaError, type ZopiaErrorCode } from './errors';
 export { type ZopiaWarning } from './warnings';
 export {
   zodToJsonSchema,
@@ -17,6 +18,12 @@ export {
   type OpenApiDocument,
   type OpenApiVersion,
 } from './conversions/openapi';
+export {
+  openApiToApiDocs,
+  type ZopiaGenerateOptions,
+  type ZopiaGeneratedFile,
+  type ZopiaGenerateResult,
+} from './conversions/openapi-to-api-docs-public';
 export {
   collectOpenApiOperations,
   deriveOperationId,

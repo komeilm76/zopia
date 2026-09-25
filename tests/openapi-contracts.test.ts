@@ -26,6 +26,20 @@ describe('OpenAPI operation contracts', () => {
     const [invalid] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { parameters: [{ in: 'body', name: 'payload', required: 'yes', schema: { type: 'object' } }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(invalid)).toThrow('Invalid Swagger body parameter required');
   });
+  it('prefers JSON-ish Swagger media types over earlier non-JSON entries', () => {
+    const [ir] = buildOpenApiOperationIR({
+      swagger: '2.0', info: { title: 'x', version: '1' },
+      consumes: ['text/plain', 'application/vnd.example+json'],
+      produces: ['application/xml', 'application/json'],
+      paths: { '/x': { post: {
+        parameters: [{ in: 'body', name: 'payload', schema: { type: 'object' } }],
+        responses: { '200': { description: 'ok', schema: { type: 'string' } } },
+      } } },
+    });
+    const contracts = extractOperationContracts(ir);
+    expect(contracts.requestBody?.contentType).toBe('application/vnd.example+json');
+    expect(contracts.responses[0].contentType).toBe('application/json');
+  });
   it('extracts OpenAPI parameter content schemas', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ name: 'filter', in: 'query', content: { 'application/json': { schema: { type: 'object' } } } }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).parameters[0].schema).toEqual({ type: 'object' });

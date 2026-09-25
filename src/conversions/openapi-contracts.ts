@@ -13,9 +13,15 @@ function firstContent(content: unknown): { contentType?: string; schema?: unknow
   if (!content || typeof content !== 'object' || Array.isArray(content)) throw new TypeError('Invalid content: expected an object');
   const entries = Object.entries(content as Record<string, any>);
   if (entries.length === 0) return {};
-  const [contentType, media] = entries[0];
+  const [contentType, media] = entries.find(([type]) => type.toLowerCase() === 'application/json') ?? entries[0];
   if (!contentType || !media || typeof media !== 'object' || Array.isArray(media)) throw new TypeError(`Invalid media type content: ${contentType}`);
   return { contentType, schema: media.schema };
+}
+
+function primarySwaggerMediaType(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const types = value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+  return types.find((type) => type.toLowerCase() === 'application/json' || type.toLowerCase().endsWith('+json')) ?? types[0];
 }
 
 function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context: string): Record<string, any> {
@@ -59,7 +65,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
       if (typeof bodyParameter !== 'object' || !bodyParameter.schema) throw new TypeError(`Invalid Swagger body parameter: ${ir.method} ${ir.path}`);
       if (bodyParameter.required !== undefined && typeof bodyParameter.required !== 'boolean') throw new TypeError(`Invalid Swagger body parameter required: ${ir.method} ${ir.path}`);
       const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
-      body = { content: { [typeof consumes[0] === 'string' && consumes[0] ? consumes[0] : 'application/json']: { schema: bodyParameter.schema } }, required: bodyParameter.required === true };
+      body = { content: { [primarySwaggerMediaType(consumes) ?? 'application/json']: { schema: bodyParameter.schema } }, required: bodyParameter.required === true };
     } else if (formParameters.length) {
       const properties: Record<string, any> = {}; const required: string[] = [];
       for (const parameter of formParameters) { const validTypes = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'file']); if (typeof parameter.name !== 'string' || !parameter.name || !validTypes.has(parameter.type) || (parameter.type === 'array' && !parameter.items)) throw new TypeError(`Invalid Swagger formData parameter: ${ir.method} ${ir.path}`); if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new TypeError(`Invalid Swagger formData required: ${parameter.name}`); properties[parameter.name] = { type: parameter.type === 'file' ? 'string' : parameter.type, ...(parameter.type === 'file' ? { format: 'binary' } : parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) }; if (parameter.required === true) required.push(parameter.name); }
@@ -87,7 +93,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const media = firstContent(response.content);
     const schema = media.schema === undefined && response.schema !== undefined ? { schema: response.schema } : {};
     const swaggerProduces = ir.document.swagger === '2.0' ? (Array.isArray(response.produces) ? response.produces : Array.isArray(operation.produces) ? operation.produces : Array.isArray(ir.document.produces) ? ir.document.produces : []) : [];
-    const contentType = media.contentType ?? (typeof swaggerProduces[0] === 'string' ? swaggerProduces[0] : undefined);
+    const contentType = media.contentType ?? primarySwaggerMediaType(swaggerProduces);
     return { status, description: response.description, ...media, ...schema, ...(contentType ? { contentType } : {}) };
   }) };
 }

@@ -9,8 +9,29 @@ import type { ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
 import { decodeJsonPointerSegment, resolveOpenApiLocalRef } from './openapi-ref';
 
-export interface GeneratedApiDocsFile { file: string; absolutePath: string; operationId: string; }
-export interface GenerateApiDocsOptions { outputDir: string; mode?: ApiDocsMode; insertComponents?: boolean; useComponentAsReference?: boolean; manifest?: boolean; }
+/** A low-level generated file record with both relative and absolute paths. */
+export interface GeneratedApiDocsFile {
+  /** Portable path relative to the configured output directory. */
+  file: string;
+  /** Absolute filesystem path written by the generator. */
+  absolutePath: string;
+  /** Endpoint operation ID or component artifact name. */
+  operationId: string;
+}
+
+/** Low-level file-generator options used by the Engine ③ public wrapper. */
+export interface GenerateApiDocsOptions {
+  /** Required output directory for the low-level writer. */
+  outputDir: string;
+  /** Endpoint layout mode. */
+  mode?: ApiDocsMode;
+  /** Whether component files are emitted. */
+  insertComponents?: boolean;
+  /** Whether endpoint schemas import emitted components. */
+  useComponentAsReference?: boolean;
+  /** Whether the reverse-conversion manifest is emitted. */
+  manifest?: boolean;
+}
 
 function componentTarget(ref: unknown): string | undefined {
   if (typeof ref !== 'string') return undefined;
@@ -284,17 +305,18 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `[${JSON.stringify(p.name)}]: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
   const rawRequestSchema = contracts.requestBody?.schema;
   const request = `request: { body: ${contracts.requestBody ? componentSchema(rawRequestSchema, 'requestBody') : 'z.any()'},  params: z.object({ ${params('path')} }), query: z.object({ ${params('query')} }), headers: z.object({ ${params('header')} }), cookies: z.object({ ${params('cookie')} }) }`;
-  const response = contracts.responses.map((r) => { const raw = resolveObject(operation.operation.responses?.[r.status], source); const rawSchema = raw?.content ? (Object.values(raw.content)[0] as any)?.schema : raw?.schema; return `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : componentSchema(rawSchema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`; }).join(', ');
+  const response = contracts.responses.map((r) => `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : componentSchema(r.schema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`).join(', ');
   const responseContentType = contracts.responses.find((r) => r.contentType)?.contentType;
   const requestExamples: Record<string, unknown> = Object.create(null);
   const requestBody = resolveObject(operation.operation.requestBody, source);
-  const requestMedia = requestBody?.content ? Object.values(requestBody.content as Record<string, any>)[0] as any : undefined;
+  const requestMedia = requestBody?.content && contracts.requestBody?.contentType ? requestBody.content[contracts.requestBody.contentType] : undefined;
   if (requestMedia?.example !== undefined) requestExamples.default = { value: requestMedia.example };
   if (requestMedia?.examples && typeof requestMedia.examples === 'object') Object.assign(requestExamples, requestMedia.examples);
   const responseExamples: Record<string, unknown> = {};
   for (const [status, value] of Object.entries(operation.operation.responses ?? {})) {
     const raw = resolveObject(value, source);
-    const media = raw && typeof raw === 'object' && (raw as any).content ? Object.values((raw as any).content)[0] as any : undefined;
+    const selectedContentType = contracts.responses.find((response) => response.status === status)?.contentType;
+    const media = raw && typeof raw === 'object' && (raw as any).content && selectedContentType ? (raw as any).content[selectedContentType] : undefined;
     if (media?.example !== undefined) responseExamples[status] = { default: { value: media.example } };
     if (media?.examples && typeof media.examples === 'object') responseExamples[status] = media.examples;
     const legacyExamples = raw && typeof raw === 'object' ? (raw as any).examples : undefined;

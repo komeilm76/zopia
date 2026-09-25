@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 📄 Completed the Engine ③ public API: added `openApiToApiDocs()` with file/object/JSON-text input, validated defaults and typed `ZopiaError`s, sorted result metadata, structured conversion/staleness warnings, reference preflight, and application/json-first media selection; the CLI now delegates to the same API.
 - 📐 Completed Engine ②: JSON Schema conversion now accepts `.json` paths, returns structured warnings and manifest-compatible overlays, emits visible `@zopia:warn` markers, preserves annotations, emits lazy local definitions and discriminated unions, and hands lossy schema restorations through endpoint and component manifests for reverse conversion.
 - ⚛️ Completed Engine ①: Zod conversion now defaults to OpenAPI 3.1 with dialect markers enabled, preserves metadata without `id`-driven extraction, converts every Zod-reported unrepresentable site to `{}` with structured `ZOPIA_WARN_UNREPRESENTABLE` callbacks, recursively canonicalizes keyword order, and strips built-in format patterns plus safe-integer sentinel bounds.
 - 📤 Reverse conversion now selects OpenAPI 3.0 or 3.1 through `ZopiaReverseOptions.version`; the documented `apiDocsToOpenApi()` API and CLI default to 3.1, selected dialects drive runtime schema serialization, and Swagger manifests can be emitted as OpenAPI 3.x.

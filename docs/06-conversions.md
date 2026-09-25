@@ -228,7 +228,7 @@ const schema = z.object({
 ## Engine ③ — OpenAPI → api docs
 
 ```ts
-/** 📄 Generate the api_docs tree from a spec (JSON object or file path). */
+/** 📄 Generate the api_docs tree from a spec (JSON object, JSON text, or file path). */
 function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult>;
 ```
 
@@ -327,10 +327,17 @@ interface ZopiaGenerateResult {
   files: Array<{ path: string; kind: 'endpoint' | 'component' | 'manifest' }>;
   /** ⚠️ All warnings (R-408). */
   warnings: ZopiaWarning[];
-  /** 📦 Manifest path relative to outDir. */
-  manifestPath: string;
+  /** 📦 Manifest path relative to outDir; absent when `manifest: false`. */
+  manifestPath?: string;
 }
 ```
+
+The public wrapper validates all options before filesystem access, reads file
+inputs, rejects missing/external references with stable `ZopiaError` codes,
+preflights every operation contract, and returns paths sorted independently of
+source document order. Re-generating a directory from a changed source emits
+`ZOPIA_WARN_STALE_TREE`; `manifest: false` omits both the manifest file and
+`manifestPath`.
 
 ---
 

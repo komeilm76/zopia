@@ -68,8 +68,8 @@ artifact can be converted back, so nothing is ever lost.
 
 ## 📖 Quick look
 
-> The public API below is the **Phase 1 contract** — it is fixed now, implemented in
-> the next phase, and covered by tests. See [docs/10-usage.md](docs/10-usage.md).
+> The public API below is the **Phase 1 contract** and is covered by tests.
+> See [docs/10-usage.md](docs/10-usage.md).
 
 ```ts
 import {
@@ -83,7 +83,7 @@ import {
 await openApiToApiDocs('swagger.json', {
   mode: 'directory',               // 'directory' (default) | 'flat'
   insertComponents: false,         // emit components/**          (default false)
-  useComponentAsReference: false,  // reserved until endpoint imports are implemented
+  useComponentAsReference: false,  // import emitted components (default false)
 });
 // └─ api_docs/admin/users/{id}/get/index.ts  →  makeApiConfig({ method: 'GET', pathShape: '/admin/users/{id}', … })
 

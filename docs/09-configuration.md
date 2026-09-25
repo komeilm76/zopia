@@ -46,6 +46,7 @@ interface ZopiaGenerateOptions {
 | R-911 | `useComponentAsReference: true` + `insertComponents: false` (or omitted) | `ZOPIA_CONFIG_INVALID` — hint: *"enable `insertComponents` first"* |
 | R-912 | `mode` outside `'directory' \| 'flat'` | `ZOPIA_CONFIG_INVALID` |
 | R-913 | `outDir` empty string | `ZOPIA_CONFIG_INVALID` |
+| R-914 | unknown option keys or non-boolean boolean flags | `ZOPIA_CONFIG_INVALID` |
 
 ## 📄 `ZopiaReverseOptions` — engine ④ (`apiDocsToOpenApi`)
 
@@ -92,17 +93,18 @@ See [Conversions → Engine ①](06-conversions.md)
 ## ⌨️ CLI ↔ options mapping
 
 ```text
-zopia generate <spec.json> [--out <dir>] [--mode <directory|flat>]
-    [--insert-components] [--use-component-as-reference]
+zopia generate <spec.json> <output-dir> [--mode <directory|flat>]
+    [--insert-components] [--use-component-as-reference] [--no-manifest]
 zopia reverse  <docs-dir>  [--out <file.json>] [--version <3.0|3.1>]
 ```
 
 | 🚩 Flag | ⚙️ Option |
 | --- | --- |
-| `--out <dir>` | `outDir` |
+| positional `<output-dir>` (generate) | `outDir` |
 | `--mode <directory\|flat>` | `mode` |
 | `--insert-components` | `insertComponents: true` |
 | `--use-component-as-reference` | `useComponentAsReference: true` |
+| `--no-manifest` | `manifest: false` |
 | `--out <file.json>` (reverse) | output file path |
 | `--version <3.0\|3.1>` | `version` |
 

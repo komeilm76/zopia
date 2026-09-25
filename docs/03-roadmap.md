@@ -29,7 +29,7 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       ([rules](06-conversions.md))
 - [x] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
       ([rules](06-conversions.md))
-- [ ] ③ **Engine 3** — `openApiToApiDocs()` — normalize v2/v3 → internal model
+- [x] ③ **Engine 3** — `openApiToApiDocs()` — normalize v2/v3 → internal model
       → render `directory` / `flat` trees of `index.ts` files
       ([rules](06-conversions.md),
       [format](07-api-docs.md))

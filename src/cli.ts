@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-import { readFile, writeFile } from 'node:fs/promises';
-import { generateApiDocsFiles } from './conversions/api-docs-generate';
+import { writeFile } from 'node:fs/promises';
+import { ZopiaError } from './errors';
+import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
 import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
 
 function usage(): never { throw new Error('Usage: zopia generate <spec.json> <output-dir> [options] | zopia reverse <docs-dir|manifest.json> [--out file] [--version 3.0|3.1]'); }
@@ -16,7 +17,7 @@ async function main(argv: string[]): Promise<void> {
     const useComponentAsReference = argv.includes('--use-component-as-reference');
     const manifest = argv.includes('--no-manifest') ? false : true;
     if (modeIndex >= 0 && mode !== 'directory' && mode !== 'flat') throw new Error('Invalid --mode; expected directory or flat');
-    await generateApiDocsFiles(await readFile(input, 'utf8'), { outputDir: output, mode, insertComponents, useComponentAsReference, manifest });
+    await openApiToApiDocs(input, { outDir: output, mode, insertComponents, useComponentAsReference, manifest });
     return;
   }
   if (command === 'reverse') {
@@ -32,4 +33,8 @@ async function main(argv: string[]): Promise<void> {
   usage();
 }
 
-main(process.argv.slice(2)).catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
+main(process.argv.slice(2)).catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  if (error instanceof ZopiaError && error.hint) console.error(`Hint: ${error.hint}`);
+  process.exitCode = 1;
+});

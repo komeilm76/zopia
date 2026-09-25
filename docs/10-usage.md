@@ -1,8 +1,8 @@
 # 🚀 Usage
 
 How to use zopia — installation, the programmatic API (the primary interface),
-and the CLI. The API below is the **Phase 1 contract**: fixed by this
-documentation, implemented in the next phase, and pinned by tests.
+and the CLI. The API below is the implemented **Phase 1 contract**, pinned by
+tests.
 
 ## 📦 Installation
 
@@ -91,8 +91,8 @@ const user = getUser.makeBody(undefined); // type-safe: no body on GET
 
 ## ⌨️ CLI
 
-> 🚧 The CLI ships with the Phase 1 implementation; flags are already fixed
-> by the [Configuration → CLI mapping](09-configuration.md#-cli--options-mapping).
+> The CLI delegates generation to the same validated Engine ③ public API; its
+> flags map to [Configuration](09-configuration.md#-cli--options-mapping).
 
 ```text
 zopia generate <spec.json> <output-dir>   # ③ OpenAPI → api docs
