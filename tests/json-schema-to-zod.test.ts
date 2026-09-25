@@ -1,10 +1,13 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { jsonSchemaToZod } from '../src';
+import { jsonSchemaToZod, zodToJsonSchema } from '../src';
 
 describe('jsonSchemaToZod', () => {
   it('reports malformed type arrays without throwing', () => {
-    expect(jsonSchemaToZod({ type: [] }).warnings).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
-    expect(jsonSchemaToZod({ type: [1] }).warnings).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
+    expect(jsonSchemaToZod({ type: [] }).warnings.map((warning) => warning.message)).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
+    expect(jsonSchemaToZod({ type: [1] }).warnings.map((warning) => warning.message)).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
   });
   it('supports JSON Schema boolean and empty schemas without false warnings', () => {
     expect(jsonSchemaToZod(true).schema.safeParse('anything').success).toBe(true);
@@ -27,7 +30,8 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse('not an object').success).toBe(true);
     expect(result.schema.safeParse(42).success).toBe(true);
     expect(result.schema.safeParse([]).success).toBe(true);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE', at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', node: { properties: { id: { type: 'integer' } }, required: ['id'], additionalProperties: false } }]);
     expect(result.code).toContain('z.union([z.object(');
   });
   it('applies keyword-only string, array, and numeric schemas to matching instances', () => {
@@ -48,7 +52,8 @@ describe('jsonSchemaToZod', () => {
     expect(mixed.schema.safeParse(4).success).toBe(false);
     expect(mixed.schema.safeParse(5).success).toBe(true);
     expect(mixed.schema.safeParse(false).success).toBe(true);
-    expect(mixed.warnings).toEqual([]);
+    expect(mixed.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE', at: '#' })]);
+    expect(mixed.overlays).toEqual([{ at: '', node: { minLength: 2, minimum: 5 } }]);
     expect(() => new Function('z', mixed.code)).not.toThrow();
   });
   it('supports pattern properties and property count constraints', () => {
@@ -67,8 +72,8 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: false });
     expect(result.schema.safeParse({}).success).toBe(true);
     expect(result.schema.safeParse({ forbidden: true }).success).toBe(false);
-    expect(result.warnings).toEqual([]);
-    expect(jsonSchemaToZod({ type: 'object', propertyNames: [] }).warnings).toContain('Invalid propertyNames: expected a schema');
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
+    expect(jsonSchemaToZod({ type: 'object', propertyNames: [] }).warnings.map((warning) => warning.message)).toContain('Invalid propertyNames: expected a schema');
   });
   it('supports not schemas and validates malformed definitions', () => {
     const result = jsonSchemaToZod({ type: 'string', not: { enum: ['blocked'] } });
@@ -77,13 +82,13 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('safeParse');
     const falseNot = jsonSchemaToZod({ type: 'string', not: false });
     expect(falseNot.schema.safeParse('allowed').success).toBe(true);
-    expect(falseNot.warnings).toEqual([]);
-    expect(jsonSchemaToZod({ type: 'string', not: null }).warnings).toContain('Invalid not: expected a schema');
-    expect(jsonSchemaToZod({ type: 'string', not: 0 }).warnings).toContain('Invalid not: expected a schema');
+    expect(falseNot.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_NOT' })]);
+    expect(jsonSchemaToZod({ type: 'string', not: null }).warnings.map((warning) => warning.message)).toContain('Invalid not: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', not: 0 }).warnings.map((warning) => warning.message)).toContain('Invalid not: expected a schema');
   });
   it('reports invalid property name patterns without throwing', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '[' } });
-    expect(result.warnings).toContain('Unsupported constraint: pattern');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Unsupported constraint: pattern');
   });
   it('combines multiple password rules through allOf', () => {
     const result = jsonSchemaToZod({ allOf: [
@@ -92,7 +97,7 @@ describe('jsonSchemaToZod', () => {
       { type: 'string', pattern: '[0-9]' },
       { type: 'string', pattern: '[^A-Za-z0-9]' }
     ] });
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
     expect(result.schema.safeParse('Password1!').success).toBe(true);
     expect(result.schema.safeParse('password1!').success).toBe(false);
     expect(result.schema.safeParse('PasswordOnly').success).toBe(false);
@@ -107,9 +112,9 @@ describe('jsonSchemaToZod', () => {
   });
   it('reports malformed dependent required rules without partially applying them', () => {
     const result = jsonSchemaToZod({ type: 'object', dependentRequired: { password: 'confirmPassword' } });
-    expect(result.warnings).toContain('Invalid dependentRequired entry: expected an array of strings');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Invalid dependentRequired entry: expected an array of strings');
     const mixed = jsonSchemaToZod({ type: 'object', dependentRequired: { password: ['confirmPassword', 1] } });
-    expect(mixed.warnings).toContain('Invalid dependentRequired entry: expected an array of strings');
+    expect(mixed.warnings.map((warning) => warning.message)).toContain('Invalid dependentRequired entry: expected an array of strings');
     expect(mixed.schema.safeParse({ password: 'secret' }).success).toBe(true);
     expect(mixed.code).not.toContain('confirmPassword');
   });
@@ -118,7 +123,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ password: 'Password1!' }).success).toBe(false);
     expect(result.schema.safeParse({ password: 'Password1!', confirmPassword: 'Password1!' }).success).toBe(true);
     expect(result.schema.safeParse({}).success).toBe(true);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
   });
   it('supports legacy property and schema dependencies', () => {
     const result = jsonSchemaToZod({
@@ -133,7 +138,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ country: 'US' }).success).toBe(false);
     expect(result.schema.safeParse({ country: 'US', postalCode: '123' }).success).toBe(true);
     expect(result.schema.safeParse('non-object').success).toBe(true);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
     expect(result.code).toContain('Object.prototype.hasOwnProperty.call');
     expect(() => new Function('z', result.code)).not.toThrow();
 
@@ -142,20 +147,20 @@ describe('jsonSchemaToZod', () => {
     expect(falseDependency.schema.safeParse({ forbidden: true }).success).toBe(false);
   });
   it('warns for malformed legacy dependencies', () => {
-    expect(jsonSchemaToZod({ type: 'object', dependencies: [] }).warnings).toContain('Invalid dependencies: expected an object');
-    expect(jsonSchemaToZod({ type: 'object', dependencies: { key: ['valid', 1] } }).warnings).toContain('Invalid dependencies entry: expected a string array or schema');
-    expect(jsonSchemaToZod({ type: 'object', dependencies: { key: 'invalid' } }).warnings).toContain('Invalid dependencies entry: expected a string array or schema');
+    expect(jsonSchemaToZod({ type: 'object', dependencies: [] }).warnings.map((warning) => warning.message)).toContain('Invalid dependencies: expected an object');
+    expect(jsonSchemaToZod({ type: 'object', dependencies: { key: ['valid', 1] } }).warnings.map((warning) => warning.message)).toContain('Invalid dependencies entry: expected a string array or schema');
+    expect(jsonSchemaToZod({ type: 'object', dependencies: { key: 'invalid' } }).warnings.map((warning) => warning.message)).toContain('Invalid dependencies entry: expected a string array or schema');
   });
   it('supports positive multipleOf constraints', () => {
     const result = jsonSchemaToZod({ type: 'number', multipleOf: 0.1 });
     expect(result.schema.safeParse(1.5).success).toBe(true);
     expect(result.schema.safeParse(0.3).success).toBe(true);
     expect(result.schema.safeParse(1.25).success).toBe(false);
-    expect(result.code).toContain('Math.round(value / 0.1)');
+    expect(result.code).toContain('.multipleOf(0.1)');
   });
   it('warns for invalid multipleOf constraints', () => {
     const result = jsonSchemaToZod({ type: 'integer', multipleOf: 0 });
-    expect(result.warnings).toContain('Invalid multipleOf: expected a positive number');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Invalid multipleOf: expected a positive number');
   });
   it('supports unevaluated property restrictions', () => {
     const strict = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'string' } }, unevaluatedProperties: false });
@@ -172,7 +177,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('reports malformed dependent schemas', () => {
     const result = jsonSchemaToZod({ type: 'object', dependentSchemas: [] });
-    expect(result.warnings).toContain('Invalid dependentSchemas: expected an object of schemas');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Invalid dependentSchemas: expected an object of schemas');
   });
   it('supports unevaluated tuple items', () => {
     const result = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }], unevaluatedItems: { type: 'number' } });
@@ -203,15 +208,15 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'hex' });
     expect(result.schema.safeParse('deadBEEF').success).toBe(true);
     expect(result.schema.safeParse('abc').success).toBe(false);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_CONTENT_ENCODING' })]);
   });
   it('warns for unsupported content encoding', () => {
     const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'binary' });
-    expect(result.warnings).toContain('Unsupported contentEncoding: binary');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Unsupported contentEncoding: binary');
   });
   it('warns when contentEncoding is used on a non-string schema', () => {
     const result = jsonSchemaToZod({ type: 'number', contentEncoding: 'base64' });
-    expect(result.warnings).toContain('Invalid contentEncoding: expected a string schema');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Invalid contentEncoding: expected a string schema');
   });
   it('supports OpenAPI integer formats', () => {
     const result = jsonSchemaToZod({ type: 'number', format: 'int64' });
@@ -228,7 +233,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
-    expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
+    expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);\n');
   });
   it('supports structured enum and const values by JSON equality', () => {
     const objectEnum = jsonSchemaToZod({ enum: [{ nested: { a: 1, b: 2 } }] });
@@ -247,16 +252,19 @@ describe('jsonSchemaToZod', () => {
     expect(jsonSchemaToZod({ type: 'string', minLength: 3, allOf: [{ type: 'string', pattern: '^a' }] }).schema.safeParse('a').success).toBe(false);
     expect(jsonSchemaToZod({ type: 'number', minimum: 10, oneOf: [{ type: 'number' }] }).schema.safeParse(5).success).toBe(false);
   });
-  it('warns when oneOf exclusivity is approximated', () => {
+  it('warns when oneOf exclusivity requires an overlay', () => {
     const result = jsonSchemaToZod({ oneOf: [{ type: 'string' }, { type: 'number' }] });
-    expect(result.warnings).toContain('oneOf is approximated by z.union and does not enforce exclusivity');
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_ONE_OF', at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', set: { oneOf: [{ type: 'string' }, { type: 'number' }] }, remove: ['anyOf'] }]);
+    expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_ONE_OF oneOf —');
   });
   it('converts unions, nullable types, formats, and constraints', () => {
     const result = jsonSchemaToZod({ type: ['string', 'null'], format: 'email', minLength: 5 });
     expect(result.schema.safeParse(null).success).toBe(true);
     expect(result.schema.safeParse('a').success).toBe(false);
     expect(result.schema.safeParse('valid@example.com').success).toBe(true);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE', at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', node: { type: ['string', 'null'], format: 'email', minLength: 5 } }]);
 
     const openApiNullable = jsonSchemaToZod({ type: 'string', minLength: 2, nullable: true });
     expect(openApiNullable.schema.safeParse(null).success).toBe(true);
@@ -266,7 +274,7 @@ describe('jsonSchemaToZod', () => {
     const nullableEnum = jsonSchemaToZod({ type: 'string', enum: ['active'], nullable: true });
     expect(nullableEnum.schema.safeParse(null).success).toBe(true);
     expect(nullableEnum.schema.safeParse('inactive').success).toBe(false);
-    expect(jsonSchemaToZod({ type: 'string', nullable: 'yes' }).warnings).toContain('Invalid nullable: expected a boolean');
+    expect(jsonSchemaToZod({ type: 'string', nullable: 'yes' }).warnings.map((warning) => warning.message)).toContain('Invalid nullable: expected a boolean');
   });
   it('validates generated identifier names', () => {
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'not-valid' })).toThrow('Invalid rootName');
@@ -331,14 +339,18 @@ describe('jsonSchemaToZod', () => {
   it('rejects malformed JSON input clearly', () => {
     expect(() => jsonSchemaToZod('{bad')).toThrow('Invalid JSON Schema input');
   });
-  it('resolves local definitions and warns on recursive references', () => {
+  it('emits local definitions and lazy recursive references', () => {
     const result = jsonSchemaToZod({ $defs: { User: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } }, $ref: '#/$defs/User' });
     expect(result.warnings).toEqual([]);
+    expect(result.code).toContain('const user = z.object(');
+    expect(result.code).toContain('const schema = z.lazy(() => user);');
     expect(result.schema.safeParse({ name: 'Ada' }).success).toBe(true);
     const sibling = jsonSchemaToZod({ $defs: { Value: { type: 'string' } }, $ref: '#/$defs/Value', minLength: 3 });
     expect(sibling.schema.safeParse('ab').success).toBe(false);
     const recursive = jsonSchemaToZod({ $defs: { Node: { type: 'object', properties: { next: { $ref: '#/$defs/Node' } } } }, $ref: '#/$defs/Node' });
-    expect(recursive.warnings[0]).toContain('Recursive $ref');
+    expect(recursive.warnings).toEqual([]);
+    expect(recursive.code).toContain('["next"]: z.lazy(() => node).optional()');
+    expect(recursive.schema.safeParse({ next: { next: {} } }).success).toBe(true);
   });
   it('rejects all items when items is false', () => {
     const result = jsonSchemaToZod({ type: 'array', items: false });
@@ -347,7 +359,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('warns when contains bounds have no contains schema', () => {
     const result = jsonSchemaToZod({ type: 'array', minContains: 1 });
-    expect(result.warnings).toContain('minContains/maxContains require contains and were ignored');
+    expect(result.warnings.map((warning) => warning.message)).toContain('minContains/maxContains require contains and were ignored');
   });
   it('enforces contains and contains bounds', () => {
     const result = jsonSchemaToZod({ type: 'array', contains: { type: 'number' }, minContains: 2, maxContains: 2 });
@@ -359,9 +371,9 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'array', contains: false });
     expect(result.schema.safeParse([]).success).toBe(false);
     expect(result.schema.safeParse([1]).success).toBe(false);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
     expect(jsonSchemaToZod({ type: 'array', contains: false, minContains: 0 }).schema.safeParse([1]).success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'array', contains: [] }).warnings).toContain('Invalid contains: expected a schema');
+    expect(jsonSchemaToZod({ type: 'array', contains: [] }).warnings.map((warning) => warning.message)).toContain('Invalid contains: expected a schema');
   });
   it('enforces object property counts', () => {
     const result = jsonSchemaToZod({ type: 'object', minProperties: 1, maxProperties: 2 });
@@ -370,7 +382,7 @@ describe('jsonSchemaToZod', () => {
   });
   it('supports applicator keywords', () => {
     const result = jsonSchemaToZod({ type: 'object', not: { type: 'object', required: ['id'] }, minProperties: 1 });
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_NOT' })]);
     expect(result.schema.safeParse({ id: 1 }).success).toBe(false);
   });
   it('supports conditional if, then, and else schemas', () => {
@@ -399,34 +411,34 @@ describe('jsonSchemaToZod', () => {
     expect(untypedObject.schema.safeParse({ kind: 'text' }).success).toBe(false);
     expect(untypedObject.schema.safeParse({ kind: 'text', value: 1 }).success).toBe(true);
     expect(untypedObject.schema.safeParse('non-object values remain valid').success).toBe(true);
-    expect(untypedObject.warnings).toEqual([]);
+    expect(untypedObject.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
 
     const untypedString = jsonSchemaToZod({ if: { minLength: 2 }, then: { pattern: '^x' } });
     expect(untypedString.schema.safeParse('ab').success).toBe(false);
     expect(untypedString.schema.safeParse('xb').success).toBe(true);
     expect(untypedString.schema.safeParse('a').success).toBe(true);
     expect(untypedString.schema.safeParse(1).success).toBe(true);
-    expect(untypedString.warnings).toEqual([]);
+    expect(untypedString.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
   });
   it('warns for malformed or detached conditional branches', () => {
-    expect(jsonSchemaToZod({ type: 'string', then: { minLength: 2 } }).warnings).toContain('then/else require if and were ignored');
-    expect(jsonSchemaToZod({ type: 'string', if: [] }).warnings).toContain('Invalid if: expected a schema');
-    expect(jsonSchemaToZod({ type: 'string', if: true, then: [] }).warnings).toContain('Invalid then: expected a schema');
-    expect(jsonSchemaToZod({ type: 'string', if: false, else: [] }).warnings).toContain('Invalid else: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', then: { minLength: 2 } }).warnings.map((warning) => warning.message)).toContain('then/else require if and were ignored');
+    expect(jsonSchemaToZod({ type: 'string', if: [] }).warnings.map((warning) => warning.message)).toContain('Invalid if: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', if: true, then: [] }).warnings.map((warning) => warning.message)).toContain('Invalid then: expected a schema');
+    expect(jsonSchemaToZod({ type: 'string', if: false, else: [] }).warnings.map((warning) => warning.message)).toContain('Invalid else: expected a schema');
   });
   it('handles prototype-like property names safely', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { __proto__: { type: 'string' }, constructor: { type: 'number' } }, required: ['__proto__', 'constructor'] });
     expect(result.schema.safeParse({ ['__proto__']: 'x', constructor: 1 }).success).toBe(true);
   });
   it('reports malformed object keywords without throwing', () => {
-    expect(jsonSchemaToZod({ type: 'object', properties: [] }).warnings).toContain('Invalid properties: expected an object');
-    expect(jsonSchemaToZod({ type: 'object', required: 'id' }).warnings).toContain('Invalid required: expected an array of strings');
+    expect(jsonSchemaToZod({ type: 'object', properties: [] }).warnings.map((warning) => warning.message)).toContain('Invalid properties: expected an object');
+    expect(jsonSchemaToZod({ type: 'object', required: 'id' }).warnings.map((warning) => warning.message)).toContain('Invalid required: expected an array of strings');
     const malformedRequired = jsonSchemaToZod({ type: 'object', required: [1] });
-    expect(malformedRequired.warnings).toContain('Invalid required: expected an array of strings');
+    expect(malformedRequired.warnings.map((warning) => warning.message)).toContain('Invalid required: expected an array of strings');
     expect(malformedRequired.schema.safeParse({}).success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'object', patternProperties: [] }).warnings).toContain('Invalid patternProperties: expected an object');
-    expect(jsonSchemaToZod({ type: 'object', additionalProperties: [] }).warnings).toContain('Invalid additionalProperties: expected a schema');
-    expect(jsonSchemaToZod({ type: 'object', unevaluatedProperties: [] }).warnings).toContain('Invalid unevaluatedProperties: expected a schema');
+    expect(jsonSchemaToZod({ type: 'object', patternProperties: [] }).warnings.map((warning) => warning.message)).toContain('Invalid patternProperties: expected an object');
+    expect(jsonSchemaToZod({ type: 'object', additionalProperties: [] }).warnings.map((warning) => warning.message)).toContain('Invalid additionalProperties: expected a schema');
+    expect(jsonSchemaToZod({ type: 'object', unevaluatedProperties: [] }).warnings.map((warning) => warning.message)).toContain('Invalid unevaluatedProperties: expected a schema');
   });
   it('warns for malformed numeric and size constraints without emitting invalid code', () => {
     const cases: Array<[Record<string, unknown>, string]> = [
@@ -445,37 +457,131 @@ describe('jsonSchemaToZod', () => {
     ];
     for (const [schema, warning] of cases) {
       const result = jsonSchemaToZod(schema);
-      expect(result.warnings).toContain(warning);
+      expect(result.warnings.map((warning) => warning.message)).toContain(warning);
       expect(() => new Function('z', result.code)).not.toThrow();
     }
   });
   it('warns for malformed array keywords and ignores inapplicable constraints', () => {
-    expect(jsonSchemaToZod({ type: 'array', prefixItems: 'bad' }).warnings).toContain('Invalid prefixItems: expected an array of schemas');
-    expect(jsonSchemaToZod({ type: 'array', items: null }).warnings).toContain('Invalid items: expected a schema or tuple array');
-    expect(jsonSchemaToZod({ type: 'array', uniqueItems: 'yes' }).warnings).toContain('Invalid uniqueItems: expected a boolean');
+    expect(jsonSchemaToZod({ type: 'array', prefixItems: 'bad' }).warnings.map((warning) => warning.message)).toContain('Invalid prefixItems: expected an array of schemas');
+    expect(jsonSchemaToZod({ type: 'array', items: null }).warnings.map((warning) => warning.message)).toContain('Invalid items: expected a schema or tuple array');
+    expect(jsonSchemaToZod({ type: 'array', uniqueItems: 'yes' }).warnings.map((warning) => warning.message)).toContain('Invalid uniqueItems: expected a boolean');
     const inapplicable = jsonSchemaToZod({ type: 'number', minLength: 5 });
     expect(inapplicable.schema.safeParse(1).success).toBe(true);
     expect(inapplicable.code).not.toContain('.min(5)');
   });
   it('reports malformed combinators without throwing', () => {
-    expect(jsonSchemaToZod({ oneOf: 'bad' }).warnings).toContain('Invalid oneOf: expected an array');
-    expect(jsonSchemaToZod({ allOf: {} }).warnings).toContain('Invalid allOf: expected an array');
+    expect(jsonSchemaToZod({ oneOf: 'bad' }).warnings.map((warning) => warning.message)).toContain('Invalid oneOf: expected an array');
+    expect(jsonSchemaToZod({ allOf: {} }).warnings.map((warning) => warning.message)).toContain('Invalid allOf: expected an array');
   });
   it('reports malformed enum values without throwing', () => {
     const result = jsonSchemaToZod({ enum: 'not-an-array' });
-    expect(result.warnings).toContain('Invalid enum: expected an array');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Invalid enum: expected an array');
   });
   it('rejects inherited and malformed local reference targets', () => {
-    expect(jsonSchemaToZod({ $ref: '#/toString' }).warnings[0]).toContain('Unsupported $ref');
-    expect(jsonSchemaToZod({ $ref: '#/~2bad' }).warnings[0]).toContain('Unsupported $ref');
+    expect(jsonSchemaToZod({ $ref: '#/toString' }).warnings[0]?.message).toContain('Unsupported $ref');
+    expect(jsonSchemaToZod({ $ref: '#/~2bad' }).warnings[0]?.message).toContain('Unsupported $ref');
   });
   it('reports malformed references without coercing them', () => {
     const result = jsonSchemaToZod({ $ref: 42 });
-    expect(result.warnings).toContain('Invalid $ref: expected a non-empty string');
+    expect(result.warnings.map((warning) => warning.message)).toContain('Invalid $ref: expected a non-empty string');
   });
   it('reports unsupported references without failing', () => {
     const result = jsonSchemaToZod({ $ref: 'https://example.com/schema.json' }, { rootName: 'user' });
-    expect(result.code).toBe('const user = z.any();');
-    expect(result.warnings).toHaveLength(1);
+    expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_REF $ref —');
+    expect(result.code).toContain('z.any()');
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_REF', at: '#' })]);
+  });
+  it('reads JSON Schema from a .json file path', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-schema-'));
+    const file = join(directory, 'user.json');
+    await writeFile(file, JSON.stringify({ type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }), 'utf8');
+    const result = jsonSchemaToZod(file, { rootName: 'user' });
+    expect(result.code).toBe('const user = z.object({ ["id"]: z.string().uuid() }).passthrough();\n');
+    expect(result.schema.safeParse({ id: crypto.randomUUID() }).success).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+  it('emits structured nested warnings, markers, and surgical overlays', () => {
+    const result = jsonSchemaToZod({
+      type: 'object',
+      properties: {
+        website: { type: 'string', format: 'url' },
+        clock: { type: 'string', format: 'time' },
+        payload: { type: 'string', format: 'vendor-data' },
+        ids: { type: 'array', uniqueItems: true, items: { type: 'string' } },
+        count: { type: 'number', minimum: 1, exclusiveMinimum: true },
+      },
+    });
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/properties/website' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/properties/clock' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/properties/payload' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_UNIQUE_ITEMS', at: '#/properties/ids' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND', at: '#/properties/count' }),
+    ]));
+    expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_CUSTOM_FORMAT format —');
+    expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_UNIQUE_ITEMS uniqueItems —');
+    expect(result.schema.safeParse({ website: 'not a URL' }).success).toBe(false);
+    expect(result.schema.safeParse({ clock: '99:99:99' }).success).toBe(false);
+    expect(result.overlays).toEqual(expect.arrayContaining([
+      { at: '/properties/website', set: { format: 'url' } },
+      { at: '/properties/clock', set: { format: 'time' }, remove: ['pattern'] },
+      { at: '/properties/payload', set: { format: 'vendor-data' } },
+      { at: '/properties/ids', set: { uniqueItems: true } },
+      { at: '/properties/count', set: { exclusiveMinimum: true, minimum: 1 } },
+    ]));
+  });
+  it('freezes structural refinements and preserves the original node', () => {
+    const source = { type: 'object', properties: { value: { type: 'string' } }, not: { required: ['blocked'] } };
+    const result = jsonSchemaToZod(source);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_NOT', at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', node: source }]);
+    expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_NOT not —');
+  });
+  it('uses a native Zod hostname schema for identity reverse conversion', () => {
+    const result = jsonSchemaToZod({ type: 'string', format: 'hostname' });
+    expect(result.code).toContain('z.hostname()');
+    expect(result.schema.safeParse('api.example.com').success).toBe(true);
+    expect(result.schema.safeParse('-invalid.example').success).toBe(false);
+    expect(zodToJsonSchema(result.schema, { $schema: false })).toEqual({ type: 'string', format: 'hostname' });
+    expect(result.warnings).toEqual([]);
+    expect(result.overlays).toEqual([]);
+  });
+  it('uses discriminated unions when every oneOf member has a discriminator literal', () => {
+    const source = {
+      oneOf: [
+        { type: 'object', properties: { kind: { const: 'cat' }, lives: { type: 'integer' } }, required: ['kind', 'lives'] },
+        { type: 'object', properties: { kind: { const: 'dog' }, good: { type: 'boolean' } }, required: ['kind', 'good'] },
+      ],
+      discriminator: { propertyName: 'kind' },
+    };
+    const result = jsonSchemaToZod(source);
+    expect(result.code).toContain("z.discriminatedUnion(\"kind\"");
+    expect(result.schema.safeParse({ kind: 'cat', lives: 9 }).success).toBe(true);
+    expect(result.schema.safeParse({ kind: 'cat', good: true }).success).toBe(false);
+    expect(result.overlays).toEqual([{ at: '', set: { oneOf: source.oneOf, discriminator: source.discriminator }, remove: ['anyOf'] }]);
+  });
+  it('preserves non-native encoding annotations and source numeric bounds in overlays', () => {
+    const result = jsonSchemaToZod({
+      type: 'object',
+      properties: {
+        encoded: { type: 'string', contentEncoding: 'rot13', contentMediaType: 'text/plain' },
+        count: { type: 'integer', format: 'int32', minimum: 5 },
+      },
+    });
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ZOPIA_WARN_CONTENT_ENCODING', at: '#/properties/encoded' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/properties/count' }),
+    ]));
+    expect(result.overlays).toEqual(expect.arrayContaining([
+      { at: '/properties/encoded', set: { contentEncoding: 'rot13', contentMediaType: 'text/plain' } },
+      { at: '/properties/count', set: { format: 'int32', minimum: 5 }, remove: ['maximum'] },
+    ]));
+  });
+  it('copies schema annotations into one metadata call', () => {
+    const result = jsonSchemaToZod({ type: 'string', title: 'Name', description: 'Display name', example: 'Ada' });
+    expect(result.code).toContain('/**\n * Name\n * Display name\n */');
+    expect(result.code).toContain('.meta({"title":"Name","description":"Display name","examples":["Ada"]})');
+    expect(result.schema.meta()).toMatchObject({ title: 'Name', description: 'Display name', examples: ['Ada'] });
+    expect(result.overlays).toEqual([{ at: '', set: { example: 'Ada' }, remove: ['examples'] }]);
   });
 });

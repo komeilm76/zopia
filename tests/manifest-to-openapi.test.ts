@@ -402,6 +402,46 @@ describe('manifest reverse conversion', () => {
       maxItems: 3,
     });
   });
+  it('restores Engine ② schema overlays for endpoints and emitted components', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const frozen = { type: 'string', not: { const: 'blocked' } };
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Overlay API', version: '1' },
+      components: { schemas: { Clock: { type: 'string', format: 'time' } } },
+      paths: {
+        '/overlays': { post: {
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: {
+            website: { type: 'string', format: 'url' },
+            ids: { type: 'array', uniqueItems: true, items: { type: 'string' } },
+          } } } } },
+          responses: {
+            '200': { description: 'ok', content: { 'application/json': { schema: frozen } } },
+          },
+        } },
+      },
+    }, { outputDir, insertComponents: true });
+
+    const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
+    expect(manifest.apis[0].overlay).toEqual(expect.arrayContaining([
+      expect.objectContaining({ at: '/requestBody/content/application~1json/schema/properties/website', set: { format: 'url' } }),
+      expect.objectContaining({ at: '/requestBody/content/application~1json/schema/properties/ids', set: { uniqueItems: true } }),
+      expect.objectContaining({ at: '/responses/200/content/application~1json/schema', node: frozen }),
+    ]));
+    expect(manifest.components[0].overlay).toEqual([{ at: '', set: { format: 'time' }, remove: ['pattern'] }]);
+    const componentSource = await readFile(join(outputDir, 'components', 'Clock', 'index.ts'), 'utf8');
+    expect(componentSource).toMatch(/export const ClockSchema = \(\n\s*\/\/ @zopia:warn ZOPIA_WARN_CUSTOM_FORMAT/);
+    const endpointSource = await readFile(join(outputDir, manifest.apis[0].file), 'utf8');
+    expect(endpointSource).toContain('@zopia:warn ZOPIA_WARN_CUSTOM_FORMAT');
+    expect(endpointSource).toContain('@zopia:warn ZOPIA_WARN_UNIQUE_ITEMS');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    const operation = reversed.paths['/overlays'].post;
+    expect(operation.requestBody.content['application/json'].schema.properties.website).toEqual({ type: 'string', format: 'url' });
+    expect(operation.requestBody.content['application/json'].schema.properties.ids).toMatchObject({ type: 'array', uniqueItems: true, items: { type: 'string' } });
+    expect(operation.responses['200'].content['application/json'].schema).toEqual(frozen);
+    expect(reversed.components.schemas.Clock).toEqual({ type: 'string', format: 'time' });
+  });
   it('converts imported components to the source Swagger dialect', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy components', version: '1' }, definitions: { Limit: { type: 'number' } }, paths: {} }, { outputDir, insertComponents: true });

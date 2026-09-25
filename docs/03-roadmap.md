@@ -27,7 +27,7 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       `tsconfig`, Vitest + Bun setup
 - [x] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
       ([rules](06-conversions.md))
-- [ ] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
+- [x] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
       ([rules](06-conversions.md))
 - [ ] ③ **Engine 3** — `openApiToApiDocs()` — normalize v2/v3 → internal model
       → render `directory` / `flat` trees of `index.ts` files

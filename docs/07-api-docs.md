@@ -255,7 +255,8 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
       "file": null,
       "title": "User",
       "example": null,
-      "schema": { "type": "object", "required": ["id", "name", "email"], "properties": { "…": "…" } }
+      "schema": { "type": "object", "required": ["id", "name", "email"], "properties": { "…": "…" } },
+      "overlay": [] // schema-local R-635 restorations, prefixed from Engine ②
     }
   ],
   "apis": [
@@ -289,6 +290,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `componentsOverlay` | 🧰 non-schema OpenAPI component sections such as reusable parameters, responses, headers, examples, links, callbacks, and path items |
 | `swaggerParameters`, `swaggerResponses` | 🧰 Swagger 2.0 reusable parameter and response definitions, restored at the document root |
 | `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, `manifestFileToOpenApi()` imports its Zod schema and converts it to the source dialect, so developer edits win while cross-component references remain `$ref`s |
+| `components[].overlay` | 🩹 schema-local Engine ② restorations for emitted components; applied after runtime Zod serialization, with empty-string `at` addressing the component root |
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — `manifestFileToOpenApi()` imports each file and uses its runtime km-api metadata plus request/response Zod schemas; the manifest supplies unsupported overlays and exact security facts |
 | `defaultSecurity` | 🔐 the spec-level `security` requirement list, verbatim — applies to every operation unless the operation declares its own `security`; key absent ⇔ the source had no global `security` |
 | `apis[].security` | 🔐 the operation's own `security` requirement list — present only when the operation declares the key (including an explicit `[]` = "no security"); km-api's config can store only the `auth` boolean, so the actual requirement (which schemes, which scopes) lives here (R-653/R-656) |
@@ -302,7 +304,8 @@ Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[]
 > 📌 **Rule R-751** — the manifest carries a **full** `schema` for every
 > declared component, in every mode. It is the verbatim source of
 > `components.schemas` on the reverse trip; when `file` is set, the imported
-> file takes precedence (the code is the truth, D-08).
+> file takes precedence (the code is the truth, D-08), followed only by the
+> component's R-635 overlay for facts Zod cannot serialize.
 >
 > 📌 **Rule R-752** — `refs` entries address **the source operation subtree**
 > with RFC 6901 pointers relative to `paths.<path>.<method>` (so `/` inside a

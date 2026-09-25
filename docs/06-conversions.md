@@ -13,9 +13,10 @@ flowchart LR
   DOC -->|④ import + zod→schema| SPEC
 ```
 
-> 🧭 All four engines are pure (P-3): the functions listed here take in-memory
-> data and return in-memory data. File access belongs to the public wrappers
-> (`openApiToApiDocs` / `apiDocsToOpenApi`).
+> 🧭 The conversion cores are pure (P-3): object inputs produce in-memory
+> results. File access belongs to public wrappers (`openApiToApiDocs` /
+> `apiDocsToOpenApi`); `jsonSchemaToZod()` additionally resolves its documented
+> `.json` path convenience before invoking the same in-memory emitter.
 
 ---
 
@@ -103,12 +104,16 @@ interface JsonSchemaToZodResult {
   schema: $ZodType;
   /** ⚠️ Every lossy/unsupported conversion (R-408 / D-12). */
   warnings: ZopiaWarning[];
+  /** 🩹 Manifest-compatible exact restorations for non-identity mappings. */
+  overlays: JsonSchemaOverlay[];
 }
 ```
 
 **Implementation** (D-04): a custom recursive emitter. Zod's experimental
 `z.fromJSONSchema()` is *not* the output path (experimental status) — it is
-used in tests as an independent cross-check.
+used in tests as an independent cross-check. A string input is parsed as JSON
+text unless it ends in `.json`, in which case that path is read first; object
+and boolean inputs stay entirely in memory.
 
 ### 🔁 The keyword map (the contract)
 
@@ -124,8 +129,8 @@ used in tests as an independent cross-check.
 | `{ "type": "array", "prefixItems": [A, B] }` *(2020-12 tuple)* | `z.tuple([⟦A⟧, ⟦B⟧])` | R-622 |
 | `{ "type": "object", "properties": P, "required": R }` | `z.object({…})` — keys in `R` plain, others `.optional()` | R-623 |
 | `{}` or annotations without `type` | `z.any()` | R-624 |
-| object-, array-, string-, or numeric-only keywords without `type` | intersection of applicable-type unions: each constrained matching type plus unconstrained non-matching JSON types, preserving JSON Schema keyword applicability | R-624 |
-| `{ "type": ["string", "null"] }` *(3.1/2020-12 nullable)* | `⟦string⟧.nullable()` | R-625 |
+| object-, array-, string-, or numeric-only keywords without `type` | intersection of applicable-type unions: each constrained matching type plus unconstrained non-matching JSON types, preserving JSON Schema keyword applicability; frozen overlay restores the original keyword-only shape | R-624, R-635 |
+| `{ "type": ["string", "null"] }` *(3.1/2020-12 nullable)* | `z.union([⟦string⟧, z.null()])`; frozen overlay restores the original type-array shape | R-625, R-635 |
 | `{ "nullable": true }` *(3.0)* | `⟦…⟧.nullable()` | R-625 |
 | `{ "enum": ["a", "b"] }` | `z.enum(['a', 'b'])` (string enums — round-trips exactly) | R-626 |
 | `{ "enum": [1, 2] }` / mixed | `z.union([z.literal(1), z.literal(2)])` — ⚠️ ① expands this to `anyOf` of `const` nodes; engine ④'s serializer re-emits it as `enum` (R-654) | R-626 |
@@ -134,28 +139,33 @@ used in tests as an independent cross-check.
 | `{ "format": "uri" \| "url" }` | `z.url()` — Zod emits `format: "uri"`; when the source said `"url"` an overlay entry restores the exact original alias (R-635) | R-627 |
 | `{ "format": "time" }` | `z.iso.time()` — ⚠️ Zod emits a pattern but **no** `format` key; overlay entry restores `{ "format": "time" }` and removes the pattern (R-635) | R-627 |
 | `{ "format": "byte" }` *(Swagger 2.0 — base64)* | `z.base64()` — Zod emits `format: "base64"` + `contentEncoding` + pattern; overlay restores `format: "byte"` and removes the extras (R-635) | R-627 |
-| `{ "format": "<other>" }` on **any** base type | any format without an explicit row above (`password`, `binary`, `int32`, `int64`, `float`, `double`, `uri-reference`, `regex`, `decimal`, `json-pointer`, …) → the **base type without the format** + warning `ZOPIA_WARN_CUSTOM_FORMAT` + overlay restoring the format verbatim (R-635). For `type: integer` with `int64`: `z.number().int()` + warning `ZOPIA_WARN_INT64` (safe-integer approximation — JS has no 64-bit int) | R-627 |
+| `{ "format": "base64" \| "base64url" \| "emoji" }` | corresponding native Zod string check + warning/overlay because ①'s serialized keyword set differs from the source alias | R-627, R-635 |
+| `{ "format": "int32" \| "int64" \| "uint32" \| "uint64" }` on a numeric schema | integer check plus the representable signed/unsigned bounds; warning/overlay restores the format and original user bounds. `int64` additionally uses `ZOPIA_WARN_INT64` because JavaScript has no exact 64-bit integer domain | R-627, R-635 |
+| `{ "format": "<other>" }` on **any** base type | any format without an explicit row above (`password`, `binary`, `float`, `double`, `uri-reference`, `regex`, `decimal`, `json-pointer`, …) → the **base type without the format** + warning `ZOPIA_WARN_CUSTOM_FORMAT` + overlay restoring the format verbatim | R-627, R-635 |
 | `{ "minimum": n }` / `{ "maximum": n }` | `.min(n)` / `.max(n)` | R-628 |
 | `{ "exclusiveMinimum": n }` *(number — 2020-12/3.1)* | `.gt(n)` — round-trips exactly (Zod emits numeric `exclusiveMinimum`) | R-628 |
 | `{ "exclusiveMinimum": true }` *(boolean — draft-04/07)* | `.gt(n)` over `minimum` for numbers; `.min(n + 1)` for integers — **plus warning** `ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND` + overlay restoring the original boolean form (R-635) | R-628 |
 | `{ "minLength": n }` / `{ "maxLength": n }` | `.min(n)` / `.max(n)` on strings | R-628 |
 | `{ "pattern": p }` | `.regex(new RegExp(p))` | R-628 |
+| `{ "contentEncoding": "base64" \| "base64url" \| "hex" }` | corresponding native/pattern string check; overlay restores the exact encoding keyword. Other encodings and `contentMediaType` retain base validation, warn, and are preserved by overlays | R-634, R-635 |
 | `{ "multipleOf": n }` | `.multipleOf(n)` | R-628 |
 | `{ "minItems": n }` / `{ "maxItems": n }` | array `.min(n)` / `.max(n)` | R-628 |
-| `{ "uniqueItems": true }` | ⚠️ no Zod equivalent → **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + plain array + overlay `set: { "uniqueItems": true }` (restored verbatim on reverse) | D-12 |
+| `{ "uniqueItems": true }` | exact JSON-value equality refinement + **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + overlay `set: { "uniqueItems": true }` (Zod cannot serialize the refinement keyword, so reverse restores it verbatim) | D-12 |
 | `{ "default": v }` (on optional) | `.default(v)` | R-629 |
 | `{ "required": [...] }` | keys listed are non-optional | R-623 |
 | `{ "additionalProperties": false }` | `z.object({…}).strict()` | R-630 |
 | `{ "additionalProperties": S }` | `z.object({…}).catchall(⟦S⟧)` | R-630 |
-| `{ "additionalProperties": true }` *(or absent)* | plain `z.object({…})` | R-630 |
+| `{ "additionalProperties": true }` *(or absent)* | `z.object({…}).passthrough()` | R-630 |
 | `{ "dependencies": { "a": ["b"] } }` *(draft-04/06/07)* | object refinement requiring `b` whenever `a` is present | R-630 |
 | `{ "dependencies": { "a": S } }` *(draft-04/06/07)* | object refinement applying schema `S` whenever `a` is present; boolean schemas are supported | R-630 |
 | `{ "oneOf": [A, B, …] }` | `z.union([⟦A⟧, ⟦B⟧, …])` | R-631 |
 | `{ "oneOf": […], "discriminator": {"propertyName": k} }` | `z.discriminatedUnion(k, [⟦…⟧])` — every member must be an object with a literal/enum at `k`, otherwise fall back to `z.union` + warning; the `discriminator` keyword itself is restored by an overlay entry (R-635) | R-631 |
 | `{ "anyOf": […] }` | `z.union([…])` | R-631 |
 | `{ "allOf": [A, B, …] }` | `z.intersection(⟦A⟧, ⟦B⟧, …)` (left-fold) — ⚠️ ① flattens object intersections into one object (structural loss) → overlay `node` entry freezes the original `allOf` subtree verbatim (R-635/R-659) | R-632 |
-| `{ "not": S }` | ⚠️ no Zod equivalent → `z.any()` + warning `ZOPIA_WARN_NOT` + overlay `node` (original subtree verbatim) | D-12 |
-| `{ "$schema": … } / { "$id": … } / { "$comment": … }` | ignored (document annotations; no Zod home) | R-636 |
+| Boolean schema / empty object | `true` and `{}` → `z.any()` · `false` → `z.never()` | R-632 |
+| Keyword-only / type-array schema | union that constrains only applicable JSON instance types + warning `ZOPIA_WARN_FROZEN_SUBTREE` + overlay `node` (restores the original applicability structure exactly) | R-633, D-12 |
+| `{ "not": S }` | refinement rejecting values accepted by `S` + warning `ZOPIA_WARN_NOT` + overlay `node` (Zod cannot serialize `not`, so the original subtree is restored verbatim) | D-12 |
+| `{ "$schema": … } / { "$id": … } / { "$comment": … }` | no Zod runtime effect; preserved verbatim by an overlay `set` entry | R-636 |
 | `{ "title": t }` / `{ "description": d }` / `{ "example": v }` / `{ "examples": […] }` | a single `.meta({ title?, description?, examples? })` call on the schema (only the fields present) — verified copied verbatim back by ① (R-612), plus a JSDoc comment for human readers. `example` (single) is normalized to `examples: [v]` | R-633 |
 | `{ "$ref": "#/…/schemas/X" }` | component mode: import `XSchema`; default mode: local const (R-403) | R-402/R-634 |
 | `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order | R-634 |
@@ -173,7 +183,10 @@ used in tests as an independent cross-check.
 > structural freezes (`allOf`-of-objects, `not`, `if/then/else`,
 > `patternProperties`, … — each emits warning `ZOPIA_WARN_FROZEN_SUBTREE`).
 > A schema with no lossy keywords produces **no** overlay entries — the
-> canonical Admin API fixture asserts exactly that.
+> canonical Admin API fixture asserts exactly that. Standalone callers receive
+> these entries in `JsonSchemaToZodResult.overlays`; engine ③ prefixes each
+> pointer with the operation/component location and writes the entries to the
+> manifest. Engine ④ applies them after runtime Zod serialization.
 
 ### 📏 Emitted code style (fixed)
 
@@ -184,7 +197,7 @@ used in tests as an independent cross-check.
 | consts are `PascalCase + 'Schema'` for components, `camelCase` for locals | `UserSchema`, `error`, `pageParam` |
 | identical sub-schemas dedupe within a file (R-403) | one `const error`, used by 401 *and* 404 |
 | circular refs → `z.lazy(() => XSchema)` (R-402) | — |
-| warnings mirrored as `// @zopia:warn <CODE> <keyword> — <message>` comments at the exact node | — |
+| warnings mirrored inside the containing emitted expression as `// @zopia:warn <CODE> <keyword> — <message> (<JSON pointer>)`; the pointer identifies the exact source node | — |
 
 **Example**
 

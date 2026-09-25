@@ -6,6 +6,9 @@ export {
 } from './conversions/zod-to-json-schema';
 export {
   jsonSchemaToZod,
+  type JsonSchema,
+  type JsonSchemaOverlay,
+  type JsonSchemaToZodOptions,
   type JsonSchemaToZodResult,
 } from './conversions/json-schema-to-zod';
 export {

@@ -284,7 +284,7 @@ export interface ZopiaError extends Error {
 
 | # | Rule | Where enforced |
 | --- | --- | --- |
-| R-405 | **Pure core** — no `fs`, `process`, or `Date` inside `engines/*`; only the public wrappers and CLI touch the outside world | architecture (module boundaries) + import-lint in tests |
+| R-405 | **Pure core** — no `fs`, `process`, or `Date` inside `engines/*`; only public input adapters/wrappers and the CLI touch the outside world (`jsonSchemaToZod()` resolves its documented `.json` path before entering the emitter) | architecture (module boundaries) + import-lint in tests |
 | R-406 | **outDir guard** — every path joined to `outDir` is canonicalized and verified to stay inside it; `..` in spec-derived segment names is impossible because segments are template literals, and flat names are sanitized (see [API docs → Naming](07-api-docs.md#-naming-conventions-fixed)) | `fs/guard.ts` |
 | R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `loader.ts` |
 | R-408 | **No silent loss** — every lossy/unsupported conversion produces a `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144) collected on the result, mirrored as `// @zopia:warn …` comments in generated code | every engine |

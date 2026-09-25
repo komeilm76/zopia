@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
 
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; refs?: unknown; overlay?: unknown; responseOverlay?: unknown; security?: unknown[] }>; }
+export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown; overlay?: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; refs?: unknown; overlay?: unknown; responseOverlay?: unknown; security?: unknown[] }>; }
 
 /** Options for selecting the OpenAPI dialect emitted by reverse conversion. */
 export interface ZopiaReverseOptions {
@@ -174,7 +174,8 @@ async function importComponentSchemas(manifest: ZopiaManifest, root: string, mod
     else {
       const schema = converted[component.name];
       if (!schema) throw new TypeError(`Unable to convert generated component file ${String(component.file)}`);
-      schemas.set(index, normalizeRuntimeSchema(schema, manifest.source.kind));
+      const normalized = normalizeRuntimeSchema(schema, manifest.source.kind);
+      schemas.set(index, applySchemaOverlayList(normalized, component.overlay, 'component schema') as Record<string, unknown>);
     }
   }
   const references: Array<readonly [string, ComponentSchema]> = [];
@@ -349,7 +350,11 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1
   if (version === undefined) return manifest;
   const sourceKind = manifest.source.kind;
   const targetKind = version === '3.0' ? 'openapi-3.0' : 'openapi-3.1';
-  const components = (manifest.components ?? []).map((component) => ({ ...component, schema: rewriteSchemaVersion(component.schema, sourceKind, version) }));
+  const components = (manifest.components ?? []).map((component) => ({
+    ...component,
+    schema: rewriteSchemaVersion(component.schema, sourceKind, version),
+    overlay: rewriteOverlaysVersion(component.overlay, sourceKind, version),
+  }));
   const documentOverlay = version === '3.0' ? Object.fromEntries(Object.entries(manifest.documentOverlay ?? {}).filter(([key]) => key !== 'webhooks' && key !== 'jsonSchemaDialect')) : manifest.documentOverlay;
   if (sourceKind !== 'swagger-2.0') {
     const rewrittenComponents = manifest.componentsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.componentsOverlay, sourceKind, version) as Record<string, unknown>;
@@ -575,6 +580,30 @@ function applyManifestRefs(operation: Record<string, any>, sourceOperation: Reco
     setPointerValue(operation, nodeTokens, replacement);
   }
   return skipped;
+}
+
+function applySchemaOverlayList(value: unknown, overlay: unknown, context: string): unknown {
+  if (overlay === undefined) return value;
+  if (!Array.isArray(overlay)) throw new TypeError(`Invalid manifest ${context} overlays`);
+  let result = value;
+  for (const entry of overlay) {
+    if (!isRecord(entry) || typeof entry.at !== 'string') throw new TypeError(`Invalid manifest ${context} overlay entry`);
+    const tokens = manifestPointerTokens(entry.at, `${context} overlay`);
+    if (entry.set !== undefined && !isRecord(entry.set)) throw new TypeError(`Invalid manifest ${context} overlay set`);
+    if (entry.remove !== undefined && (!Array.isArray(entry.remove) || !entry.remove.every((key: unknown) => typeof key === 'string'))) throw new TypeError(`Invalid manifest ${context} overlay remove`);
+    const hasNode = Object.prototype.hasOwnProperty.call(entry, 'node');
+    if (!hasNode && entry.set === undefined && entry.remove === undefined) throw new TypeError(`Invalid manifest ${context} overlay entry`);
+    if (hasNode) {
+      if (tokens.length === 0) result = entry.node;
+      else setPointerValue(result, tokens, entry.node);
+      continue;
+    }
+    const target = tokens.length === 0 ? result : pointerValue(result, tokens);
+    if (!isRecord(target)) continue;
+    for (const key of entry.remove ?? []) delete target[key];
+    for (const [key, replacement] of Object.entries(entry.set ?? {})) Object.defineProperty(target, key, { value: replacement, enumerable: true, configurable: true, writable: true });
+  }
+  return result;
 }
 
 function applyManifestSchemaOverlays(operation: Record<string, any>, api: ZopiaManifest['apis'][number], skippedRefs: string[][]): Record<string, any> {

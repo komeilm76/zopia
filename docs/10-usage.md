@@ -34,9 +34,10 @@ const jsonSchema = zodToJsonSchema(schema, { target: 'openapi-3.1' });
 // → { type: 'object', properties: { … }, required: ['name', 'email'], … }
 
 // ── ② JSON Schema → Zod ────────────────────────────────────
-const { code, schema: back, warnings } = jsonSchemaToZod(jsonSchema);
-// → code:   'const schema = z.object({\n  name: z.string().min(1),\n  email: z.email(),\n});\n'
-// → schema: <runtime Zod object equivalent to `code`>
+const { code, schema: back, warnings, overlays } = jsonSchemaToZod(jsonSchema);
+// → code: executable Zod v4 TypeScript (lossy nodes include @zopia:warn markers)
+// → schema: <runtime Zod schema equivalent to `code`>
+// → warnings: structured diagnostics; overlays: exact reverse-conversion restorations
 
 // ── ③ OpenAPI → api docs ───────────────────────────────────
 const result = await openApiToApiDocs('swagger.json', {
