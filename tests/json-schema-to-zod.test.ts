@@ -34,6 +34,10 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse('blocked').success).toBe(false);
     expect(result.code).toContain('safeParse');
   });
+  it('reports invalid property name patterns without throwing', () => {
+    const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '[' } });
+    expect(result.warnings).toContain('Unsupported propertyNames pattern: [');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

@@ -180,7 +180,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
     }
     if (node.type === 'object' && node.propertyNames && typeof (node.propertyNames as any).pattern === 'string') {
       const pattern = (node.propertyNames as any).pattern;
-      result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => new RegExp(pattern).test(key))), code: `${result.code}.refine((value) => Object.keys(value).every((key) => new RegExp(${JSON.stringify(pattern)}).test(key)))` };
+      try {
+        const expression = new RegExp(pattern);
+        result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => expression.test(key))), code: `${result.code}.refine((value) => Object.keys(value).every((key) => new RegExp(${JSON.stringify(pattern)}).test(key)))` };
+      } catch { warnings.push(`Unsupported propertyNames pattern: ${pattern}`); }
     }
     if (node.type === 'array' && node.contains) {
       const contained = convert(node.contains as JsonSchema, resolving);
