@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 Endpoint generation now honors `useComponentAsReference` for operation- and path-level parameter schemas, imports their component definitions, and inlines direct local schema references when component imports are disabled.
 - 🐛 OpenAPI operation collection now resolves parameter references before duplicate detection and override merging; referenced Swagger body and form-data parameters are extracted correctly.
 - 🔒 Reverse conversion now rejects unsafe or duplicate manifest operations and prevents overlays from replacing canonical OpenAPI fields.
 - 🐛 JSON Schema conversion now honors OpenAPI 3.0 `nullable: true` around the complete schema and warns for malformed nullable flags.

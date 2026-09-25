@@ -91,6 +91,19 @@ describe('API docs endpoint generation', () => {
     const content = await readFile(join(outputDir, 'components', 'Values', 'index.ts'), 'utf8');
     expect(content).toContain('.rest(z.number())');
   });
+  it('uses component references for path-level parameter schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { $ref: '#/components/schemas/UserId' } }], get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    const content = await readFile(join(outputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
+    expect(content).toContain("import { UserIdSchema } from '../../../components/index';");
+    expect(content).toContain('params: z.object({ "id": UserIdSchema })');
+    expect(content).not.toContain('"id": z.any()');
+
+    const inlineOutputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { $ref: '#/components/schemas/UserId' } }], get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir: inlineOutputDir, manifest: false });
+    const inlineContent = await readFile(join(inlineOutputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
+    expect(inlineContent).toContain('params: z.object({ "id": z.string().uuid() })');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
