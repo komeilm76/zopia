@@ -97,6 +97,12 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'object', dependentSchemas: [] });
     expect(result.warnings).toContain('Invalid dependentSchemas: expected an object of schemas');
   });
+  it('supports unevaluated tuple items', () => {
+    const result = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }], unevaluatedItems: { type: 'number' } });
+    expect(result.schema.safeParse(['x', 1]).success).toBe(true);
+    expect(result.schema.safeParse(['x', 'bad']).success).toBe(false);
+    expect(result.code).toContain('.rest(z.number())');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
