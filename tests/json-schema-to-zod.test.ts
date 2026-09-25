@@ -103,6 +103,11 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(['x', 'bad']).success).toBe(false);
     expect(result.code).toContain('.rest(z.number())');
   });
+  it('supports hostname and IP address formats', () => {
+    expect(jsonSchemaToZod({ type: 'string', format: 'hostname' }).schema.safeParse('api.example.com').success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'string', format: 'ipv4' }).schema.safeParse('192.168.1.1').success).toBe(true);
+    expect(jsonSchemaToZod({ type: 'string', format: 'ipv6' }).schema.safeParse('2001:db8::1').success).toBe(true);
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

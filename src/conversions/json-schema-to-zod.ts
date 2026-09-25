@@ -142,6 +142,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         uri: { schema: (s) => s.url(), code: 'url()' },
         'date-time': { schema: (s) => s.datetime(), code: 'datetime()' },
         date: { schema: (s) => s.date(), code: 'date()' },
+        hostname: { schema: (s) => s.regex(/^[A-Za-z0-9.-]+$/), code: 'regex(/^[A-Za-z0-9.-]+$/)' },
+        ipv4: { schema: (s) => s.ip({ version: 'v4' }), code: "ip({ version: 'v4' })" },
+        ipv6: { schema: (s) => s.ip({ version: 'v6' }), code: "ip({ version: 'v6' })" },
       };
       const format = formats[node.format];
       if (format) { try { result = { schema: format.schema(result.schema), code: `${result.code}.${format.code}` }; } catch { warnings.push(`Unsupported format: ${node.format}`); } }
