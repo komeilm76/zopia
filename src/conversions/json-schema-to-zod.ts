@@ -148,6 +148,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         base64: { schema: (s) => s.base64(), code: 'base64()' },
         'base64url': { schema: (s) => s.base64url(), code: 'base64url()' },
         emoji: { schema: (s) => s.emoji(), code: 'emoji()' },
+        time: { schema: (s) => s.time(), code: 'time()' },
+        duration: { schema: (s) => s.duration(), code: 'duration()' },
       };
       const format = formats[node.format];
       if (format) { try { result = { schema: format.schema(result.schema), code: `${result.code}.${format.code}` }; } catch { warnings.push(`Unsupported format: ${node.format}`); } }
