@@ -100,8 +100,9 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         }
         if (typeof node.minProperties === 'number') { objectSchema = objectSchema.refine((value) => Object.keys(value).length >= node.minProperties); objectCode += `.refine((value) => Object.keys(value).length >= ${node.minProperties})`; }
         if (typeof node.maxProperties === 'number') { objectSchema = objectSchema.refine((value) => Object.keys(value).length <= node.maxProperties); objectCode += `.refine((value) => Object.keys(value).length <= ${node.maxProperties})`; }
-        if (node.additionalProperties === false) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
+        if (node.additionalProperties === false || (node.additionalProperties === undefined && node.unevaluatedProperties === false)) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
         else if (node.additionalProperties && typeof node.additionalProperties === 'object') { const item = convert(node.additionalProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
+        else if (node.unevaluatedProperties && typeof node.unevaluatedProperties === 'object') { const item = convert(node.unevaluatedProperties as JsonSchema, resolving); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
         else { objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()'; }
         result = { schema: objectSchema, code: objectCode }; break;
       }

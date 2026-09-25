@@ -80,6 +80,13 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'number', multipleOf: 0 });
     expect(result.warnings).toContain('Invalid multipleOf: expected a positive number');
   });
+  it('supports unevaluated property restrictions', () => {
+    const strict = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'string' } }, unevaluatedProperties: false });
+    expect(strict.schema.safeParse({ id: 'x', extra: true }).success).toBe(false);
+    const typed = jsonSchemaToZod({ type: 'object', unevaluatedProperties: { type: 'string' } });
+    expect(typed.schema.safeParse({ extra: 'ok' }).success).toBe(true);
+    expect(typed.schema.safeParse({ extra: 1 }).success).toBe(false);
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
