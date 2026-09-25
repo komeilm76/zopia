@@ -190,6 +190,16 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse('a').success).toBe(false);
     expect(result.schema.safeParse('valid@example.com').success).toBe(true);
     expect(result.warnings).toEqual([]);
+
+    const openApiNullable = jsonSchemaToZod({ type: 'string', minLength: 2, nullable: true });
+    expect(openApiNullable.schema.safeParse(null).success).toBe(true);
+    expect(openApiNullable.schema.safeParse('a').success).toBe(false);
+    expect(openApiNullable.code).toContain('.nullable()');
+
+    const nullableEnum = jsonSchemaToZod({ type: 'string', enum: ['active'], nullable: true });
+    expect(nullableEnum.schema.safeParse(null).success).toBe(true);
+    expect(nullableEnum.schema.safeParse('inactive').success).toBe(false);
+    expect(jsonSchemaToZod({ type: 'string', nullable: 'yes' }).warnings).toContain('Invalid nullable: expected a boolean');
   });
   it('validates generated identifier names', () => {
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'not-valid' })).toThrow('Invalid rootName');

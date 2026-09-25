@@ -51,6 +51,12 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         : targetAny;
       return convert(resolved, new Set(resolving).add(ref));
     }
+    if (node.nullable !== undefined) {
+      const withoutNullable = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'nullable')) as JsonSchema;
+      if (typeof node.nullable !== 'boolean') { warnings.push('Invalid nullable: expected a boolean'); return convert(withoutNullable, resolving); }
+      const converted = convert(withoutNullable, resolving);
+      return node.nullable ? { schema: converted.schema.nullable(), code: `${converted.code}.nullable()` } : converted;
+    }
     if (Array.isArray(node.type)) {
       const allowedTypes = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);
       if (node.type.length === 0 || !node.type.every((type: unknown) => typeof type === 'string' && allowedTypes.has(type))) { warnings.push('Invalid type: expected a non-empty array of valid JSON Schema type names'); return { schema: z.any(), code: 'z.any()' }; }

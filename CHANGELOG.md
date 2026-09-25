@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 JSON Schema conversion now honors OpenAPI 3.0 `nullable: true` around the complete schema and warns for malformed nullable flags.
 - 🐛 JSON Schema conversion now preserves sibling constraints alongside `enum`, `const`, `oneOf`, `anyOf`, and `allOf`, and validates structured enum/constant values using order-independent JSON object equality.
 - 🛡️ JSON Schema conversion now validates numeric, size, pattern, object, and array keyword values before generating Zod code, warns instead of emitting malformed expressions, and ignores constraints on inapplicable instance types.
 - 🐛 JSON Schema conversion now preserves empty `prefixItems` and legacy tuple definitions, including typed or forbidden `items`, `additionalItems`, and `unevaluatedItems` rest values.
