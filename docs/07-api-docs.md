@@ -220,7 +220,12 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 > It is written by default (the `manifest` option, on unless explicitly
 > disabled — [Configuration](09-configuration.md)), has no timestamps or
 > environment data (P-1), is always hidden (dotfile), and always versioned
-> (`"$schema": "zopia:manifest@1"`).
+> (`"$schema": "zopia:manifest@1"`). The dedicated writer validates the complete
+> writer-owned shape before output, recursively orders object keys, preserves
+> semantic array order, and writes through a sibling temporary file before an
+> atomic rename. Identical JSON input and generation options therefore produce
+> byte-identical manifest content with exactly one trailing newline; a failed
+> validation or write never exposes a partial manifest.
 
 ```jsonc
 {
@@ -253,9 +258,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
     {
       "name": "User",
       "file": null,
-      "title": "User",
-      "example": null,
-      "schema": { "type": "object", "required": ["id", "name", "email"], "properties": { "…": "…" } },
+      "schema": { "type": "object", "title": "User", "example": null, "required": ["id", "name", "email"], "properties": { "…": "…" } },
       "overlay": [] // schema-local R-635 restorations, prefixed from Engine ②
     }
   ],
@@ -271,9 +274,9 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
       //    top-level `defaultSecurity` applies (an operation that *does*
       //    declare `security` — even `[]` — gets its own key here, verbatim)
       "refs": [
-        { "at": "/responses/200/content/application~1json/schema/$ref", "component": "User" },
-        { "at": "/responses/401/content/application~1json/schema/$ref", "component": "Error" },
-        { "at": "/responses/404/content/application~1json/schema/$ref", "component": "Error" }
+        { "at": "/responses/200/content/application~1json/schema/$ref", "ref": "#/components/schemas/User", "component": "User" },
+        { "at": "/responses/401/content/application~1json/schema/$ref", "ref": "#/components/schemas/Error", "component": "Error" },
+        { "at": "/responses/404/content/application~1json/schema/$ref", "ref": "#/components/schemas/Error", "component": "Error" }
       ],
       "overlay": [],         // ⤵ empty — the Admin API uses no lossy keywords (asserted in tests)
       "responseOverlay": []  // ⤵ response facts with no km-api home (e.g. response headers)
@@ -294,7 +297,7 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 | `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — `manifestFileToOpenApi()` imports each file and uses its runtime km-api metadata plus request/response Zod schemas; the manifest supplies unsupported overlays and exact security facts |
 | `defaultSecurity` | 🔐 the spec-level `security` requirement list, verbatim — applies to every operation unless the operation declares its own `security`; key absent ⇔ the source had no global `security` |
 | `apis[].security` | 🔐 the operation's own `security` requirement list — present only when the operation declares the key (including an explicit `[]` = "no security"); km-api's config can store only the `auth` boolean, so the actual requirement (which schemes, which scopes) lives here (R-653/R-656) |
-| `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree) → component name (R-752/R-659) |
+| `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree), exact local `ref`, and schema component name when applicable (R-752/R-659); `$ref`-looking literal data inside examples/defaults/enums/consts/extensions is excluded |
 | `apis[].overlay` | 🩹 keyword-level restorations & frozen subtrees — the non-representable facts, verbatim (R-753/R-635) |
 | `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` and future non-schema fields, restored after code-derived response schemas/content (R-754) |
 | `source.sha256` | 🆔 staleness detection: regeneration warns when the tree's manifest hash differs from the new input |

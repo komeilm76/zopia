@@ -1,5 +1,4 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { extractOperationContracts } from './openapi-contracts';
@@ -7,6 +6,7 @@ import { jsonSchemaToZod } from './json-schema-to-zod';
 import { planApiDocsFiles } from './api-docs-plan';
 import type { ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
+import { createZopiaManifest, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { decodeJsonPointerSegment, resolveOpenApiLocalRef } from './openapi-ref';
 
 /** A low-level generated file record with both relative and absolute paths. */
@@ -41,23 +41,16 @@ function componentTarget(ref: unknown): string | undefined {
 function componentExport(ref: unknown): string | undefined {
   const target = componentTarget(ref); return target === undefined ? undefined : `${exportName(target)}Schema`;
 }
-function collectComponentRefs(value: unknown, names = new Set<string>()): Set<string> {
+const STRUCTURAL_REF_MAP_KEYS = new Set(['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'responses', 'content', 'headers', 'links', 'encoding', 'callbacks']);
+function collectComponentRefs(value: unknown, names = new Set<string>(), mapEntries = false): Set<string> {
   if (Array.isArray(value)) value.forEach((item) => collectComponentRefs(item, names));
   else if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {
-    if (key === '$ref') { const name = componentExport(child); if (name) names.add(name); }
-    else collectComponentRefs(child, names);
+    if (mapEntries) collectComponentRefs(child, names);
+    else if (['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-')) continue;
+    else if (key === '$ref') { const name = componentExport(child); if (name) names.add(name); }
+    else collectComponentRefs(child, names, STRUCTURAL_REF_MAP_KEYS.has(key));
   }
   return names;
-}
-function collectRefs(value: unknown, at = ''): Array<{ at: string; ref: string; component?: string }> {
-  const refs: Array<{ at: string; ref: string; component?: string }> = [];
-  if (Array.isArray(value)) value.forEach((child, index) => refs.push(...collectRefs(child, `${at}/${index}`)));
-  else if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {
-    const location = `${at}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
-    if (key === '$ref' && typeof child === 'string') refs.push({ at: location, ref: child, ...(componentExport(child) ? { component: componentExport(child)!.replace(/Schema$/, '') } : {}) });
-    else refs.push(...collectRefs(child, location));
-  }
-  return refs;
 }
 function schemaCode(schema: unknown, name: string): string {
   const safeName = exportName(name);
@@ -73,40 +66,6 @@ function generatedWarningComments(schema: unknown, name: string): string {
   return `${result.warnings.map((warning) => `// @zopia:warn ${warning.code} schema — ${warning.message.replace(/[\r\n\u2028\u2029]+/g, ' ')}${warning.at ? ` (${warning.at})` : ''}`).join('\n')}\n`;
 }
 
-function prefixedSchemaOverlays(schema: unknown, at: string): Array<{ at: string; set?: Record<string, unknown>; remove?: string[]; node?: unknown }> {
-  if (schema === undefined || schema === null) return [];
-  return jsonSchemaToZod(schema as any).overlays.map((overlay) => ({ ...overlay, at: `${at}${overlay.at}` }));
-}
-
-const SWAGGER_SCHEMA_KEYS = new Set(['type', 'format', 'items', 'collectionFormat', 'default', 'maximum', 'exclusiveMaximum', 'minimum', 'exclusiveMinimum', 'maxLength', 'minLength', 'pattern', 'maxItems', 'minItems', 'uniqueItems', 'enum', 'multipleOf']);
-function collectOperationSchemaOverlays(value: unknown, swagger: boolean, at = ''): Array<{ at: string; set?: Record<string, unknown>; remove?: string[]; node?: unknown }> {
-  if (Array.isArray(value)) return value.flatMap((child, index) => collectOperationSchemaOverlays(child, swagger, `${at}/${index}`));
-  if (!value || typeof value !== 'object') return [];
-  const object = value as Record<string, unknown>;
-  const overlays: Array<{ at: string; set?: Record<string, unknown>; remove?: string[]; node?: unknown }> = [];
-  if (swagger && typeof object.in === 'string' && typeof object.name === 'string' && object.in !== 'body' && [...SWAGGER_SCHEMA_KEYS].some((key) => Object.prototype.hasOwnProperty.call(object, key))) {
-    overlays.push(...prefixedSchemaOverlays(Object.fromEntries(Object.entries(object).filter(([key]) => SWAGGER_SCHEMA_KEYS.has(key))), at));
-  }
-  const literalContainers = new Set(['example', 'examples', 'default', 'enum', 'const', 'x-example']);
-  for (const [key, child] of Object.entries(object)) {
-    if (literalContainers.has(key) || key.startsWith('x-')) continue;
-    const childAt = `${at}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
-    if (key === 'schema' && (typeof child === 'boolean' || child && typeof child === 'object' && !Array.isArray(child))) overlays.push(...prefixedSchemaOverlays(child, childAt));
-    else overlays.push(...collectOperationSchemaOverlays(child, swagger, childAt));
-  }
-  return overlays;
-}
-function stableStringify(value: unknown, seen = new Set<object>()): string {
-  if (Array.isArray(value)) {
-    if (seen.has(value)) throw new TypeError('Cannot hash a circular OpenAPI document');
-    seen.add(value); const result = `[${value.map((item) => stableStringify(item, seen)).join(',')}]`; seen.delete(value); return result;
-  }
-  if (value && typeof value === 'object') {
-    if (seen.has(value)) throw new TypeError('Cannot hash a circular OpenAPI document');
-    seen.add(value); const result = `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key], seen)}`).join(',')}}`; seen.delete(value); return result;
-  }
-  const result = JSON.stringify(value); if (result === undefined) throw new TypeError('Cannot hash an unsupported OpenAPI value'); return result;
-}
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
 function resolveObject(value: unknown, source: OpenApiDocument): any {
   let current = value; const seen = new Set<string>();
@@ -339,6 +298,11 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
   const source = typeof input === 'string' ? JSON.parse(input) : input;
   if (options.useComponentAsReference && !options.insertComponents) throw new TypeError('useComponentAsReference requires insertComponents');
   const plans = planApiDocsFiles(source, options.mode ?? 'directory');
+  const manifest = options.manifest === false ? undefined : createZopiaManifest(source, plans, {
+    mode: options.mode ?? 'directory',
+    insertComponents: options.insertComponents === true,
+    useComponentAsReference: options.useComponentAsReference === true,
+  });
   const root = resolve(options.outputDir); const generated: GeneratedApiDocsFile[] = [];
   if (options.insertComponents) {
     const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
@@ -371,20 +335,9 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
     await writeFile(absolutePath, renderEndpoint(plan, source, options.mode ?? 'directory', options.useComponentAsReference === true), 'utf8');
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
   }
-  if (options.manifest !== false) {
-    const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
-    const manifest = {
-      $schema: 'zopia:manifest@1', zopiaVersion: '0.0.1', mode: options.mode ?? 'directory',
-      options: { insertComponents: options.insertComponents === true, useComponentAsReference: Boolean(options.useComponentAsReference) },
-      source: { kind: source.swagger === '2.0' ? 'swagger-2.0' : /^3\.0/.test(source.openapi) ? 'openapi-3.0' : 'openapi-3.1', title: source.info.title, version: source.info.version, ...(source.info.description === undefined ? {} : { description: source.info.description }), sha256: createHash('sha256').update(stableStringify(source)).digest('hex') }, infoOverlay: Object.fromEntries(Object.entries(source.info).filter(([key]) => !['title', 'version', 'description'].includes(key))), documentOverlay: Object.fromEntries(Object.entries(source).filter(([key]) => key === 'externalDocs' || key === 'webhooks' || key === 'jsonSchemaDialect' || key.startsWith('x-'))),
-      servers: source.servers ?? (source.basePath ? [source.basePath] : ['/']), ...(source.swagger === '2.0' ? { swaggerHost: source.host, swaggerSchemes: source.schemes, swaggerConsumes: source.consumes, swaggerProduces: source.produces, swaggerParameters: source.parameters, swaggerResponses: source.responses } : { componentsOverlay: Object.fromEntries(Object.entries(source.components ?? {}).filter(([key]) => key !== 'schemas' && key !== 'securitySchemes')) }), tags: source.tags ?? [], securitySchemes: source.components?.securitySchemes ?? source.securityDefinitions ?? {},
-      ...(source.security === undefined ? {} : { defaultSecurity: source.security }),
-      components: Object.entries(schemas).map(([name, schema]) => ({ name, file: options.insertComponents ? `components/${name}/index.ts` : null, schema, overlay: jsonSchemaToZod(schema as any).overlays })),
-      apis: plans.map((plan) => ({ file: plan.file, path: plan.path, method: plan.method, operationId: plan.operationId, sourceOperation: plan.operation, refs: collectRefs(plan.operation), overlay: [...collectOperationSchemaOverlays(plan.operation, source.swagger === '2.0'), ...['callbacks', 'servers', 'externalDocs', 'links'].filter((key) => Object.prototype.hasOwnProperty.call(plan.operation, key)).map((key) => ({ key, value: plan.operation[key] }))], responseOverlay: Object.entries(plan.operation.responses ?? {}).flatMap(([status, response]) => response && typeof response === 'object' && (response as any).headers ? [{ status, headers: (response as any).headers }] : []), ...(Object.prototype.hasOwnProperty.call(plan.operation, 'security') ? { security: plan.operation.security } : {}) })),
-    };
-    const manifestFile = '.zopia-manifest.json'; const manifestPath = join(root, manifestFile);
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-    generated.push({ file: manifestFile, absolutePath: manifestPath, operationId: 'manifest' });
+  if (manifest) {
+    const manifestPath = await writeZopiaManifest(root, manifest);
+    generated.push({ file: ZOPIA_MANIFEST_FILE, absolutePath: manifestPath, operationId: 'manifest' });
   }
   return generated;
 }

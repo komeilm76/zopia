@@ -100,6 +100,12 @@ flowchart TB
   end
 ```
 
+The manifest rendering stage is implemented as the dedicated
+`src/conversions/manifest-writer.ts` boundary: pure snapshot construction and
+canonical validation/serialization are separated from its atomic filesystem
+write, and engine ③ delegates to that boundary rather than assembling an ad
+hoc object.
+
 **The internal model (IR) is the fulcrum.** Engines ③ and ④ never talk to each
 other directly — both converge on the same `ApiModel`. That is what makes the
 round-trip (T-11) a property of the architecture, not of the implementation.

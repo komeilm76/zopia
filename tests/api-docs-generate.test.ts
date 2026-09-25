@@ -35,6 +35,26 @@ describe('API docs endpoint generation', () => {
     expect(content).toContain('import { UserSchema } from "../User/index";');
     expect(content).toContain('z.array(UserSchema)');
   });
+  it('distinguishes structural refs in named maps from ref-looking literal data', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Test', version: '1' },
+      components: { schemas: {
+        User: { type: 'object' },
+        Container: { type: 'object', properties: { default: { $ref: '#/components/schemas/User' } }, example: { $ref: '#/components/schemas/LiteralOnly' } },
+      } },
+      paths: { '/users': { get: { responses: {
+        default: { description: 'fallback', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' }, example: { $ref: '#/components/schemas/LiteralOnly' } } } },
+      } } } },
+    }, { outputDir, insertComponents: true, useComponentAsReference: true });
+    const component = await readFile(join(outputDir, 'components', 'Container', 'index.ts'), 'utf8');
+    const endpoint = await readFile(join(outputDir, 'users', 'get', 'index.ts'), 'utf8');
+    expect(component).toContain('import { UserSchema } from "../User/index";');
+    expect(component).not.toContain('LiteralOnlySchema');
+    expect(endpoint).toContain('"default": UserSchema');
+    expect(endpoint).not.toContain('LiteralOnlySchema');
+  });
   it('renders deeply nested object references recursively', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Group: { type: 'object', properties: { profile: { type: 'object', properties: { users: { type: 'array', items: { $ref: '#/components/schemas/User' } } } } } } } }, paths: {} }, { outputDir, insertComponents: true });

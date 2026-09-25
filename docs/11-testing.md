@@ -81,6 +81,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-33 | `insertComponents + useComponentAsReference` — endpoint schemas import emitted components recursively; cycles stay lazy | R-802, R-821 |
 | S-34 | `useComponentAsReference` alone → `ZOPIA_CONFIG_INVALID` | R-911 |
 | S-35 | manifest written & valid in all of the above (schema test) | D-06 |
+| S-36 | dedicated manifest writer — canonical hash/bytes, complete OpenAPI and Swagger frame metadata, portable paths, literal-aware `$ref` collection, invalid-shape rejection, atomic replacement/cleanup, and reader round-trip compatibility | D-06, P-1, R-751…R-754 |
 
 ### ⚛️ Zod / JSON Schema coverage (engines ① & ②)
 

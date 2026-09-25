@@ -38,4 +38,5 @@ export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
 export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
 export { extractOperationContracts, type OperationContracts } from './conversions/openapi-contracts';
 export { resolveOpenApiLocalRef } from './conversions/openapi-ref';
-export { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, type ZopiaManifest, type ZopiaReverseOptions, type ZopiaReverseResult } from './conversions/manifest-to-openapi';
+export { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, type ZopiaReverseOptions, type ZopiaReverseResult } from './conversions/manifest-to-openapi';
+export { type ZopiaManifest } from './conversions/manifest-writer';

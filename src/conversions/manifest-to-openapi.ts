@@ -3,8 +3,8 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
-
-export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown; overlay?: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; refs?: unknown; overlay?: unknown; responseOverlay?: unknown; security?: unknown[] }>; }
+import { ZOPIA_MANIFEST_FILE, ZOPIA_MANIFEST_SCHEMA, type ZopiaManifest } from './manifest-writer';
+export type { ZopiaManifest } from './manifest-writer';
 
 /** Options for selecting the OpenAPI dialect emitted by reverse conversion. */
 export interface ZopiaReverseOptions {
@@ -295,13 +295,16 @@ function swaggerSecuritySchemeToOpenApi(scheme: unknown): unknown {
   return { type: 'oauth2', flows: { [flow]: flowValue }, ...Object.fromEntries(Object.entries(scheme).filter(([key]) => !['flow', 'authorizationUrl', 'tokenUrl', 'scopes'].includes(key))) };
 }
 
-function collectManifestRefs(value: unknown, at = ''): Array<{ at: string; ref: string; component?: string }> {
+const MANIFEST_REF_MAP_KEYS = new Set(['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'responses', 'content', 'headers', 'links', 'encoding', 'callbacks']);
+function collectManifestRefs(value: unknown, at = '', mapEntries = false): Array<{ at: string; ref: string; component?: string }> {
   const refs: Array<{ at: string; ref: string; component?: string }> = [];
   if (Array.isArray(value)) value.forEach((child, index) => refs.push(...collectManifestRefs(child, `${at}/${index}`)));
   else if (isRecord(value)) for (const [key, child] of Object.entries(value)) {
     const location = `${at}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
-    if (key === '$ref' && typeof child === 'string') refs.push({ at: location, ref: child, ...(componentRefTarget({ $ref: child }) ? { component: componentRefTarget({ $ref: child }) } : {}) });
-    else refs.push(...collectManifestRefs(child, location));
+    if (mapEntries) refs.push(...collectManifestRefs(child, location));
+    else if (['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-')) continue;
+    else if (key === '$ref' && typeof child === 'string') refs.push({ at: location, ref: child, ...(componentRefTarget({ $ref: child }) ? { component: componentRefTarget({ $ref: child }) } : {}) });
+    else refs.push(...collectManifestRefs(child, location, MANIFEST_REF_MAP_KEYS.has(key)));
   }
   return refs;
 }
@@ -431,10 +434,10 @@ export async function apiDocsToOpenApi(path: string, options: ZopiaReverseOption
   if (typeof path !== 'string' || !path) throw new TypeError('API docs path is required');
   const version = reverseVersion(options) ?? '3.1';
   let manifestFile = path;
-  try { if ((await stat(path)).isDirectory()) manifestFile = resolve(path, '.zopia-manifest.json'); }
+  try { if ((await stat(path)).isDirectory()) manifestFile = resolve(path, ZOPIA_MANIFEST_FILE); }
   catch (error) {
     if (!isMissingFileError(error)) throw error;
-    if (!path.toLowerCase().endsWith('.json')) manifestFile = resolve(path, '.zopia-manifest.json');
+    if (!path.toLowerCase().endsWith('.json')) manifestFile = resolve(path, ZOPIA_MANIFEST_FILE);
   }
   return { openapi: await manifestFileToOpenApi(manifestFile, { version }), warnings: [] };
 }
@@ -879,7 +882,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
 }
 
 function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<number, EndpointConfig>(), componentSchemas = new Map<number, Record<string, unknown>>(), componentReferences: Array<readonly [string, ComponentSchema]> = []): Record<string, unknown> {
-  if (!isRecord(manifest) || manifest.$schema !== 'zopia:manifest@1' || !isRecord(manifest.source) || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
+  if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA || !isRecord(manifest.source) || !Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest');
   if (!['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new TypeError(`Unsupported manifest source kind: ${manifest.source.kind}`);
   if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new TypeError('Invalid manifest source title or version');
   if (manifest.infoOverlay !== undefined && !isRecord(manifest.infoOverlay)) throw new TypeError('Invalid manifest infoOverlay');

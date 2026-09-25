@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ZopiaError } from '../errors';
@@ -10,6 +9,7 @@ import { buildOpenApiOperationIR } from './openapi-ir';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 import { jsonSchemaToZod, type JsonSchema } from './json-schema-to-zod';
+import { hashOpenApiDocument, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 
 /** Options for generating an api-docs tree from Swagger or OpenAPI. */
 export interface ZopiaGenerateOptions {
@@ -53,27 +53,6 @@ interface ValidatedOptions {
 
 const escapePointer = (value: string | number): string => String(value).replace(/~/g, '~0').replace(/\//g, '~1');
 const childPointer = (at: string, value: string | number): string => `${at}/${escapePointer(value)}`;
-
-function stableStringify(value: unknown, stack = new Set<object>()): string {
-  if (Array.isArray(value)) {
-    if (stack.has(value)) throw new TypeError('circular OpenAPI document');
-    stack.add(value);
-    const output = `[${value.map((item) => stableStringify(item, stack)).join(',')}]`;
-    stack.delete(value);
-    return output;
-  }
-  if (value && typeof value === 'object') {
-    if (stack.has(value)) throw new TypeError('circular OpenAPI document');
-    stack.add(value);
-    const object = value as Record<string, unknown>;
-    const output = `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(object[key], stack)}`).join(',')}}`;
-    stack.delete(value);
-    return output;
-  }
-  const output = JSON.stringify(value);
-  if (output === undefined) throw new TypeError('unsupported non-JSON value');
-  return output;
-}
 
 function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOptions {
   if (options !== undefined && (!options || typeof options !== 'object' || Array.isArray(options))) {
@@ -140,24 +119,31 @@ function normalizePublic(document: OpenApiDocument): OpenApiDocument {
 
 function validateReferences(document: OpenApiDocument): void {
   const stack = new Set<object>();
-  const visit = (value: unknown, at: string): void => {
+  const structuralMaps = new Set(['paths', 'schemas', 'definitions', '$defs', 'properties', 'patternProperties', 'dependentSchemas', 'responses', 'content', 'headers', 'links', 'encoding', 'callbacks', 'parameters', 'requestBodies', 'securitySchemes', 'securityDefinitions', 'pathItems']);
+  type VisitMode = 'normal' | 'map' | 'example-map' | 'example-object';
+  const visit = (value: unknown, at: string, mode: VisitMode = 'normal'): void => {
     if (!value || typeof value !== 'object') return;
     if (stack.has(value as object)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'circular in-memory OpenAPI value', { at, hint: 'use JSON references instead of JavaScript object cycles' });
     stack.add(value as object);
     if (Array.isArray(value)) value.forEach((child, index) => visit(child, childPointer(at, index)));
     else {
       const object = value as Record<string, unknown>;
-      if (Object.prototype.hasOwnProperty.call(object, '$ref')) {
+      if ((mode === 'normal' || mode === 'example-object') && Object.prototype.hasOwnProperty.call(object, '$ref')) {
         const refAt = childPointer(at, '$ref');
         if (typeof object.$ref !== 'string' || object.$ref.length === 0) throw new ZopiaError('ZOPIA_REF_NOT_FOUND', 'reference must be a non-empty string', { at: refAt, hint: 'use a valid local JSON Pointer' });
         if (!object.$ref.startsWith('#')) throw new ZopiaError('ZOPIA_REF_EXTERNAL', `external reference is not supported: ${object.$ref}`, { at: refAt, hint: 'multi-file references land in Phase 2' });
         try { resolveOpenApiLocalRef(document, object.$ref); }
         catch (error) { throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `unresolved local reference: ${object.$ref}`, { at: refAt, hint: 'check the local JSON Pointer', cause: error }); }
       }
-      const literalKeys = new Set(['example', 'default', 'enum', 'const', 'x-example']);
       for (const [key, child] of Object.entries(object)) {
-        if (literalKeys.has(key) || key.startsWith('x-') || key === 'examples' && Array.isArray(child)) continue;
-        visit(child, childPointer(at, key));
+        const childAt = childPointer(at, key);
+        if (mode === 'map') visit(child, childAt);
+        else if (mode === 'example-map') visit(child, childAt, 'example-object');
+        else if (mode === 'example-object' && key === 'value') continue;
+        else if (['example', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-')) continue;
+        else if (key === 'examples') {
+          if (document.swagger !== '2.0' && !Array.isArray(child)) visit(child, childAt, 'example-map');
+        } else visit(child, childAt, structuralMaps.has(key) ? 'map' : 'normal');
       }
     }
     stack.delete(value as object);
@@ -320,7 +306,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
   validateReferences(document);
 
   let hash: string;
-  try { hash = createHash('sha256').update(stableStringify(document)).digest('hex'); }
+  try { hash = hashOpenApiDocument(document); }
   catch (error) { throw mapGenerationError(error); }
 
   let warnings: ZopiaWarning[];
@@ -332,8 +318,8 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
 
   if (config.manifest) {
     try {
-      const previous = JSON.parse(await readFile(join(config.outDir, '.zopia-manifest.json'), 'utf8')) as any;
-      if (typeof previous?.source?.sha256 === 'string' && previous.source.sha256 !== hash) warnings.push({ code: 'ZOPIA_WARN_STALE_TREE', at: '.zopia-manifest.json', message: 'the existing generated tree came from a different input document and will be overwritten' });
+      const previous = JSON.parse(await readFile(join(config.outDir, ZOPIA_MANIFEST_FILE), 'utf8')) as any;
+      if (typeof previous?.source?.sha256 === 'string' && previous.source.sha256 !== hash) warnings.push({ code: 'ZOPIA_WARN_STALE_TREE', at: ZOPIA_MANIFEST_FILE, message: 'the existing generated tree came from a different input document and will be overwritten' });
     } catch (error: any) {
       if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', 'unable to inspect the existing output manifest', { at: config.outDir, cause: error });
     }
@@ -355,12 +341,12 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
 
   const files: ZopiaGeneratedFile[] = generated.map(({ file }): ZopiaGeneratedFile => ({
     path: file,
-    kind: file === '.zopia-manifest.json' ? 'manifest' : file.startsWith('components/') ? 'component' : 'endpoint',
+    kind: file === ZOPIA_MANIFEST_FILE ? 'manifest' : file.startsWith('components/') ? 'component' : 'endpoint',
   })).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   warnings.sort((left, right) => {
     const a = `${left.at ?? ''}\0${left.code}\0${left.message}`;
     const b = `${right.at ?? ''}\0${right.code}\0${right.message}`;
     return a < b ? -1 : a > b ? 1 : 0;
   });
-  return { files, warnings, ...(config.manifest ? { manifestPath: '.zopia-manifest.json' } : {}) };
+  return { files, warnings, ...(config.manifest ? { manifestPath: ZOPIA_MANIFEST_FILE } : {}) };
 }

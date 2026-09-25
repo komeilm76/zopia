@@ -92,7 +92,11 @@ describe('openApiToApiDocs public API', () => {
     const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
     const result = await openApiToApiDocs(minimal({
       '/example': { get: { responses: { '200': { description: 'ok', content: {
-        'application/json': { schema: { type: 'object', default: { $ref: './literal.json' } }, example: { $ref: './also-literal.json' } },
+        'application/json': {
+          schema: { type: 'object', default: { $ref: './literal.json' } },
+          example: { $ref: './also-literal.json' },
+          examples: { named: { value: { $ref: './examples-value-is-literal.json' } } },
+        },
       } } } } },
     }), { outDir });
     expect(result.files.some((file) => file.kind === 'endpoint')).toBe(true);
@@ -120,6 +124,7 @@ describe('openApiToApiDocs public API', () => {
     await expect(openApiToApiDocs(minimal(), { outDir: join(directory, 'five'), mode: 'other' as any })).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID', at: 'mode' });
     await expect(openApiToApiDocs(minimal(), { outDir: join(directory, 'unknown'), surprise: true } as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID', at: 'surprise' });
     await expect(openApiToApiDocs({ ...minimal(), components: { schemas: { External: { $ref: './other.json#/Thing' } } } }, { outDir: join(directory, 'six') })).rejects.toMatchObject({ code: 'ZOPIA_REF_EXTERNAL' });
+    await expect(openApiToApiDocs({ ...minimal(), components: { schemas: { External: { type: 'object', properties: { default: { $ref: './other.json#/Thing' } } } } } }, { outDir: join(directory, 'six-map') })).rejects.toMatchObject({ code: 'ZOPIA_REF_EXTERNAL' });
     await expect(openApiToApiDocs({ ...minimal(), components: { schemas: { Missing: { $ref: '#/components/schemas/Nope' } } } }, { outDir: join(directory, 'seven') })).rejects.toMatchObject({ code: 'ZOPIA_REF_NOT_FOUND' });
     await expect(openApiToApiDocs({ ...minimal(), components: { schemas: { Invalid: null } } }, { outDir: join(directory, 'invalid-schema') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_INVALID' });
     await expect(openApiToApiDocs({ ...minimal(), components: { schemas: [] } }, { outDir: join(directory, 'invalid-components') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_INVALID' });
