@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 🐛 JSON Schema conversion now preserves empty `prefixItems` and legacy tuple definitions, including typed or forbidden `items`, `additionalItems`, and `unevaluatedItems` rest values.
 - 🐛 JSON Schema conversion now honors `false` boolean schemas in `contains` and `propertyNames`, warns for malformed values, and no longer reports empty schemas as unsupported types.
 - 🔒 Reverse conversion restores manifest overlays with prototype-safe property definition.
 

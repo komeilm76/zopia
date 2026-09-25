@@ -188,6 +188,28 @@ describe('jsonSchemaToZod', () => {
     const closed = jsonSchemaToZod({ type: 'array', items: [{ type: 'string' }], additionalItems: false });
     expect(closed.schema.safeParse(['x', 1]).success).toBe(false);
   });
+  it('preserves empty tuples and false tuple rest schemas', () => {
+    const closedPrefix = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }], unevaluatedItems: false });
+    expect(closedPrefix.schema.safeParse(['x']).success).toBe(true);
+    expect(closedPrefix.schema.safeParse(['x', 1]).success).toBe(false);
+
+    const emptyPrefix = jsonSchemaToZod({ type: 'array', prefixItems: [], items: false });
+    expect(emptyPrefix.schema.safeParse([]).success).toBe(true);
+    expect(emptyPrefix.schema.safeParse([1]).success).toBe(false);
+
+    const typedPrefix = jsonSchemaToZod({ type: 'array', prefixItems: [], items: { type: 'string' } });
+    expect(typedPrefix.schema.safeParse(['x']).success).toBe(true);
+    expect(typedPrefix.schema.safeParse([1]).success).toBe(false);
+    expect(typedPrefix.code).toContain('z.tuple([]).rest(z.string())');
+
+    const emptyLegacyTuple = jsonSchemaToZod({ type: 'array', items: [], additionalItems: false });
+    expect(emptyLegacyTuple.schema.safeParse([]).success).toBe(true);
+    expect(emptyLegacyTuple.schema.safeParse([1]).success).toBe(false);
+
+    const typedLegacyTuple = jsonSchemaToZod({ type: 'array', items: [], additionalItems: { type: 'string' } });
+    expect(typedLegacyTuple.schema.safeParse(['x']).success).toBe(true);
+    expect(typedLegacyTuple.schema.safeParse([1]).success).toBe(false);
+  });
   it('preserves array uniqueness', () => {
     const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
     expect(result.schema.safeParse(['a', 'a']).success).toBe(false);

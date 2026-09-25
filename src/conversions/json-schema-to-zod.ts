@@ -109,18 +109,17 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       case 'array': {
         if (node.items === false && !Array.isArray(node.prefixItems)) { result = { schema: z.tuple([]), code: 'z.tuple([])' }; break; }
         if (Array.isArray(node.prefixItems) || Array.isArray(node.items)) {
-          const tupleNodes = (Array.isArray(node.prefixItems) ? node.prefixItems : node.items) as JsonSchema[];
+          const usesPrefixItems = Array.isArray(node.prefixItems);
+          const tupleNodes = (usesPrefixItems ? node.prefixItems : node.items) as JsonSchema[];
           const tuple = tupleNodes.map((item) => convert(item, resolving));
           const schemas = tuple.map((item) => item.schema);
           const codes = tuple.map((item) => item.code);
-          if (tuple.length) {
-            let tupleSchema: any = z.tuple(schemas as [z.ZodType, ...z.ZodType[]]); let tupleCode = `z.tuple([${codes.join(', ')}])`;
-            if (node.items && !Array.isArray(node.items) && node.items !== false) { const rest = convert(node.items as JsonSchema, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
-            else if (node.additionalItems && typeof node.additionalItems === 'object') { const rest = convert(node.additionalItems as JsonSchema, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
-            else if (node.unevaluatedItems && typeof node.unevaluatedItems === 'object') { const rest = convert(node.unevaluatedItems as JsonSchema, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
-            else if (node.items !== false && node.additionalItems !== false && node.prefixItems) { tupleSchema = tupleSchema.rest(z.any()); tupleCode += '.rest(z.any())'; }
-            result = { schema: tupleSchema, code: tupleCode };
-          } else result = { schema: z.array(z.any()), code: 'z.array(z.any())' };
+          let tupleSchema: any = z.tuple(schemas as any); let tupleCode = `z.tuple([${codes.join(', ')}])`;
+          const restNode: JsonSchema = usesPrefixItems
+            ? node.items !== undefined ? node.items : node.unevaluatedItems !== undefined ? node.unevaluatedItems : true
+            : node.additionalItems !== undefined ? node.additionalItems : true;
+          if (restNode !== false) { const rest = convert(restNode, resolving); tupleSchema = tupleSchema.rest(rest.schema); tupleCode += `.rest(${rest.code})`; }
+          result = { schema: tupleSchema, code: tupleCode };
         } else { const item = convert((node.items ?? {}) as JsonSchema, resolving); result = { schema: z.array(item.schema), code: `z.array(${item.code})` }; }
         break;
       }
