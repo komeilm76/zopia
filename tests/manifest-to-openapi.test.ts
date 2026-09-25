@@ -11,6 +11,7 @@ describe('manifest reverse conversion', () => {
     const document = result as any;
     expect(document.components.schemas.User).toEqual({ type: 'object' });
     expect(document.info.contact).toEqual({ name: 'Team' });
+    expect((Object.prototype as any).polluted).toBeUndefined();
     expect(document.externalDocs.url).toBe('https://example.com');
     expect(document['x-vendor']).toBe(true);
     expect(document.paths['/users'].get.responses['200'].description).toBe('ok');

@@ -18,8 +18,11 @@ export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unkno
   const document: Record<string, any> = isSwagger
     ? { swagger: '2.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} }
     : { openapi: manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0', info: { title: manifest.source.title, version: manifest.source.version, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} };
-  if (manifest.infoOverlay) Object.assign(document.info, manifest.infoOverlay);
-  if (manifest.documentOverlay) Object.assign(document, manifest.documentOverlay);
+  const assignOverlay = (target: Record<string, unknown>, overlay: Record<string, unknown>): void => {
+    for (const [key, value] of Object.entries(overlay)) Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+  };
+  if (manifest.infoOverlay) assignOverlay(document.info, manifest.infoOverlay);
+  if (manifest.documentOverlay) assignOverlay(document, manifest.documentOverlay);
   if (manifest.servers?.length && !isSwagger) document.servers = manifest.servers;
   if (manifest.servers?.length && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
   if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes?.length) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces?.length) document.produces = manifest.swaggerProduces; }
