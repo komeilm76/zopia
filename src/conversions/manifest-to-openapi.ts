@@ -6,6 +6,20 @@ import { decodeJsonPointerSegment } from './openapi-ref';
 
 export interface ZopiaManifest { $schema?: string; source: { kind: string; title: string; version: string; description?: string }; infoOverlay?: Record<string, unknown>; documentOverlay?: Record<string, unknown>; componentsOverlay?: Record<string, unknown>; mode?: string; servers?: unknown[]; swaggerHost?: string; swaggerSchemes?: string[]; swaggerConsumes?: string[]; swaggerProduces?: string[]; swaggerParameters?: Record<string, unknown>; swaggerResponses?: Record<string, unknown>; tags?: unknown[]; securitySchemes?: Record<string, unknown>; defaultSecurity?: unknown[]; components?: Array<{ name: string; file?: string | null; schema: unknown }>; apis: Array<{ file?: string; path: string; method: string; operationId?: string; sourceOperation?: Record<string, any>; refs?: unknown; overlay?: unknown; responseOverlay?: unknown; security?: unknown[] }>; }
 
+/** Options for selecting the OpenAPI dialect emitted by reverse conversion. */
+export interface ZopiaReverseOptions {
+  /** OpenAPI version to emit. Omit on low-level manifest helpers to preserve the source dialect. */
+  version?: '3.0' | '3.1';
+}
+
+/** Result returned by the directory-level reverse-conversion API. */
+export interface ZopiaReverseResult {
+  /** Reconstructed OpenAPI document. */
+  openapi: Record<string, unknown>;
+  /** Non-fatal conversion warnings. */
+  warnings: string[];
+}
+
 type EndpointConfig = Record<string, any>;
 type ComponentSchema = Parameters<typeof zodToJsonSchema>[0];
 interface ImportedComponents { schemas: Map<number, Record<string, unknown>>; references: Array<readonly [string, ComponentSchema]>; }
@@ -160,7 +174,7 @@ async function importComponentSchemas(manifest: ZopiaManifest, root: string, mod
     else {
       const schema = converted[component.name];
       if (!schema) throw new TypeError(`Unable to convert generated component file ${String(component.file)}`);
-      schemas.set(index, schema);
+      schemas.set(index, normalizeRuntimeSchema(schema, manifest.source.kind));
     }
   }
   const references: Array<readonly [string, ComponentSchema]> = [];
@@ -174,9 +188,186 @@ function componentRefTarget(schema: unknown): string | undefined {
   return prefix ? decodeJsonPointerSegment(schema.$ref.slice(prefix.length), schema.$ref) : undefined;
 }
 
+function reverseVersion(options: ZopiaReverseOptions | undefined): '3.0' | '3.1' | undefined {
+  if (options === undefined) return undefined;
+  if (!isRecord(options) || options.version !== undefined && options.version !== '3.0' && options.version !== '3.1') throw codedTypeError('ZOPIA_CONFIG_INVALID', `reverse version must be '3.0' or '3.1': ${String((options as any)?.version)}`);
+  return options.version;
+}
+
+function rewriteSchemaVersion(value: unknown, sourceKind: string, version: '3.0' | '3.1'): unknown {
+  if (Array.isArray(value)) return value.map((item) => rewriteSchemaVersion(item, sourceKind, version));
+  if (!isRecord(value)) return value;
+  const literalKeywords = new Set(['const', 'default', 'enum', 'example', 'examples']);
+  const result = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, literalKeywords.has(key) || key.startsWith('x-') ? child : rewriteSchemaVersion(child, sourceKind, version)])) as Record<string, any>;
+  if (typeof result.$ref === 'string' && result.$ref.startsWith('#/definitions/')) result.$ref = `#/components/schemas/${result.$ref.slice('#/definitions/'.length)}`;
+  if (result.type === 'file') { result.type = 'string'; result.format = 'binary'; }
+  const nullable = result.nullable === true || result['x-nullable'] === true;
+  delete result['x-nullable'];
+  if (version === '3.1') {
+    delete result.nullable;
+    if (nullable) {
+      if (typeof result.type === 'string') result.type = [result.type, 'null'];
+      else if (Array.isArray(result.type) && !result.type.includes('null')) result.type = [...result.type, 'null'];
+      else if (!Array.isArray(result.anyOf) || !result.anyOf.some((branch: unknown) => isRecord(branch) && branch.type === 'null')) result.anyOf = [...(Array.isArray(result.anyOf) ? result.anyOf : []), { type: 'null' }];
+    }
+    if ((sourceKind === 'swagger-2.0' || sourceKind === 'openapi-3.0') && typeof result.exclusiveMinimum === 'boolean') {
+      if (result.exclusiveMinimum === true && typeof result.minimum === 'number') { result.exclusiveMinimum = result.minimum; delete result.minimum; }
+      else delete result.exclusiveMinimum;
+    }
+    if ((sourceKind === 'swagger-2.0' || sourceKind === 'openapi-3.0') && typeof result.exclusiveMaximum === 'boolean') {
+      if (result.exclusiveMaximum === true && typeof result.maximum === 'number') { result.exclusiveMaximum = result.maximum; delete result.maximum; }
+      else delete result.exclusiveMaximum;
+    }
+  } else {
+    if (nullable) result.nullable = true;
+    if (Array.isArray(result.type) && result.type.includes('null')) {
+      const nonNull = result.type.filter((type: unknown) => type !== 'null');
+      if (nonNull.length === 1) { result.type = nonNull[0]; result.nullable = true; }
+      else { delete result.type; result.anyOf = nonNull.map((type: unknown) => ({ type })); result.nullable = true; }
+    }
+    if (Object.prototype.hasOwnProperty.call(result, 'const')) { result.enum = [result.const]; delete result.const; }
+    if (sourceKind === 'openapi-3.1' && typeof result.exclusiveMinimum === 'number') { result.minimum = result.exclusiveMinimum; result.exclusiveMinimum = true; }
+    if (sourceKind === 'openapi-3.1' && typeof result.exclusiveMaximum === 'number') { result.maximum = result.exclusiveMaximum; result.exclusiveMaximum = true; }
+  }
+  return result;
+}
+
+function rewriteOperationSchemas(value: unknown, sourceKind: string, version: '3.0' | '3.1'): unknown {
+  if (Array.isArray(value)) return value.map((item) => rewriteOperationSchemas(item, sourceKind, version));
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, key === 'schema' ? rewriteSchemaVersion(child, sourceKind, version) : rewriteOperationSchemas(child, sourceKind, version)]));
+}
+
+const SWAGGER_SCHEMA_KEYS = new Set(['type', 'format', 'items', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength', 'maxLength', 'pattern', 'enum', 'default', 'multipleOf', 'minItems', 'maxItems', 'uniqueItems']);
+
+function swaggerInlineSchema(value: Record<string, any>, sourceKind: string, version: '3.0' | '3.1'): Record<string, any> {
+  return rewriteSchemaVersion(Object.fromEntries(Object.entries(value).filter(([key]) => SWAGGER_SCHEMA_KEYS.has(key))), sourceKind, version) as Record<string, any>;
+}
+
+function swaggerParameterToOpenApi(parameter: Record<string, any>, version: '3.0' | '3.1'): Record<string, any> {
+  if (typeof parameter.$ref === 'string' && parameter.$ref.startsWith('#/parameters/')) return { $ref: `#/components/parameters/${parameter.$ref.slice('#/parameters/'.length)}` };
+  const metadata = Object.fromEntries(Object.entries(parameter).filter(([key]) => !SWAGGER_SCHEMA_KEYS.has(key) && key !== 'schema' && key !== 'collectionFormat'));
+  return { ...metadata, schema: rewriteSchemaVersion(parameter.schema ?? swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version) };
+}
+
+function swaggerHeaderToOpenApi(header: unknown, version: '3.0' | '3.1'): unknown {
+  if (!isRecord(header)) return header;
+  const metadata = Object.fromEntries(Object.entries(header).filter(([key]) => !SWAGGER_SCHEMA_KEYS.has(key)));
+  return { ...metadata, schema: swaggerInlineSchema(header, 'swagger-2.0', version) };
+}
+
+function swaggerResponseToOpenApi(response: unknown, contentType: string, version: '3.0' | '3.1'): unknown {
+  if (!isRecord(response)) return response;
+  if (typeof response.$ref === 'string' && response.$ref.startsWith('#/responses/')) return { $ref: `#/components/responses/${response.$ref.slice('#/responses/'.length)}` };
+  const headers = isRecord(response.headers) ? Object.fromEntries(Object.entries(response.headers).map(([name, header]) => [name, swaggerHeaderToOpenApi(header, version)])) : undefined;
+  const examples = isRecord(response.examples) ? response.examples : {};
+  const schema = response.schema === undefined ? undefined : rewriteSchemaVersion(response.schema, 'swagger-2.0', version);
+  const mediaTypes = new Set<string>(Object.keys(examples));
+  if (schema !== undefined) mediaTypes.add(contentType);
+  const content = schema === undefined && mediaTypes.size === 0 ? undefined : Object.fromEntries([...mediaTypes].map((type) => [type, { ...(Object.prototype.hasOwnProperty.call(examples, type) ? { example: examples[type] } : {}), ...(schema === undefined ? {} : { schema }) }]));
+  return { ...Object.fromEntries(Object.entries(response).filter(([key]) => !['schema', 'examples', 'headers'].includes(key))), ...(headers === undefined ? {} : { headers }), ...(content === undefined ? {} : { content }) };
+}
+
+function swaggerSecuritySchemeToOpenApi(scheme: unknown): unknown {
+  if (!isRecord(scheme)) return scheme;
+  if (scheme.type === 'basic') return { type: 'http', scheme: 'basic', ...Object.fromEntries(Object.entries(scheme).filter(([key]) => !['type'].includes(key))) };
+  if (scheme.type !== 'oauth2') return { ...scheme };
+  const flow = scheme.flow === 'accessCode' ? 'authorizationCode' : scheme.flow === 'application' ? 'clientCredentials' : scheme.flow;
+  const flowValue = { ...(scheme.authorizationUrl === undefined ? {} : { authorizationUrl: scheme.authorizationUrl }), ...(scheme.tokenUrl === undefined ? {} : { tokenUrl: scheme.tokenUrl }), scopes: isRecord(scheme.scopes) ? scheme.scopes : {} };
+  return { type: 'oauth2', flows: { [flow]: flowValue }, ...Object.fromEntries(Object.entries(scheme).filter(([key]) => !['flow', 'authorizationUrl', 'tokenUrl', 'scopes'].includes(key))) };
+}
+
+function collectManifestRefs(value: unknown, at = ''): Array<{ at: string; ref: string; component?: string }> {
+  const refs: Array<{ at: string; ref: string; component?: string }> = [];
+  if (Array.isArray(value)) value.forEach((child, index) => refs.push(...collectManifestRefs(child, `${at}/${index}`)));
+  else if (isRecord(value)) for (const [key, child] of Object.entries(value)) {
+    const location = `${at}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+    if (key === '$ref' && typeof child === 'string') refs.push({ at: location, ref: child, ...(componentRefTarget({ $ref: child }) ? { component: componentRefTarget({ $ref: child }) } : {}) });
+    else refs.push(...collectManifestRefs(child, location));
+  }
+  return refs;
+}
+
+function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: ZopiaManifest, version: '3.0' | '3.1'): Record<string, any> {
+  const consumes = Array.isArray(operation.consumes) ? operation.consumes : manifest.swaggerConsumes ?? [];
+  const produces = Array.isArray(operation.produces) ? operation.produces : manifest.swaggerProduces ?? [];
+  const requestType = consumes[0] ?? 'application/json';
+  const responseType = produces[0] ?? 'application/json';
+  const parameters = (Array.isArray(operation.parameters) ? operation.parameters : []).map((parameter: unknown) => isRecord(parameter) ? resolveParameter(parameter, manifest) : parameter).filter(isRecord);
+  const body = parameters.find((parameter) => parameter.in === 'body');
+  const form = parameters.filter((parameter) => parameter.in === 'formData');
+  const ordinary = parameters.filter((parameter) => parameter.in !== 'body' && parameter.in !== 'formData').map((parameter) => swaggerParameterToOpenApi(parameter, version));
+  let requestBody: Record<string, any> | undefined;
+  if (body) requestBody = { ...(body.description === undefined ? {} : { description: body.description }), required: body.required === true, content: { [requestType]: { schema: rewriteSchemaVersion(body.schema ?? {}, 'swagger-2.0', version) } } };
+  else if (form.length) {
+    const properties = Object.fromEntries(form.map((parameter) => [parameter.name, rewriteSchemaVersion(parameter.type === 'file' ? { type: 'string', format: 'binary' } : swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version)]));
+    const required = form.filter((parameter) => parameter.required === true).map((parameter) => parameter.name);
+    requestBody = { required: required.length > 0, content: { [requestType]: { schema: { type: 'object', properties, ...(required.length ? { required } : {}) } } } };
+  }
+  const responses = Object.fromEntries(Object.entries(operation.responses ?? {}).map(([status, response]) => [status, swaggerResponseToOpenApi(response, responseType, version)]));
+  return { ...Object.fromEntries(Object.entries(operation).filter(([key]) => !['parameters', 'responses', 'consumes', 'produces', 'schemes'].includes(key))), ...(ordinary.length ? { parameters: ordinary } : {}), ...(requestBody === undefined ? {} : { requestBody }), responses };
+}
+
+function rewriteOverlaysVersion(overlay: unknown, sourceKind: string, version: '3.0' | '3.1'): unknown {
+  if (!Array.isArray(overlay)) return overlay;
+  return overlay.map((entry) => {
+    if (!isRecord(entry) || typeof entry.key === 'string') return entry;
+    let set = isRecord(entry.set) ? rewriteSchemaVersion(entry.set, sourceKind, version) as Record<string, any> : undefined;
+    if (set && version === '3.1' && sourceKind !== 'openapi-3.1' && (entry.set.nullable === true || entry.set['x-nullable'] === true)) {
+      set = { ...set }; delete set.nullable; delete set.anyOf;
+    }
+    return {
+      ...entry,
+      ...(set === undefined ? {} : { set }),
+      ...(Object.prototype.hasOwnProperty.call(entry, 'node') ? { node: rewriteSchemaVersion(entry.node, sourceKind, version) } : {}),
+    };
+  });
+}
+
+function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1' | undefined): ZopiaManifest {
+  if (version === undefined) return manifest;
+  const sourceKind = manifest.source.kind;
+  const targetKind = version === '3.0' ? 'openapi-3.0' : 'openapi-3.1';
+  const components = (manifest.components ?? []).map((component) => ({ ...component, schema: rewriteSchemaVersion(component.schema, sourceKind, version) }));
+  if (sourceKind !== 'swagger-2.0') return {
+    ...manifest,
+    source: { ...manifest.source, kind: targetKind },
+    components,
+    componentsOverlay: manifest.componentsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.componentsOverlay, sourceKind, version) as Record<string, unknown>,
+    apis: manifest.apis.map((api) => ({
+      ...api,
+      sourceOperation: api.sourceOperation === undefined ? undefined : rewriteOperationSchemas(api.sourceOperation, sourceKind, version) as Record<string, any>,
+      overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version),
+    })),
+  };
+  const basePath = typeof manifest.servers?.[0] === 'string' ? manifest.servers[0] : '/';
+  const host = manifest.swaggerHost;
+  const schemes = manifest.swaggerSchemes?.length ? manifest.swaggerSchemes : ['https'];
+  const servers = host ? schemes.map((scheme) => ({ url: `${scheme}://${host}${basePath === '/' ? '' : basePath}` })) : [{ url: basePath }];
+  const reusableParameters = Object.fromEntries(Object.entries(manifest.swaggerParameters ?? {}).filter(([, parameter]) => !isRecord(parameter) || parameter.in !== 'body' && parameter.in !== 'formData').map(([name, parameter]) => [name, isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version) : parameter]));
+  const responseType = manifest.swaggerProduces?.[0] ?? 'application/json';
+  const reusableResponses = Object.fromEntries(Object.entries(manifest.swaggerResponses ?? {}).map(([name, response]) => [name, swaggerResponseToOpenApi(response, responseType, version)]));
+  const componentsOverlay = { ...(manifest.componentsOverlay ?? {}), ...(Object.keys(reusableParameters).length ? { parameters: reusableParameters } : {}), ...(Object.keys(reusableResponses).length ? { responses: reusableResponses } : {}) };
+  const apis = manifest.apis.map((api) => {
+    const sourceOperation = api.sourceOperation === undefined ? undefined : swaggerOperationToOpenApi(api.sourceOperation, manifest, version);
+    const responseOverlay = sourceOperation === undefined ? api.responseOverlay : Object.entries(sourceOperation.responses ?? {}).flatMap(([status, response]) => isRecord(response) && response.headers !== undefined ? [{ status, headers: response.headers }] : []);
+    return { ...api, sourceOperation, refs: sourceOperation === undefined ? api.refs : collectManifestRefs(sourceOperation), overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version), responseOverlay };
+  });
+  return {
+    ...manifest,
+    source: { ...manifest.source, kind: targetKind },
+    servers,
+    components,
+    componentsOverlay,
+    securitySchemes: Object.fromEntries(Object.entries(manifest.securitySchemes ?? {}).map(([name, scheme]) => [name, swaggerSecuritySchemeToOpenApi(scheme)])),
+    apis,
+  };
+}
+
 /** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
-export async function manifestFileToOpenApi(file: string): Promise<Record<string, unknown>> {
+export async function manifestFileToOpenApi(file: string, options?: ZopiaReverseOptions): Promise<Record<string, unknown>> {
   if (typeof file !== 'string' || !file) throw new TypeError('Manifest file path is required');
+  const version = reverseVersion(options);
   let source: string;
   try { source = await readFile(file, 'utf8'); }
   catch (error) {
@@ -188,17 +379,31 @@ export async function manifestFileToOpenApi(file: string): Promise<Record<string
   catch (error) { throw new TypeError(`Invalid manifest file: ${error instanceof Error ? error.message : String(error)}`); }
   const manifest = parsed as ZopiaManifest;
   reconstructOpenApi(manifest);
+  const outputManifest = manifestForOutputVersion(manifest, version);
   const root = await realpath(dirname(resolve(file)));
   await validateManifestFiles(manifest, root);
   const modules = new Map<string, Record<string, unknown>>();
-  const endpointConfigs = await importEndpointConfigs(manifest, root, modules);
-  const components = await importComponentSchemas(manifest, root, modules);
-  return reconstructOpenApi(manifest, endpointConfigs, components.schemas, components.references);
+  const endpointConfigs = await importEndpointConfigs(outputManifest, root, modules);
+  const components = await importComponentSchemas(outputManifest, root, modules);
+  return reconstructOpenApi(outputManifest, endpointConfigs, components.schemas, components.references);
 }
 
 /** Reconstruct an API document from in-memory manifest snapshots without importing generated files. */
-export function manifestToOpenApi(manifest: ZopiaManifest): Record<string, unknown> {
-  return reconstructOpenApi(manifest);
+export function manifestToOpenApi(manifest: ZopiaManifest, options?: ZopiaReverseOptions): Record<string, unknown> {
+  return reconstructOpenApi(manifestForOutputVersion(manifest, reverseVersion(options)));
+}
+
+/** Convert a generated api-docs directory (or manifest path) to OpenAPI. */
+export async function apiDocsToOpenApi(path: string, options: ZopiaReverseOptions = {}): Promise<ZopiaReverseResult> {
+  if (typeof path !== 'string' || !path) throw new TypeError('API docs path is required');
+  const version = reverseVersion(options) ?? '3.1';
+  let manifestFile = path;
+  try { if ((await stat(path)).isDirectory()) manifestFile = resolve(path, '.zopia-manifest.json'); }
+  catch (error) {
+    if (!isMissingFileError(error)) throw error;
+    if (!path.toLowerCase().endsWith('.json')) manifestFile = resolve(path, '.zopia-manifest.json');
+  }
+  return { openapi: await manifestFileToOpenApi(manifestFile, { version }), warnings: [] };
 }
 
 function schemaKind(schema: ComponentSchema): unknown { return (schema as any)?._zod?.def?.type; }
@@ -220,13 +425,13 @@ function convertRuntimeSchema(schema: unknown, io: 'input' | 'output', manifest:
     const converted = zodSchemasToJsonSchema([...references, [name, schema]], { target, $schema: false, io }, (component) => referenceUri(manifest, component));
     const result = converted[name];
     if (!result) throw new TypeError('schema conversion produced no output');
-    return normalizeRuntimeSchema(result);
+    return normalizeRuntimeSchema(result, manifest.source.kind);
   } catch (error) {
     throw new TypeError(`Unable to convert generated endpoint ${context} schema: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function normalizeRuntimeSchema(value: Record<string, any>): Record<string, any> {
+function normalizeRuntimeSchema(value: Record<string, any>, outputKind?: string): Record<string, any> {
   const visit = (node: unknown): unknown => {
     if (Array.isArray(node)) return node.map(visit);
     if (!isRecord(node)) return node;
@@ -236,6 +441,13 @@ function normalizeRuntimeSchema(value: Record<string, any>): Record<string, any>
       if (Array.isArray(variants) && variants.length > 0 && variants.every((variant) => isRecord(variant) && Object.prototype.hasOwnProperty.call(variant, 'const'))) {
         normalized.enum = variants.map((variant) => variant.const);
         delete normalized[keyword];
+      }
+    }
+    if (outputKind === 'openapi-3.0' && Array.isArray(normalized.anyOf) && normalized.anyOf.length === 2) {
+      const nullIndex = normalized.anyOf.findIndex((variant: unknown) => isRecord(variant) && (variant.type === 'null' || variant.nullable === true && Array.isArray(variant.enum) && variant.enum.length === 1 && variant.enum[0] === null));
+      if (nullIndex >= 0) {
+        const nonNull = normalized.anyOf[nullIndex === 0 ? 1 : 0];
+        if (isRecord(nonNull)) { delete normalized.anyOf; Object.assign(normalized, nonNull, { nullable: true }); }
       }
     }
     if (normalized.minimum === -9007199254740991) delete normalized.minimum;

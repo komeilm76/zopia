@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 import { readFile, writeFile } from 'node:fs/promises';
 import { generateApiDocsFiles } from './conversions/api-docs-generate';
-import { manifestFileToOpenApi } from './conversions/manifest-to-openapi';
+import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
 
-function usage(): never { throw new Error('Usage: zopia generate <spec.json> <output-dir> [options] | zopia reverse <manifest.json> [--out file]'); }
+function usage(): never { throw new Error('Usage: zopia generate <spec.json> <output-dir> [options] | zopia reverse <docs-dir|manifest.json> [--out file] [--version 3.0|3.1]'); }
 
 async function main(argv: string[]): Promise<void> {
-  if (argv.includes('--help') || argv.includes('-h')) { console.log('Usage: zopia generate <spec.json> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]'); console.log('       zopia reverse <manifest.json> [--out file]'); return; }
+  if (argv.includes('--help') || argv.includes('-h')) { console.log('Usage: zopia generate <spec.json> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]'); console.log('       zopia reverse <docs-dir|manifest.json> [--out file] [--version 3.0|3.1]'); return; }
   const [command, input, output] = argv;
   if (!command || !input) usage();
   if (command === 'generate') {
@@ -20,7 +20,9 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   if (command === 'reverse') {
-    const document = await manifestFileToOpenApi(input);
+    const versionIndex = argv.indexOf('--version'); const version = versionIndex >= 0 ? argv[versionIndex + 1] : '3.1';
+    if (version !== '3.0' && version !== '3.1') throw new Error("Invalid --version; expected '3.0' or '3.1'");
+    const document = (await apiDocsToOpenApi(input, { version })).openapi;
     const outIndex = argv.indexOf('--out'); const out = outIndex >= 0 ? argv[outIndex + 1] : undefined;
     if (outIndex >= 0 && !out) throw new Error('--out requires a file path');
     const content = `${JSON.stringify(document, null, 2)}\n`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
+import { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
 import { mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -36,6 +36,57 @@ describe('manifest reverse conversion', () => {
     const document = await manifestFileToOpenApi(file) as any;
     expect(document.openapi).toBe('3.1.0');
     expect(document.components.schemas.Inline).toEqual({ type: 'string' });
+  });
+  it('selects OpenAPI 3.0 or 3.1 for file-backed runtime schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Versions', version: '1' }, components: { schemas: { MaybeName: { type: ['string', 'null'] } } }, paths: { '/name': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: ['string', 'null'] } } } } } } } } }, { outputDir, insertComponents: true });
+    const manifestFile = join(outputDir, '.zopia-manifest.json');
+
+    const openApi30 = await manifestFileToOpenApi(manifestFile, { version: '3.0' }) as any;
+    expect(openApi30.openapi).toBe('3.0.0');
+    expect(openApi30.components.schemas.MaybeName).toMatchObject({ type: 'string', nullable: true });
+    expect(openApi30.paths['/name'].get.responses['200'].content['application/json'].schema).toMatchObject({ type: 'string', nullable: true });
+
+    const openApi31 = await manifestFileToOpenApi(manifestFile, { version: '3.1' }) as any;
+    expect(openApi31.openapi).toBe('3.1.0');
+    expect(openApi31.components.schemas.MaybeName.type).toEqual(['string', 'null']);
+    expect(openApi31.paths['/name'].get.responses['200'].content['application/json'].schema.type).toEqual(['string', 'null']);
+
+    const literalData = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.0', title: 'Literal data', version: '1' }, components: [{ name: 'Payload', file: null, schema: { type: 'object', example: { type: 'file' }, default: { type: 'file' }, properties: { choice: { enum: [{ type: 'file' }] } } } }], apis: [] }, { version: '3.1' }) as any;
+    expect(literalData.components.schemas.Payload.example).toEqual({ type: 'file' });
+    expect(literalData.components.schemas.Payload.default).toEqual({ type: 'file' });
+    expect(literalData.components.schemas.Payload.properties.choice.enum).toEqual([{ type: 'file' }]);
+  });
+  it('uses OpenAPI 3.1 by default in the documented apiDocsToOpenApi API', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.0.3', info: { title: 'Default version', version: '1' }, paths: { '/value': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'string', nullable: true } } } } } } } } }, { outputDir });
+    const result = await apiDocsToOpenApi(outputDir);
+    expect((result.openapi as any).openapi).toBe('3.1.0');
+    expect((result.openapi as any).paths['/value'].get.responses['200'].content['application/json'].schema.type).toEqual(['string', 'null']);
+    expect(result.warnings).toEqual([]);
+  });
+  it('converts Swagger manifests to the selected OpenAPI output version', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ swagger: '2.0', info: { title: 'Legacy selection', version: '1' }, host: 'api.example.com', schemes: ['https'], basePath: '/v1', consumes: ['application/json'], produces: ['application/json'], securityDefinitions: { basicAuth: { type: 'basic' } }, definitions: { User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } }, paths: { '/users': { post: { parameters: [{ name: 'body', in: 'body', required: true, schema: { $ref: '#/definitions/User' } }], responses: { '200': { description: 'ok', schema: { $ref: '#/definitions/User' } }, '204': { description: 'empty' } } } } } }, { outputDir });
+    const result = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'), { version: '3.0' }) as any;
+    expect(result.swagger).toBeUndefined();
+    expect(result.openapi).toBe('3.0.0');
+    expect(result.servers).toEqual([{ url: 'https://api.example.com/v1' }]);
+    expect(result.components.securitySchemes.basicAuth).toEqual({ type: 'http', scheme: 'basic' });
+    expect(result.paths['/users'].post.requestBody.content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
+    expect(result.paths['/users'].post.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/User' });
+    expect(result.paths['/users'].post.responses['204']).toEqual({ description: 'empty' });
+    const snapshot = manifestToOpenApi(JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')), { version: '3.1' }) as any;
+    expect(snapshot.paths['/users'].post.responses['204']).toEqual({ description: 'empty' });
+  });
+  it('rejects unsupported reverse output versions before importing generated code', async () => {
+    const source = { $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, apis: [] } as any;
+    expect(() => manifestToOpenApi(source, { version: '2.0' } as any)).toThrow("ZOPIA_CONFIG_INVALID: reverse version must be '3.0' or '3.1'");
+    const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const manifestFile = join(directory, '.zopia-manifest.json');
+    await writeFile(manifestFile, JSON.stringify(source), 'utf8');
+    await expect(manifestFileToOpenApi(manifestFile, { version: '2.0' } as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
+    await expect(apiDocsToOpenApi(directory, null as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
   });
   it('reports a missing manifest distinctly from malformed manifest content', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
