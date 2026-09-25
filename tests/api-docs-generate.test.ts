@@ -146,6 +146,15 @@ describe('API docs endpoint generation', () => {
     expect(required).toContain('auth: "YES"');
     expect(optional).toContain('auth: "NO"');
   });
+  it('preserves prototype-like request example names safely', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const examples = JSON.parse('{"__proto__":{"value":{"safe":true}},"named":{"value":1}}');
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/examples': { post: { requestBody: { content: { 'application/json': { schema: { type: 'object' }, examples } } }, responses: { '200': { description: 'ok' } } } } } }, { outputDir, manifest: false });
+    const content = await readFile(join(outputDir, 'examples', 'post', 'index.ts'), 'utf8');
+    expect(content).toContain('"__proto__":{"value":{"safe":true}}');
+    expect(content).toContain('"named":{"value":1}');
+    expect((Object.prototype as any).safe).toBeUndefined();
+  });
   it('escapes source metadata in generated comments', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test\nexport const injected = true;\u2028', version: '1' }, paths: { '/safe': { get: { responses: { '200': { description: 'ok' } } } } } }, { outputDir, manifest: false });

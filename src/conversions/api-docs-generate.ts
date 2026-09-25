@@ -221,7 +221,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const request = `request: { body: ${contracts.requestBody ? componentSchema(rawRequestSchema, 'requestBody') : 'z.any()'},  params: z.object({ ${params('path')} }), query: z.object({ ${params('query')} }), headers: z.object({ ${params('header')} }), cookies: z.object({ ${params('cookie')} }) }`;
   const response = contracts.responses.map((r) => { const raw = resolveObject(operation.operation.responses?.[r.status], source); const rawSchema = raw?.content ? (Object.values(raw.content)[0] as any)?.schema : raw?.schema; return `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : componentSchema(rawSchema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`; }).join(', ');
   const responseContentType = contracts.responses.find((r) => r.contentType)?.contentType;
-  const requestExamples: Record<string, unknown> = {};
+  const requestExamples: Record<string, unknown> = Object.create(null);
   const requestBody = resolveObject(operation.operation.requestBody, source);
   const requestMedia = requestBody?.content ? Object.values(requestBody.content as Record<string, any>)[0] as any : undefined;
   if (requestMedia?.example !== undefined) requestExamples.default = { value: requestMedia.example };
