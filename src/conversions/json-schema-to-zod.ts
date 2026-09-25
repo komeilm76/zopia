@@ -181,6 +181,14 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         result = { schema: result.schema.refine((value: any) => Object.keys(value).every((key) => expression.test(key))), code: `${result.code}.refine((value) => Object.keys(value).every((key) => new RegExp(${JSON.stringify(pattern)}).test(key)))` };
       } catch { warnings.push(`Unsupported propertyNames pattern: ${pattern}`); }
     }
+    if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object') {
+      const dependencies = Object.entries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => Array.isArray(value));
+      for (const [key, requiredKeys] of dependencies) {
+        const keys = (requiredKeys as unknown[]).filter((item): item is string => typeof item === 'string');
+        if (!keys.length) continue;
+        result = { schema: result.schema.refine((value: any) => value[key] === undefined || keys.every((requiredKey) => value[requiredKey] !== undefined)), code: `${result.code}.refine((value) => value[${JSON.stringify(key)}] === undefined || ${JSON.stringify(keys)}.every((requiredKey) => value[requiredKey] !== undefined))` };
+      }
+    }
     if (node.type === 'array' && node.contains) {
       const contained = convert(node.contains as JsonSchema, resolving);
       const min = node.minContains ?? 1; const max = node.maxContains;

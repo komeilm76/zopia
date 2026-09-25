@@ -51,6 +51,12 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse('PasswordOnly').success).toBe(false);
     expect(result.code).toContain('.and(');
   });
+  it('supports dependent required properties', () => {
+    const result = jsonSchemaToZod({ type: 'object', properties: { password: { type: 'string' }, confirmPassword: { type: 'string' } }, dependentRequired: { password: ['confirmPassword'] } });
+    expect(result.schema.safeParse({ password: 'Password1!' }).success).toBe(false);
+    expect(result.schema.safeParse({ password: 'Password1!', confirmPassword: 'Password1!' }).success).toBe(true);
+    expect(result.schema.safeParse({}).success).toBe(true);
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
