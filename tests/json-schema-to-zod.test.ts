@@ -28,6 +28,12 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ good: 1 }).success).toBe(true);
     expect(result.schema.safeParse({ 'bad-key': 1 }).success).toBe(false);
   });
+  it('supports not schemas', () => {
+    const result = jsonSchemaToZod({ type: 'string', not: { enum: ['blocked'] } });
+    expect(result.schema.safeParse('allowed').success).toBe(true);
+    expect(result.schema.safeParse('blocked').success).toBe(false);
+    expect(result.code).toContain('safeParse');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');

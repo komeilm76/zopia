@@ -136,6 +136,10 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
       case 'null': result = { schema: z.null(), code: 'z.null()' }; break;
       default: warnings.push(`Unsupported JSON Schema type: ${String(node.type)}`); result = { schema: z.any(), code: 'z.any()' };
     }
+    if (node.not) {
+      const excluded = convert(node.not as JsonSchema, resolving);
+      result = { schema: result.schema.refine((value: unknown) => !excluded.schema.safeParse(value).success), code: `${result.code}.refine((value) => !(${excluded.code}).safeParse(value).success)` };
+    }
     if (node.format && node.type === 'string') {
       const formats: Record<string, { schema: (s: any) => any; code: string }> = {
         email: { schema: (s) => s.email(), code: 'email()' },
