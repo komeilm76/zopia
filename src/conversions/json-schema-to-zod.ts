@@ -189,6 +189,7 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: { rootName?
         result = { schema: result.schema.refine((value: any) => value[key] === undefined || keys.every((requiredKey) => value[requiredKey] !== undefined)), code: `${result.code}.refine((value) => value[${JSON.stringify(key)}] === undefined || ${JSON.stringify(keys)}.every((requiredKey) => value[requiredKey] !== undefined))` };
       }
     }
+    if (node.type === 'object' && node.dependentSchemas !== undefined && (!node.dependentSchemas || typeof node.dependentSchemas !== 'object' || Array.isArray(node.dependentSchemas))) warnings.push('Invalid dependentSchemas: expected an object of schemas');
     if (node.type === 'object' && node.dependentSchemas && typeof node.dependentSchemas === 'object' && !Array.isArray(node.dependentSchemas)) {
       for (const [key, dependency] of Object.entries(node.dependentSchemas as Record<string, JsonSchema>)) {
         const dependent = convert(dependency, resolving);

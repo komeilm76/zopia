@@ -93,6 +93,10 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(5.1).success).toBe(true);
     expect(result.code).toContain('.gt(5)');
   });
+  it('reports malformed dependent schemas', () => {
+    const result = jsonSchemaToZod({ type: 'object', dependentSchemas: [] });
+    expect(result.warnings).toContain('Invalid dependentSchemas: expected an object of schemas');
+  });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);');
