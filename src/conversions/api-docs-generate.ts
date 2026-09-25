@@ -110,7 +110,9 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     return choices.length === 0 ? 'z.never()' : choices.slice(1).reduce((left: string, right: string) => `z.intersection(${left}, ${right})`, choices[0]);
   }
   if (object?.type === 'array' && Array.isArray(object.prefixItems)) {
-    return `z.tuple([${object.prefixItems.map((item: unknown, index: number) => renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root)).join(', ')}])`;
+    const items = object.prefixItems.map((item: unknown, index: number) => renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root));
+    const rest = object.items && typeof object.items === 'object' ? `.rest(${renderNestedSchema(object.items, `${name}Rest`, imports, stack, source, root)})` : '';
+    return `z.tuple([${items.join(', ')}])${rest}`;
   }
   if (object?.type === 'array' && object.items !== undefined) {
     let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;

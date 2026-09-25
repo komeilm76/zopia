@@ -85,6 +85,12 @@ describe('API docs endpoint generation', () => {
     const content = await readFile(join(outputDir, 'components', 'Pair', 'index.ts'), 'utf8');
     expect(content).toContain('z.tuple([z.string(), z.number().int()])');
   });
+  it('renders tuple rest schemas', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Values: { type: 'array', prefixItems: [{ type: 'string' }], items: { type: 'number' } } } }, paths: {} }, { outputDir, insertComponents: true });
+    const content = await readFile(join(outputDir, 'components', 'Values', 'index.ts'), 'utf8');
+    expect(content).toContain('.rest(z.number())');
+  });
   it('imports exact component response references', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
