@@ -126,7 +126,8 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-70 | parameter extras (`allowEmptyValue`, `style`, `explode`) + response `headers` → overlay/`responseOverlay`, restored verbatim on reverse | R-635/R-754 |
 | S-71 | multiple security schemes + per-operation requirements with scopes (oauth2) + an explicit `security: []` operation → `defaultSecurity` / `apis[].security` manifest fields, round-trips exactly (km-api stores only the `auth` boolean) | R-653/R-656 |
 | S-72 | reverse warnings — runtime Zod losses, fallback info/security, and 3.1→3.0 omissions return/callback with exact output pointers; security fallback coverage includes multiple operations, definition-name collisions, manifest-authoritative explicit/global requirements, and OpenAPI/Swagger representations | R-408/R-654/R-656…R-658 |
-| S-73 | CLI warning channels — generate/reverse diagnostics go to stderr while reverse stdout remains parseable JSON | R-408 |
+| S-73 | CLI warning channels — generate/reverse diagnostics go to stderr while reverse stdout remains parseable JSON | R-408/R-933 |
+| S-74 | CLI contract — every flag maps to its API option; options may surround positionals; missing/extra arguments, unknown/cross-command/duplicate/valueless flags fail before engine work; help includes the trusted-tree warning; exit statuses distinguish typed and unexpected failures | R-931…R-934 |
 
 ## 🔄 Round-trip property tests
 

@@ -110,8 +110,9 @@ zopia reverse  <docs-dir>  [--out <file.json>] [--version <3.0|3.1>]
 | `--out <file.json>` (reverse) | output file path |
 | `--version <3.0\|3.1>` | `version` |
 
-> 📌 **Rule R-931** — flags are *additive booleans*: absence = the option's
-> default (never `true`). Long flags only; no camelCase/kebab ambiguity.
+> 📌 **Rule R-931** — positive boolean flags are additive: absence = `false`.
+> `--no-manifest` is the one explicit inverse because manifests default on.
+> Long flags only; no camelCase/kebab ambiguity.
 
 ## 🔗 Next
 

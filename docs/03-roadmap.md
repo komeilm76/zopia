@@ -57,7 +57,9 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       lossy-keyword overlays, path-item metadata, and byte-identical regeneration;
       supported Zod ↔ JSON Schema pipelines converge after canonicalization
       (T-10/T-11/R-409)
-- [ ] ⌨️ CLI — `zopia generate` / `zopia reverse` ([usage](10-usage.md#-cli))
+- [x] ⌨️ **CLI contract** — strict `generate` / `reverse` grammar, complete option
+      mapping and help, isolated stdout/stderr channels, stable exit statuses,
+      trusted-tree disclosure, and direct/package execution ([usage](10-usage.md#-cli))
 - [x] 📸 **Golden generated-tree contract** — deliberate reproducible updates,
       complete byte-for-byte tree comparisons in all canonical layouts, and
       strict compilation against installed published `km-api@0.4.1`, including

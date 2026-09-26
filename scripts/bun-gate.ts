@@ -16,7 +16,7 @@ const actualVersion = (process.versions as Record<string, string | undefined>).b
 if (!expectedVersion) throw new Error('package.json must pin Bun through packageManager');
 if (actualVersion !== expectedVersion) throw new Error(`Bun ${expectedVersion} is required by package.json; received ${actualVersion ?? 'a non-Bun runtime'}`);
 
-async function runExecutable(label: string, executable: string, args: string[]): Promise<void> {
+async function runExecutable(label: string, executable: string, args: string[], expectedExitCode = 0): Promise<void> {
   console.log(`\n▶ ${label}`);
   const exitCode = await new Promise<number>((resolve, reject) => {
     const child = spawn(executable, args, { cwd: repositoryRoot, stdio: 'inherit' });
@@ -26,7 +26,7 @@ async function runExecutable(label: string, executable: string, args: string[]):
       else resolve(code ?? 1);
     });
   });
-  if (exitCode !== 0) throw new Error(`${label} failed with exit code ${exitCode}`);
+  if (exitCode !== expectedExitCode) throw new Error(`${label} exited with ${exitCode}; expected ${expectedExitCode}`);
 }
 
 const run = (label: string, args: string[]): Promise<void> => runExecutable(label, process.execPath, args);
@@ -39,6 +39,7 @@ try {
   await run('Coverage gates', ['run', 'coverage']);
   await run('CLI help', ['run', 'src/cli.ts', '--help']);
   await runExecutable('Published CLI binary wrapper', 'node', ['bin/zopia.js', '--help']);
+  await runExecutable('Published CLI typed-error exit status', 'node', ['bin/zopia.js', 'unknown'], 1);
 
   const generatedDirectory = join(temporaryDirectory, 'api-docs');
   const reversedFile = join(temporaryDirectory, 'reversed.json');

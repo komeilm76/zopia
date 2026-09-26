@@ -58,7 +58,7 @@ const { openapi, warnings: w2 } = await apiDocsToOpenApi('api_docs', {
 ## 📄 End-to-end — what a developer actually gets
 
 ```bash
-$ bunx zopia generate swagger.json --mode directory --insert-components --use-component-as-reference
+$ bunx zopia generate swagger.json api_docs --mode directory --insert-components --use-component-as-reference
 ```
 
 ```text
@@ -123,14 +123,25 @@ approximation.
 > flags map to [Configuration](09-configuration.md#-cli--options-mapping).
 
 ```text
-zopia generate <spec.json> <output-dir>   # ③ OpenAPI → api docs
-zopia reverse  <manifest.json> [--out openapi.json] # ④ manifest → OpenAPI
+zopia generate <spec.json> <output-dir> [--mode directory|flat]
+    [--insert-components] [--use-component-as-reference] [--no-manifest]
+zopia reverse <docs-dir|manifest.json> [--out openapi.json]
+    [--version 3.0|3.1]
 ```
 
 | 🚩 Command | 📝 What it does | 💡 Example |
 | --- | --- | --- |
 | `zopia generate` | generates the endpoint tree and manifest | `zopia generate swagger.json api_docs` |
 | `zopia reverse` | imports the manifest's endpoint and emitted component modules, then writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
+
+### 📏 CLI contract
+
+| # | Contract |
+| --- | --- |
+| R-931 | Boolean flags are additive and default to `false` when absent; `--no-manifest` is the explicit inverse of the default-on manifest option. |
+| R-932 | Parsing is strict and completes before either engine runs: options may surround positional arguments, but unknown, command-incompatible, repeated, or valueless options and missing/extra positionals fail with `ZOPIA_CONFIG_INVALID` at the offending argument. |
+| R-933 | Data uses stdout (or the selected `--out` file); warnings and errors use stderr. Exit status is `0` success, `1` typed user/configuration failure, and `2` unexpected internal failure. |
+| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. |
 
 Both commands print warnings only to stderr as
 `Warning: ZOPIA_WARN_* <pointer>: <message>`. In particular, `zopia reverse`
