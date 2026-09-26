@@ -72,3 +72,27 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
   }
   usage();
 }
+
+/**
+ * Run the CLI entry point and convert failures to deterministic diagnostics and
+ * process-compatible exit codes.
+ *
+ * @param argv Command arguments after the executable name.
+ * @param output Destinations for command output and diagnostics.
+ * @returns `0` for success, `1` for a typed user error, or `2` for an unexpected failure.
+ */
+export async function runCliEntrypoint(argv: string[], output: ZopiaCliOutput = processOutput): Promise<0 | 1 | 2> {
+  try {
+    await runCli(argv, output);
+    return 0;
+  } catch (error) {
+    if (error instanceof ZopiaError) {
+      output.stderr(error.message);
+      if (error.at) output.stderr(`At: ${error.at}`);
+      output.stderr(`Hint: ${error.hint}`);
+      return 1;
+    }
+    output.stderr(`Unexpected zopia failure: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
+  }
+}

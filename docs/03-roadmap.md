@@ -62,8 +62,11 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       complete byte-for-byte tree comparisons in all canonical layouts, and
       strict compilation against installed published `km-api@0.4.1`, including
       `trace`, custom/default statuses, and extension media types (R-112/R-126)
-- [ ] 🧪 Vitest suite — remaining full scenario matrix, coverage gates, and
-      other contract suites (round-trip properties and golden trees are complete;
+- [x] 📈 **Coverage gates** — V8 measures every source file; overall line/function
+      coverage is gated at 90%, branches at 85%, conversion engines at 95% lines,
+      and every source file at 80% lines, with omitted-file detection
+- [ ] 🧪 Vitest suite — remaining full scenario matrix and other contract suites
+      (round-trip properties, golden trees, and coverage gates are complete;
       [testing](11-testing.md))
 - [ ] 📖 JSDoc on every public symbol (T-12)
 - [ ] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**

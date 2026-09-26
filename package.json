@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "km-api": "^0.4.1",
     "typescript": "^5.9.2",
     "vite-node": "^2.1.9",
@@ -24,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage && vite-node scripts/check-coverage.ts",
     "golden:update": "vite-node scripts/update-golden.ts",
     "build": "tsc --noEmit"
   },

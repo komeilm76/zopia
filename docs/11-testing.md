@@ -192,11 +192,15 @@ tests/fixtures/
 | --- | --- |
 | Lines / functions | ≥ **90%** overall |
 | Branches | ≥ **85%** overall |
-| `src/engines/**` | ≥ **95%** lines — the mapping tables are the product |
-| Any single file | never below **80%** lines |
+| `src/conversions/**` | ≥ **95%** lines — these files implement engines ①–④ and their mapping tables |
+| Any single `src/**/*.ts` file | never below **80%** lines |
 
-`bun run coverage` fails CI below the gates. Warnings paths (D-12) are
-tested — a warning that never fires in tests is a red flag, not a shrug.
+`bun run coverage` runs Vitest's V8 provider over **all** `src/**/*.ts` files,
+including files that no test imported. Vitest enforces the overall thresholds;
+`scripts/check-coverage.ts` then inventories source files against the JSON
+summary, enforces the aggregate conversion-engine and per-file line gates, and
+exits non-zero on any omission or shortfall. Warnings paths (D-12) are tested —
+a warning that never fires in tests is a red flag, not a shrug.
 
 ## 📏 Writing tests (standard)
 
