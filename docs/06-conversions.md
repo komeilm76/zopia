@@ -182,7 +182,7 @@ and boolean inputs stay entirely in memory.
 | `{ "not": S }` | refinement rejecting values accepted by `S` + warning `ZOPIA_WARN_NOT` + overlay `node` (Zod cannot serialize `not`, so the original subtree is restored verbatim) | D-12 |
 | `{ "$schema": … } / { "$id": … } / { "$comment": … }` | no Zod runtime effect; preserved verbatim by an overlay `set` entry | R-636 |
 | `{ "title": t }` / `{ "description": d }` / `{ "example": v }` / `{ "examples": […] }` | a single `.meta({ title?, description?, examples? })` call on the schema (only the fields present) — verified copied verbatim back by ① (R-612), plus a JSDoc comment for human readers. `example` (single) is normalized to `examples: [v]` | R-633 |
-| `{ "$ref": "#/…/schemas/X" }` | component mode: import `XSchema`; default mode: local const (R-403) | R-402/R-634 |
+| `{ "$ref": "#/…/schemas/X" }` | engine ② resolves local definitions through its `$defs` closure; engine ③ default mode embeds the needed component definitions in each schema expression, while reference mode imports `XSchema` | R-402/R-403/R-634 |
 | `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order | R-634 |
 | `{ "if": I, "then": T, "else": E }` | base schema plus a refinement that validates `T` when `I` succeeds and `E` otherwise; boolean branches and exact keyword-only applicability are supported, while malformed/detached branches warn | R-632 |
 | `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | ⚠️ nearest approximation (`z.record(z.string(), z.unknown())` where sensible) + warnings + overlay `node` for the unsupported keywords | D-12 |
@@ -207,10 +207,10 @@ and boolean inputs stay entirely in memory.
 
 | 📏 Rule | Example |
 | --- | --- |
-| 2-space indent, single quotes, semicolons, trailing newline | — |
-| one chainable check per line when a schema has **> 2** checks (readability) | `z.string().min(1).max(100)` stays one line; three+ → multi-line |
-| consts are `PascalCase + 'Schema'` for components, `camelCase` for locals | `UserSchema`, `error`, `pageParam` |
-| identical sub-schemas dedupe within a file (R-403) | one `const error`, used by 401 *and* 404 |
+| deterministic TypeScript/JSON literals, semicolon-terminated declarations, one trailing newline | `const schema = z.literal("ready");` |
+| chainable checks stay in one expression; warning-marker wrappers use stable multiline indentation | `z.string().min(1).max(100).regex(new RegExp("x"))` |
+| component consts are `PascalCase + 'Schema'`; local `$defs` names are sanitized lower-camel identifiers | `UserSchema`, `node` |
+| schema reuse is identity-driven (R-403) | default endpoints inline each occurrence; component-reference endpoints reuse one import |
 | circular refs → `z.lazy(() => XSchema)` (R-402) | — |
 | warnings mirrored inside the containing emitted expression as `// @zopia:warn <CODE> <keyword> — <message> (<JSON pointer>)`; the pointer identifies the exact source node | — |
 
@@ -285,7 +285,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | 📐 OpenAPI 3.x | 🧬 IR |
 | --- | --- |
 | `components.schemas` | `components` |
-| `servers[].url` (variables ignored in Phase 1 + warning `ZOPIA_WARN_SERVER_VARIABLES`) | `servers` |
+| `servers[]` | full entries preserved in the manifest; `variables` emit `ZOPIA_WARN_SERVER_VARIABLES` because endpoint modules have no representation |
 | `requestBody.content` | primary media type (R-641) → `request.body` + `requestContentType`; others recorded in manifest |
 | parameters `in: path/query/header/cookie` | `request.params/query/headers/cookies` |
 | `responses` (per media type) | `response.statuses[]` — primary media type per response (R-641); description required by spec → kept |
@@ -297,7 +297,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | the `default` response & non-standard codes (`419`, `499`, `512`, …) | emitted verbatim as the `default` / numeric response keys (km-api ≥ 0.4.1 accepts both) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, `deprecated`, `example`) | no home in Zod/km-api → overlay entries on the operation subtree pointers (R-635) |
 | response `headers` | no home in km-api → `apis[].responseOverlay` entries (re-emitted verbatim, R-654c) |
-| 3.1 `webhooks` object | skipped + warning `ZOPIA_WARN_WEBHOOKS` (Phase 2) |
+| 3.1 `webhooks` object | not emitted as endpoint files + `ZOPIA_WARN_WEBHOOKS`; preserved in the manifest and restored for 3.1 output (endpoint generation is Phase 2) |
 | path item that is a local `$ref` | resolve the local JSON Pointer (including chained references); external, missing, malformed, and circular references are rejected |
 | `deprecated: true` | `deprecated: true` |
 
@@ -325,8 +325,9 @@ Per [Architecture → The reference graph](04-architecture.md#-the-reference-gra
 (R-402): unknown → `ZOPIA_REF_NOT_FOUND`; external → `ZOPIA_REF_EXTERNAL`;
 cycles → `z.lazy` plan. Refs to **non-schema** reusable objects (global
 `parameters`/`responses` in 2.0, `components.parameters/responses/examples`
-in 3.x) are **inlined at their use sites** during normalization (Phase 1) —
-they never enter the graph (R-402 scope).
+in 3.x) are resolved at use sites for endpoint rendering rather than entering
+the schema graph. Their declarations and exact ref placements remain in the
+manifest and are restored by engine ④ (R-402/R-655/R-659).
 
 ### 🖨️ Step 4 — render
 
@@ -424,8 +425,8 @@ tested as a property for every fixture
 | keyword-level losses (`uniqueItems`, `discriminator`, `time`/`url` formats, boolean exclusive bounds, custom formats) | overlay `set`/`remove` → restored verbatim (R-635) |
 | structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate in Phase 1 (documented in the generated comment) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, …) & response `headers` — no home in km-api (R-642) | overlay / `apis[].responseOverlay` → restored verbatim |
-| 3.1 `webhooks` | warning (Phase 1 drops them + `ZOPIA_WARN_WEBHOOKS`) |
-| server `variables` | warning (Phase 1 drops them + `ZOPIA_WARN_SERVER_VARIABLES`) |
+| 3.1 `webhooks` | no endpoint files + `ZOPIA_WARN_WEBHOOKS`; manifest-preserved and restored for 3.1 reverse output |
+| server `variables` | no endpoint-code representation + `ZOPIA_WARN_SERVER_VARIABLES`; preserved and restored through the manifest |
 
 ## 🔗 Next
 

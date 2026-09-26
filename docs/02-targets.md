@@ -1,8 +1,8 @@
 # 🎯 Targets
 
-These are the **explicit, testable targets** of zopia. Each target maps to at
-least one document in this directory and (once implemented) to at least one
-Vitest suite — see [Testing → Scenario matrix](11-testing.md).
+These are the **explicit, testable targets** of zopia. Every Phase 1 target maps
+to its governing document and automated release-gate coverage — see
+[Testing → Scenario matrix](11-testing.md).
 
 > ✅ **Complete** = implemented, documented, and covered by the release gate.
 > Deferred work is listed explicitly under [Roadmap → Phase 2](03-roadmap.md#-phase-2--breadth-v02x).

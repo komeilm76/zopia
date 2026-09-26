@@ -85,7 +85,7 @@ await openApiToApiDocs('swagger.json', {
   insertComponents: false,         // emit components/**          (default false)
   useComponentAsReference: false,  // import emitted components (default false)
 });
-// └─ api_docs/admin/users/{id}/get/index.ts  →  makeApiConfig({ method: 'GET', pathShape: '/admin/users/{id}', … })
+// └─ one <path>/<method>/index.ts per operation + .zopia-manifest.json
 
 // ④ Convert the tree back into a spec
 const { openapi } = await apiDocsToOpenApi('api_docs', { version: '3.1' });

@@ -80,13 +80,13 @@ Being explicit about what zopia **does not do** keeps the scope honest:
 | --- | --- | --- |
 | P-1 | 🎯 **Deterministic** | Same input + same options ⇒ **byte-identical** output. No timestamps, no random order, no environment leakage. |
 | P-2 | 🔒 **Lossless by design** | Every conversion is reversible; what cannot be represented in the target format is recorded (manifest + warnings), never silently dropped. |
-| P-3 | 🧼 **Pure core** | All engines are pure functions on in-memory data; file system access lives only at the outer boundary. |
+| P-3 | 🧼 **Pure core** | In-memory transforms stay pure; documented file reads, generated-tree writes/imports, and CLI process access live at explicit adapter boundaries. |
 | P-4 | 🛡️ **Safe** | Fail loudly with typed, actionable errors; never write outside the configured output directory; never hide lossy conversions. |
 | P-5 | 📖 **Documented** | Every public symbol has JSDoc; every rule is numbered; every decision is recorded. |
-| P-6 | 📦 **Dependency-light** | Zero runtime dependencies (Phase 1); `zod` and `km-api` are peer dependencies of the *generated* code. |
+| P-6 | 📦 **Dependency-light** | Zero bundled runtime dependencies; `zod` and `km-api` remain explicit peers (`zod` powers engines ①/② and generated schemas; km-api powers generated endpoints and their reverse imports). |
 
 ## 🔗 Next
 
-- 🎯 What exactly must be built → [Targets](02-targets.md)
-- 🗺️ When it ships → [Roadmap](03-roadmap.md)
+- 🎯 The completed public targets → [Targets](02-targets.md)
+- 🗺️ Release phases and deferred breadth → [Roadmap](03-roadmap.md)
 - 🧩 Words you will keep seeing → [Concepts](05-concepts.md)

@@ -15,21 +15,21 @@ The standard documentation of the project:
 - 🔐 `LICENSE` (MIT) · 🧹 `.gitignore`
 - 🔑 Key decisions **D-01 … D-15** recorded in [Standards](12-standards.md#-key-decisions)
 
-**Done when:** a new contributor can read only `docs/` and implement Phase 1
-without asking questions. ✅ *That bar is the acceptance test of this phase.*
+**Completed:** the documentation fixed the Phase 1 contracts before
+implementation; it now describes the implemented v0.1.0 behavior and deferred scope.
 
 ## 🚀 Phase 1 — The four engines (v0.1.0) ✅
 
 Everything in [Targets](02-targets.md) marked ✅:
 
-- [x] ⚙️ Package scaffold — ESM `package.json` (Bun-first, zero runtime deps,
-      `zod` peer + `km-api ^0.4.1` from npm — D-15), strict `tsconfig`,
+- [x] ⚙️ Package scaffold — ESM `package.json` (Bun-first, zero direct runtime
+      dependencies; `zod` + `km-api ^0.4.1` peers from npm — D-15), strict `tsconfig`,
       Vitest/V8, pinned Bun, and checked-in `bun.lock`
 - [x] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
       ([rules](06-conversions.md))
 - [x] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
       ([rules](06-conversions.md))
-- [x] ③ **Engine 3** — `openApiToApiDocs()` — normalize v2/v3 → internal model
+- [x] ③ **Engine 3** — `openApiToApiDocs()` — normalize v2/v3 → operation IR
       → render `directory` / `flat` trees of `index.ts` files
       ([rules](06-conversions.md),
       [format](07-api-docs.md))
@@ -81,11 +81,14 @@ Everything in [Targets](02-targets.md) marked ✅:
 - [x] 📦 **Package/release readiness** — public npm metadata, an allowlisted
       source archive, executable CLI, isolated packed-consumer import and CLI
       smoke tests, and a mandatory prepublish gate (R-191…R-193)
+- [x] 📚 **Documentation status sync** — current module/test layouts, generated
+      examples, Phase 1 completion labels, and deferred boundaries agree with
+      the implementation and are guarded by a documentation contract test
 - [x] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**
 
-### ✅ Definition of done — Phase 1
+### ✅ Definition of done — Phase 1 (met)
 
-A Phase 1 release is complete when **all** of the following hold:
+The v0.1.0 release candidate satisfies all of the following:
 
 1. 📄 `bun run test` is green — unit + integration + round-trip suites
 2. 📈 Coverage gates are met (see [Testing → Coverage gates](11-testing.md#-coverage-gates))
@@ -95,21 +98,24 @@ A Phase 1 release is complete when **all** of the following hold:
 6. 📜 `CHANGELOG.md` v0.1.0 entry exists and `README` status banner is updated
 7. ✅ **km-api dependency gate** (D-15) — `km-api@0.4.1` is published and zopia
    uses `km-api: ^0.4.1` from npm; no Git submodule or unpublished commit remains.
-   The dependency must remain installed and type-checkable throughout Phase 1.
+   The dependency remains installed and type-checkable in every release gate.
 
 ## 🧰 Phase 2 — Breadth (v0.2.x)
 
 - 📝 **YAML input** — accept `swagger.yaml` / `openapi.yaml` (D-13 lifts)
 - 🔗 **External `$ref`s** — resolve references to other files in the same folder
 - 🧩 **Reusable parameters & responses** — emitted as their own component files
-  (Phase 1 inlines them at every use site; km-api has no
-  standalone-parameter concept — a Phase 2 design decision)
+  (v0.1.0 resolves them for endpoint code and preserves/restores their reusable
+  declarations through the manifest; km-api has no standalone-parameter concept)
 - 🧾 **`zopia.config.ts`** — project-level config file (CLI flags stay available)
 - 📤 **OpenAPI 2.0 output** from engine ④ (`version: '2.0'`) for legacy targets
 - 🧪 More JSON Schema keywords — `patternProperties`, `if/then/else`,
   `minProperties/maxProperties`, `propertyNames`, `contains`
   (Phase 1: documented approximation + warning, D-12)
-- 🪝 3.1 `webhooks` support and path-item `$ref` (Phase 1: warning / typed error)
+- 🪝 **3.1 webhook endpoint generation** — v0.1.0 preserves webhooks in the
+  manifest and restores them for 3.1 output with `ZOPIA_WARN_WEBHOOKS`, but does
+  not generate endpoint files for them (valid local path-item `$ref`s already
+  resolve and round-trip in v0.1.0)
 - 👀 **Watch mode** — `zopia generate --watch` for spec-driven development
 
 ## 🌌 Phase 3 — Ecosystem (v0.3+)

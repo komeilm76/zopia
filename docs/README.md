@@ -14,7 +14,7 @@ source of truth for *how zopia works, what it must do, and how it is built*.
 | 1 | 🧭 [Overview](01-overview.md) | You want to know **what** zopia is and **why** it exists |
 | 2 | 🎯 [Targets](02-targets.md) | You want the **explicit, testable goals** of the project |
 | 3 | 🗺️ [Roadmap](03-roadmap.md) | You want to know **what ships in which phase** |
-| 4 | 🏗️ [Architecture](04-architecture.md) | You are **implementing** — modules, pipeline, internal model, errors |
+| 4 | 🏗️ [Architecture](04-architecture.md) | You are **maintaining or extending** modules, pipelines, representations, or errors |
 | 5 | 🧩 [Concepts](05-concepts.md) | You need the **glossary** — Swagger 2.0, OpenAPI 3.x, JSON Schema, `$ref`, Zod v4, km-api |
 | 6 | 🔄 [Conversions](06-conversions.md) | You need the **exact mapping rules** of the four engines |
 | 7 | 📄 [API docs format](07-api-docs.md) | You need the **output contract** — layouts, `index.ts`, manifest |
@@ -28,7 +28,7 @@ source of truth for *how zopia works, what it must do, and how it is built*.
 
 - 🆕 **New here** → [Overview](01-overview.md) → [Targets](02-targets.md) →
   [Concepts](05-concepts.md) → [Usage](10-usage.md)
-- 🛠️ **Implementing Phase 1** → [Architecture](04-architecture.md) →
+- 🛠️ **Maintaining or extending zopia** → [Architecture](04-architecture.md) →
   [Conversions](06-conversions.md) → [API docs format](07-api-docs.md) →
   [Testing](11-testing.md)
 - 🤔 **Question about a decision?** → [Standards → Key decisions](12-standards.md#-key-decisions)

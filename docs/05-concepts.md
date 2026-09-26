@@ -59,7 +59,9 @@ Recognized by `"openapi": "3.1.x"`. Same shape as 3.0, but:
 - 🌗 Nullability via `"type": ["string", "null"]` — `nullable` is removed
 - 📸 `examples` (array) replaces `example`; `const` is allowed
 - 🧮 `exclusiveMinimum/Maximum` are **numbers** (were booleans in draft-04/07)
-- 🪝 adds `webhooks` (not paths — Phase 2, warning in Phase 1); path-item `$ref`s are supported when they are valid local references
+- 🪝 adds `webhooks` (not paths): v0.1.0 warns, preserves them in the manifest,
+  and restores them for 3.1 output but defers webhook endpoint files; valid local
+  path-item `$ref`s are supported and round-trip
 - 📌 zopia treats 3.0 and 3.1 with the same normalizer + a small dialect shim
 
 ### 📐 JSON Schema
@@ -113,7 +115,8 @@ depends on Zod **v4** idioms — *not* v3 — throughout:
 ### 🧱 km-api
 
 The user's endpoint-definition package — **the make function of this project's
-generated code**. zopia targets **km-api `0.4.x`** and generates:
+generated code**. zopia targets **km-api `^0.4.1` (0.4.x)** and generates the
+following conceptual shape (formatting abridged):
 
 ```ts
 import { makeApiConfig } from 'km-api';
@@ -121,8 +124,8 @@ import { makeApiConfig } from 'km-api';
 const getUser = makeApiConfig({
   method: 'GET',                        // 🧭 IMethod — HTTP method
   pathShape: '/admin/users/{id}',       // 🛣️ IPath — OpenAPI {param} syntax (D-05)
+  operationId: 'getUser',               // 🆔 preserved in config + export name
   auth: 'YES',                          // 🔐 'YES' | 'NO'
-  requestContentType: 'application/json',
   responseContentType: 'application/json',
   summary: 'Get user by ID',            // 📝
   description: 'Retrieves …',           // 📝 (Markdown)
@@ -192,10 +195,12 @@ component schemas**, **`$ref` placement** (per-API ref pointers), and
 formats, unsupported keywords). See
 [API docs format → The manifest](07-api-docs.md).
 
-### 🧬 IR (internal model)
+### 🧬 Stage-specific representations
 
-The version-independent `ApiModel` that both ③ and ④ converge on — see
-[Architecture → The internal model](04-architecture.md#-the-internal-model).
+Engine ③ narrows a validated document into operation-level IR and normalized
+request/response contracts. Engine ④ combines imported runtime values with the
+versioned manifest instead of sharing one repository-wide model with engine ③.
+See [Architecture → The internal representations](04-architecture.md#-the-internal-representations).
 
 ### 🔁 Round-trip
 

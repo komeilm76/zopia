@@ -7,15 +7,15 @@ tests.
 ## 📦 Installation
 
 ```bash
-bun add zopia        # 📦 the toolkit itself (Phase 1: zero runtime deps)
-bun add zod km-api   # ⚛️🧱 required by the *generated* files
+bun add zopia        # 📦 the toolkit (no bundled runtime dependencies)
+bun add zod km-api   # ⚛️🧱 peer dependencies for conversion/generated code
 ```
 
 | 📦 Package | 🏷️ Kind | 📝 Why |
 | --- | --- | --- |
 | `zopia` | dependency | the engines |
-| `zod` `^4` | peer | generated schemas validate at runtime |
-| `km-api` `^0.4` (0.4.x) | peer | generated files call `makeApiConfig()` |
+| `zod` `^4` | peer | engines ①/② convert runtime schemas; generated schemas validate at runtime |
+| `km-api` `^0.4.1` (0.4.x) | peer | generated files call `makeApiConfig()` and engine ④ imports their results |
 
 ## ⚡ Quick start — all four engines
 
@@ -45,7 +45,7 @@ const result = await openApiToApiDocs('swagger.json', {
   insertComponents: false,      // 🧱 default
   useComponentAsReference: false, // 🔗 default
 });
-// → api_docs/admin/users/{id}/get/index.ts …  + .zopia-manifest.json
+// → one api_docs/<path>/<method>/index.ts per operation + .zopia-manifest.json
 console.log(result.files, result.warnings);
 
 // ── ④ api docs → OpenAPI ───────────────────────────────────
@@ -58,34 +58,33 @@ const { openapi, warnings: w2 } = await apiDocsToOpenApi('api_docs', {
 ## 📄 End-to-end — what a developer actually gets
 
 ```bash
-$ bunx zopia generate swagger.json api_docs --mode directory --insert-components --use-component-as-reference
+$ bunx zopia generate openapi.json api_docs --mode directory --insert-components --use-component-as-reference
 ```
+
+With the canonical Admin API fixture saved as `openapi.json`, that produces:
 
 ```text
 api_docs/
 ├── .zopia-manifest.json
 ├── components/
 │   ├── index.ts
-│   ├── User/index.ts
-│   ├── UserInput/index.ts
-│   └── Error/index.ts
-└── admin/users/
+│   ├── CreateUser/index.ts
+│   └── User/index.ts
+├── health/get/index.ts
+└── users/{userId}/
     ├── get/index.ts
-    ├── post/index.ts
-    └── {id}/
-        ├── get/index.ts
-        └── delete/index.ts
+    └── patch/index.ts
 ```
 
-…and `api_docs/admin/users/{id}/get/index.ts` is real, runnable, type-safe
-code — see the full annotated file in
+…and `api_docs/users/{userId}/get/index.ts` is real, runnable, type-safe code —
+see its exact checked-in output in
 [API docs format → The `index.ts` contract](07-api-docs.md#-the-indexts-contract).
 Drop the tree into your project, import what you need:
 
 ```ts
-import getUser from './api_docs/admin/users/{id}/get/index';
+import getUser from './api_docs/users/{userId}/get/index';
 
-const url = getUser.makeFullPath({ id: '550e8400-e29b-41d4-a716-446655440000' });
+const url = getUser.makeFullPath({ userId: '550e8400-e29b-41d4-a716-446655440000' });
 const user = getUser.makeBody(undefined); // type-safe: no body on GET
 ```
 

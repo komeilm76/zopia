@@ -34,11 +34,11 @@ same gate so local and publish-time validation cannot drift.
 
 | 🏔️ Layer | 📍 Where | 🎯 What it proves |
 | --- | --- | --- |
-| **Unit** | `src/**/*.test.ts` (colocated) | each keyword mapping, each layout function, each error path — in isolation, on plain objects |
-| **Integration** | `tests/integration/**/*.test.ts` | full engine runs: spec in → tree out (both modes, both option combos); tree in → spec out |
+| **Focused** | `tests/*.test.ts` | schema keywords, OpenAPI helpers, layouts, planning, manifests, warnings, and errors on in-memory values |
+| **Integration** | top-level `tests/*generate*.test.ts`, `tests/*public*.test.ts`, and `tests/*to-openapi*.test.ts` | full engine runs: spec in → tree out (both modes/options); trusted generated tree in → spec out |
 | **Round-trip** | `tests/roundtrip/**/*.test.ts` | property: `openapi(docs(spec)) ≈ spec` and `zodSchema(zod(jsonSchema(zodSchema))) ≈ schema` (see below) |
-| **Golden files** | `tests/fixtures/expected/**` | byte-exact snapshots of generated trees (determinism, P-1) — regenerated deliberately, reviewed in PRs |
-| **Contract** | `tests/contract/**/*.test.ts` | public API/JSDoc, error and manifest contracts, golden output, npm artifact, and release metadata |
+| **Golden files** | `tests/fixtures/expected/**` | byte-exact generated trees (determinism, P-1), regenerated deliberately and reviewed with their fixture inputs |
+| **Contract** | `tests/contract/**/*.test.ts` | public API/JSDoc, error and manifest contracts, golden output, npm artifact, release metadata, and documentation status |
 
 > 📌 **Rule R-111** — *no test touches the network*; *no test writes outside
 > a per-test temp directory* (`fs.mkdtemp` under `os.tmpdir()`, cleaned in
@@ -68,7 +68,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-11 | simple ref (operation → component) | R-402 |
 | S-12 | nested refs (component → component → component) | R-811 |
 | S-13 | cycle (component → itself) → `z.lazy()` | R-402/R-812 |
-| S-14 | same component used by many operations (dedupe in default mode, imports in ref mode) | R-403/R-822 |
+| S-14 | same component used by many operations (self-contained inlining in default mode, identity-preserving imports in ref mode) | R-403/R-822 |
 | S-15 | missing ref / external ref → typed error | R-404 |
 
 ### 📂 Layout scenarios

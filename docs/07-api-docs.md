@@ -2,11 +2,14 @@
 
 The **api docs** are zopia's main artifact: an `api_docs/` directory where
 every endpoint becomes an `index.ts` file built with `makeApiConfig()` from
-**km-api** (the make function), validated by **Zod v4** schemas. This document
+**km-api** (the make function), validated by **Zod v4** schemas.
 
-Path-level parameters are merged with operation-level parameters; an operation-level declaration with the same `name` and `in` overrides the path-level declaration.
+Path-level parameters are merged with operation-level parameters; an
+operation-level declaration with the same `name` and `in` overrides the
+path-level declaration.
 
-This document is the *output contract* — layout, naming, file format, and the manifest.
+This document is the *output contract* — layout, naming, file format, and the
+manifest.
 
 > 📌 **Rule R-701** — the generated tree is a *contract*, not a suggestion.
 > Any tool (including engine ④) may rely on every invariant stated here.
@@ -17,14 +20,13 @@ All layout examples in this document derive from one spec — the **Admin API**
 (OpenAPI 3.0.3). It is also the primary golden fixture of the test suite:
 
 ```text
-📄 Admin API v1.0.0
-├── GET    /admin/users          → 200 list · 401          (query: page, limit)
-├── POST   /admin/users          → 201 User · 400          (body: UserInput)
-├── GET    /admin/users/{id}     → 200 User · 401 · 404    (param: id uuid)
-└── DELETE /admin/users/{id}     → 204 · 401 · 404         (param: id uuid)
+📄 Admin API v1.2.0
+├── GET   /users/{userId}    → 200 User · 404 Problem   (path: userId uuid)
+├── PATCH /users/{userId}    → 200 User · default      (body: CreateUser)
+└── GET   /health            → 204                     (public override)
 
-🧱 components.schemas: User · UserInput · Error
-🔐 securitySchemes: bearerAuth (http/bearer/JWT) — used by every operation
+🧱 components.schemas: User · CreateUser
+🔐 securitySchemes: oauth (client credentials) — document default; health opts out
 ```
 
 ## 📂 Mode — `directory` (default)
@@ -38,17 +40,15 @@ the method (lowercase); **then** `index.ts`:
 ```text
 api_docs/
 ├── .zopia-manifest.json
-└── admin/
-    └── users/
+├── health/
+│   └── get/
+│       └── index.ts              # 📡 GET   /health
+└── users/
+    └── {userId}/
         ├── get/
-        │   └── index.ts          # 📡 GET    /admin/users
-        ├── post/
-        │   └── index.ts          # 📡 POST   /admin/users
-        └── {id}/
-            ├── get/
-            │   └── index.ts      # 📡 GET    /admin/users/{id}
-            └── delete/
-                └── index.ts      # 📡 DELETE /admin/users/{id}
+        │   └── index.ts          # 📡 GET   /users/{userId}
+        └── patch/
+            └── index.ts          # 📡 PATCH /users/{userId}
 ```
 
 **Invariants**
@@ -71,16 +71,14 @@ The full path is flattened into **one** directory name: segments joined by
 ```text
 api_docs/
 ├── .zopia-manifest.json
-├── admin-users/
-│   ├── get/
-│   │   └── index.ts              # 📡 GET    /admin/users
-│   └── post/
-│       └── index.ts              # 📡 POST   /admin/users
-└── admin-users-{id}/
+├── health/
+│   └── get/
+│       └── index.ts              # 📡 GET   /health
+└── users-{userId}/
     ├── get/
-    │   └── index.ts              # 📡 GET    /admin/users/{id}
-    └── delete/
-        └── index.ts              # 📡 DELETE /admin/users/{id}
+    │   └── index.ts              # 📡 GET   /users/{userId}
+    └── patch/
+        └── index.ts              # 📡 PATCH /users/{userId}
 ```
 
 | # | Invariant |
@@ -92,28 +90,21 @@ api_docs/
 > 💡 Because flat names can collide *in principle*, **engine ④ relies on the
 > manifest, never on tree shape**, in both modes (D-06).
 
-## 🧭 Optional ergonomic facade
+## 🧭 Ergonomic facade-path helper
 
-In addition to direct file imports, generated API docs may expose a nested facade:
+`apiDocsFacadeAccess(path, method, root?)` returns a safe TypeScript access path
+for callers that build an optional nested facade around direct endpoint imports:
 
 ```ts
-import apiDocs from './api_docs';
-
-apiDocs.applicant.exame.all["{id}"].get({ id: 'exam-123' });
+apiDocsFacadeAccess('/applicant/{applicantId}/exame/{examId}', 'get');
+// → apiDocs.applicant["{applicantId}"].exame["{examId}"].get
 ```
 
-Ordinary path segments use normalized camel-case properties. Path parameters are
-kept in explicit bracket notation, so they cannot be confused with ordinary path
-segments:
-
-```text
-/applicant/{applicantId}/exame/{examId}
-→ apiDocs.applicant["{applicantId}"].exame["{examId}"].get
-```
-
-The facade is optional; direct imports remain the canonical file-level API. The
-facade rejects unsafe property names, malformed templates, duplicate parameters,
-and unsupported methods. The generated manifest remains authoritative (D-06).
+Ordinary segments become normalized camel-case properties; parameter segments
+stay in bracket notation. The helper rejects unsafe property names, malformed
+templates, duplicate parameters, unsupported methods, and unsafe roots. Engine ③
+does not emit a facade module in v0.1.0: direct imports are the generated
+file-level API, and the manifest remains authoritative (D-06).
 
 ## 🧬 Operation contract extraction
 
@@ -121,65 +112,37 @@ Before rendering an endpoint, zopia normalizes each operation into an
 intermediate representation and preserves request/response media types. The
 first content-bearing media type is emitted verbatim; malformed content and
 unresolved request/response `$ref` values are errors, never silently dropped.
-A later components phase resolves reusable references.
+Endpoint rendering either inlines reusable schema references or imports emitted
+components according to the selected component options.
 
 ## 📄 The `index.ts` contract
 
-Every endpoint file has exactly this shape (T-7 — *all practical content is
-filled with the make function*):
+Every endpoint file follows this generated shape (T-7 — *all practical content is
+filled with the make function*). This is the checked-in canonical GET endpoint:
 
 ```ts
-/**
- * ⚠️ Generated by zopia v0.1.0 — do not edit by hand;
- *    manual edits are overwritten on regeneration (Phase 1).
- *
- * Endpoint : GET /admin/users/{id}
- * Source   : Admin API v1.0.0
- */
+/** Generated by zopia — do not edit by hand. */
 import { z } from 'zod';
 import { makeApiConfig } from 'km-api';
 
-// ⤵ hoisted: used by 401 *and* 404 (R-403)
-const error = z.object({
-  message: z.string(),
-});
-
-/**
- * Get user by ID
- *
- * Retrieves a single user by their unique identifier.
- */
 export const getUser = makeApiConfig({
-  method: 'GET',
-  pathShape: '/admin/users/{id}',
-  auth: 'YES',
-  operationId: 'getUser',
-  responseContentType: 'application/json',
-  summary: 'Get user by ID',
-  description: 'Retrieves a single user by their unique identifier.',
-  tags: ['#admin', '#users'],
-  request: {
-    body: z.any(), // ⤵ no body on GET — km-api requires the field
-    params: z.object({
-      id: z.uuid(),
-    }),
-    query: z.object({}),
-    headers: z.object({}),
-    cookies: z.object({}),
-  },
-  response: {
-    200: z.object({
-      id: z.uuid(),
-      name: z.string().min(1),
-      email: z.email(),
-      role: z.enum(['admin', 'editor', 'viewer']).optional(), // ⤵ not in `required` (R-623)
-    }),
-    401: error,
-    404: error,
-  },
+  method: "GET",
+  pathShape: "/users/{userId}",
+  operationId: "getUser",
+
+  responseContentType: "application/json" as unknown as import('km-api').IResponseContentType,
+  deprecated: 'YES',
+  auth: "YES",
+  summary: "Get a user",
+  description: "Returns one user",
+  tags: ["#users"],
+  examples: JSON.parse("{\"response\":{\"200\":{\"default\":{\"value\":{\"email\":\"admin@example.test\",\"id\":\"22ccbc6a-436b-4b1c-9e64-7440ce63a90e\",\"role\":\"admin\"}}}}}"),
+  request: { body: z.any(),  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({ ["X-Trace-Id"]: z.string().optional() }), cookies: z.object({  }) },
+  response: { 200: z.object({ ["id"]: z.string().uuid(), ["email"]: z.string().email(), ["role"]: z.string().and(z.enum(["admin","viewer"])).optional(), ["nickname"]: z.string().nullable().optional() }).strict().meta({"title":"User","description":"A user account"}), 404: z.object({  }).passthrough() },
 });
 
 export default getUser;
+// Source: "Admin API v1.2.0"
 ```
 
 ### 🧾 Field-filling policy (IR → `makeApiConfig`)
@@ -191,7 +154,7 @@ export default getUser;
 | `summary` | `summary` | R-731 |
 | `description` | `description` (Markdown passes through) | R-731 |
 | `tags` | `tags` — km-api convention: each prefixed with `#` | R-731 |
-| any `security` requirement | `auth: 'YES'` (else `'NO'` — always emitted explicitly) | R-731 |
+| effective `security` requirements | `auth: 'YES'` when authentication is required; absent/empty requirements or an empty `{}` alternative → `'NO'` (always emitted explicitly). Exact schemes/scopes remain manifest-owned | R-731 |
 | `request.body` | `request.body`; *no body* → `z.any()` | R-731 |
 | `request.params / query / headers / cookies` | `request.params / query / headers / cookies` — always `z.object(…)` (km-api requires all five) | R-731 |
 | `requestContentType` | `requestContentType` — exact MIME string emitted with a type-only `IRequestContentType` boundary assertion because published km-api 0.4.1 enumerates known values while OpenAPI is open; the unchanged runtime string becomes the reverse-trip `content` key | R-731 |
@@ -210,9 +173,10 @@ export default getUser;
 ### 📦 Self-contained by default
 
 With the default options (`insertComponents: false`), every `index.ts` imports
-**only** `zod` and `km-api` (R-502): components are inlined, repeated shapes
-are hoisted to local consts (R-403). Cross-file imports appear **only** when
-`useComponentAsReference` is `true` — see [Components](08-components.md).
+**only** `zod` and `km-api` (R-502): each component use is inlined into its
+request/parameter/response expression (R-403). Cross-file imports appear
+**only** when `useComponentAsReference` is `true` — see
+[Components](08-components.md).
 
 ## 📦 The manifest — `.zopia-manifest.json`
 
@@ -238,48 +202,47 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
   },
   "source": {
     "kind": "openapi-3.0",
+    "openapiVersion": "3.0.3",
     "title": "Admin API",
-    "version": "1.0.0",
-    "sha256": "9f2c4d7a1b8e3056c1d4a9f7e2b6c8d0a13f5e7b9c2d4a6e8f0b1c3d5a7e9f1b"
+    "version": "1.2.0",
+    "sha256": "de6afdd09c3db1444044438bca0ed29c28a7876d786cb4750f254b898e11ac10"
   },
-  "servers": ["/"],
-  "tags": [
-    { "name": "admin", "description": "Admin area" },
-    { "name": "users", "description": "User management" }
+  "servers": [
+    { "description": "Production", "url": "https://api.example.test/v1" },
+    { "description": "Staging", "url": "https://staging.example.test/v1" }
   ],
+  "tags": [{ "description": "User administration", "name": "users" }],
   "securitySchemes": {
-    "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    "oauth": { "type": "oauth2", "flows": { "clientCredentials": { "tokenUrl": "https://auth.example.test/token", "scopes": { "users:read": "Read users", "users:write": "Write users" } } } }
   },
-  "defaultSecurity": [{ "bearerAuth": [] }], // ⤵ global `security` requirement list, verbatim
+  "defaultSecurity": [{ "oauth": ["users:read"] }],
   "components": [
-    // ⤵ one entry per declared component, always — even when not emitted.
-    //    `file` is null while insertComponents is false; `schema` is the full
-    //    JSON Schema, restored verbatim by engine ④ (R-751). Content elided here.
+    // One entry per declaration; file is null in default mode. Schema shortened.
     {
-      "name": "User",
       "file": null,
-      "schema": { "type": "object", "title": "User", "example": null, "required": ["id", "name", "email"], "properties": { "…": "…" } },
-      "overlay": [] // schema-local R-635 restorations, prefixed from Engine ②
+      "name": "User",
+      "overlay": [],
+      "schema": { "type": "object", "title": "User", "required": ["id", "email"], "properties": { "…": "…" } }
     }
   ],
   "apis": [
-    // ⤵ full shape shown for one API; the other three entries share the same
-    //    structure (listUsers, createUser, deleteUser).
+    // Abbreviated getUser entry; the manifest also contains health/updateUser.
     {
-      "file": "admin/users/{id}/get/index.ts",
-      "path": "/admin/users/{id}",
+      "file": "users/{userId}/get/index.ts",
+      "path": "/users/{userId}",
       "method": "get",
       "operationId": "getUser",
-      // ⤵ no `security` key — the operation declares none of its own, so the
-      //    top-level `defaultSecurity` applies (an operation that *does*
-      //    declare `security` — even `[]` — gets its own key here, verbatim)
       "refs": [
-        { "at": "/responses/200/content/application~1json/schema/$ref", "ref": "#/components/schemas/User", "component": "User" },
-        { "at": "/responses/401/content/application~1json/schema/$ref", "ref": "#/components/schemas/Error", "component": "Error" },
-        { "at": "/responses/404/content/application~1json/schema/$ref", "ref": "#/components/schemas/Error", "component": "Error" }
+        { "at": "/parameters/0/$ref", "ref": "#/components/parameters/TraceId" },
+        { "at": "/responses/200/content/application~1json/schema/$ref", "component": "User", "ref": "#/components/schemas/User" },
+        { "at": "/responses/200/content/application~1xml/schema/$ref", "component": "User", "ref": "#/components/schemas/User" },
+        { "at": "/responses/404/$ref", "ref": "#/components/responses/Problem" }
       ],
-      "overlay": [],         // ⤵ empty — the Admin API uses no lossy keywords (asserted in tests)
-      "responseOverlay": []  // ⤵ response facts with no km-api home (e.g. response headers)
+      "overlay": [],
+      "responseOverlay": [
+        { "status": "200", "headers": { "ETag": { "schema": { "type": "string" } } } }
+      ],
+      "sourceOperation": { "…": "full detached operation snapshot" }
     }
   ]
 }
@@ -344,9 +307,8 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 | Directory-mode directories | path segments verbatim (braces preserved) | `admin/users/{id}` |
 | Flat-mode directory | segments joined by `-` (braces preserved); collisions → `-2`, `-3` | `admin-users-{id}` |
 | Method directories | lowercase method | `get` |
-| Component directories | exact component name (case preserved — round-trip) | `User`, `UserInput` |
+| Component directories | exact component name (case preserved — round-trip) | `User`, `CreateUser` |
 | Component export | `<ComponentName>Schema` (a name already ending in `Schema` is kept as-is) | `UserSchema` |
-| Local hoisted consts (R-403) | component name camelCased, else first property camelCased | `error`, `user` |
 | The file | always `index.ts` | — |
 
 ## 🔄 Regeneration & manual edits (Phase 1 policy)

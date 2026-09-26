@@ -1,196 +1,155 @@
 # 🏗️ Architecture
 
-This document defines **how zopia is built**: module layout, the conversion
-pipeline, the internal model, the reference graph, and the error/safety model.
-It is the contract for implementation — if code and this document disagree,
-**this document wins** and the code is fixed (or the document is changed in
-the same commit, per the [docs convention](12-standards.md#-docs-convention)).
+This document describes **how zopia v0.1.0 is built**: module layout, conversion
+pipeline, stage-specific representations, reference handling, and the
+error/safety model. Code and documentation change together; disagreement is a
+release-blocking defect under the
+[docs convention](12-standards.md#-docs-convention).
 
 ## 🧩 Module layout
 
 ```text
-.                           # 📦 repository root
-├── package.json              # 📦 km-api ^0.4.1 from npm
-├── src/                      # ⚙️  zopia source (layout below)
-├── tests/                    # 🧪  integration / round-trip suites + fixtures
-└── docs/                     # 📖  this documentation
+.                              # 📦 repository root
+├── bin/zopia.js                # ⌨️ npm executable; launches the Bun CLI
+├── src/
+│   ├── index.ts                # 🚪 public named-export surface
+│   ├── cli.ts                  # ⌨️ process entry point
+│   ├── cli-command.ts          #    strict parser, help, output/exit contract
+│   ├── errors.ts               # 🛑 typed error catalogue
+│   ├── warnings.ts             # ⚠️ structured warning pipeline
+│   └── conversions/
+│       ├── zod-to-json-schema.ts       # ① Zod → JSON Schema
+│       ├── json-schema-to-zod.ts       # ② JSON Schema → Zod
+│       ├── openapi.ts                  #    dialect/envelope normalization
+│       ├── openapi-ref.ts              #    local JSON Pointer resolution
+│       ├── openapi-to-api-docs.ts      #    operation collection
+│       ├── openapi-ir.ts               #    operation-level generation IR
+│       ├── openapi-contracts.ts        #    request/response extraction
+│       ├── api-docs-layout.ts          #    directory/flat path mapping
+│       ├── api-docs-plan.ts            #    collision-safe file planning
+│       ├── api-docs-facade.ts          #    ergonomic access-path helper
+│       ├── api-docs-generate.ts        # ③ rendering + guarded writes
+│       ├── openapi-to-api-docs-public.ts # public Engine ③ wrapper
+│       ├── manifest-writer.ts          #    canonical manifest contract
+│       ├── manifest-staleness.ts       #    drift/ownership cleanup
+│       ├── manifest-to-openapi.ts      # ④ trusted import + reconstruction
+│       └── reverse-security.ts         #    reverse security fallback
+├── tests/                       # 🧪 focused, integration, contract, round-trip
+├── scripts/                     # 🟣 coverage, golden, package, release gates
+└── docs/                        # 📖 this documentation
 ```
 
-> 🔗 During development zopia resolves `km-api` from the npm dependency (D-15);
-> the generated code and the test suite import the **published API surface**
-> of that branch, so swapping to the npm package at the end is lossless.
+`km-api@^0.4.1` is consumed from npm as a peer and development dependency
+(D-15). Generated endpoint files and the golden typecheck use that published
+surface directly; there is no vendored copy or package swap remaining.
 
-```text
-src/
-├── index.ts                    # 🚪 Public entry — named exports only (JSDoc'd)
-├── errors.ts                    # 🛑 ZopiaError + all error codes
-├── warnings.ts                  # ⚠️ Stable warning catalogue + shared pipeline
-├── ir/
-│   ├── model.ts                # 🧬 ApiModel, OperationModel, ComponentSchema, ParameterModel
-│   └── order.ts                # 📏 canonical-ordering helpers (R-401)
-├── engines/
-│   ├── zod-to-json-schema/     # ①  zod → JSON Schema
-│   │   └── index.ts
-│   ├── json-schema-to-zod/     # ②  JSON Schema → Zod (code + runtime)
-│   │   ├── index.ts            #    public entry
-│   │   ├── emitter.ts          #    recursive keyword emitter
-│   │   └── mapper.ts           #    keyword → zod builder table (R-601…)
-│   ├── openapi-to-apidocs/     # ③  OpenAPI → api docs
-│   │   ├── index.ts            #    public entry (pipeline)
-│   │   ├── detect.ts           #    swagger 2.0 / openapi 3.0 / 3.1 detection
-│   │   ├── normalize/
-│   │   │   ├── v2.ts           #    Swagger 2.0 → ApiModel
-│   │   │   └── v3.ts           #    OpenAPI 3.0/3.1 → ApiModel
-│   │   ├── refs.ts             #    $ref graph: build, resolve, cycles
-│   │   └── render/
-│   │       ├── directory.ts    #    layout mode 'directory'
-│   │       ├── flat.ts         #    layout mode 'flat'
-│   │       ├── endpoint.ts     #    index.ts emitter (makeApiConfig code)
-│   │       ├── component.ts    #    components/** emitter
-│   │       └── manifest.ts     #    .zopia-manifest.json writer
-│   └── apidocs-to-openapi/     # ④  api docs → OpenAPI
-│       ├── index.ts            #    public entry (pipeline)
-│       ├── loader.ts           #    manifest + module import (trusted, D-08)
-│       ├── extract.ts          #    makeApiConfig result → IR
-│       └── serializer.ts       #    IR → OpenAPI 3.0/3.1 document
-├── fs/
-│   └── guard.ts                # 🛡️  outDir guard, path traversal prevention
-└── cli/
-    ├── index.ts                # ⌨️  entry point (bin: zopia)
-    └── args.ts                 #    flag parsing (generate / reverse)
-```
-
-> 📏 Naming is fixed: files are `kebab-case.ts`, modules are one concern each,
-> and `index.ts` files re-export the module's public surface with JSDoc.
-> Unit tests are colocated (`*.test.ts` next to the code); integration and
-> round-trip suites live in `tests/`. See [Standards → Naming](12-standards.md#-naming).
+> 📏 Production modules use `kebab-case.ts`; `src/index.ts` is the package-root
+> re-export surface. Focused and integration tests live under `tests/`, with
+> dedicated `tests/contract/` and `tests/roundtrip/` suites. See
+> [Standards → Naming](12-standards.md#-naming).
 
 ## 🔄 The pipeline
 
-Every engine is a **pure pipeline**: in-memory data in, in-memory data out.
-File system and process access exist only in the thin outer wrappers
-(`openApiToApiDocs` / `apiDocsToOpenApi` and the CLI).
+Conversion work is split between in-memory transforms and explicit adapters.
+Engines ①/② are in-memory; the public engine ③/④ wrappers own documented file
+reads, guarded generated-tree writes, trusted module imports, and warning
+collection. Process arguments/output remain in the CLI.
 
 ```mermaid
 flowchart TB
-  subgraph IN ["③ openapi → api docs"]
-    A["swagger.json / openapi.json<br/>(JSON object or file path)"] --> B["detect()<br/>2.0 · 3.0 · 3.1"]
-    B --> C{"adapter"}
-    C -->|swagger 2.0| D["normalize/v2.ts"]
-    C -->|openapi 3.x| E["normalize/v3.ts"]
-    D --> F["🧬 ApiModel (IR)"]
-    E --> F
-    F --> G["refs()<br/>$ref graph · cycles → z.lazy plan"]
-    G --> H{"mode"}
-    H -->|directory| I["render/directory.ts"]
-    H -->|flat| J["render/flat.ts"]
-    I --> K["endpoint.ts + component.ts + manifest.ts"]
-    J --> K
-    K --> L["📂 api_docs/**  (.ts files + manifest)"]
+  subgraph IN ["③ OpenAPI → api docs"]
+    A["object · JSON text · .json path"] --> B["normalizeOpenApiDocument()"]
+    B --> C["collectOpenApiOperations()"]
+    C --> D["buildOpenApiOperationIR() + extractOperationContracts()"]
+    D --> E["planApiDocsFiles()"]
+    E --> F["render endpoints/components"]
+    F --> G["createZopiaManifest()"]
+    G --> H["guarded writes + stale-owned cleanup"]
+    H --> I["📂 api_docs/**"]
   end
 
-  subgraph OUT ["④ api docs → openapi"]
-    M["📂 api_docs/**"] --> N["loader()<br/>manifest + import .ts (D-08)"]
-    N --> O["extract()<br/>makeApiConfig result → IR"]
-    O --> P["🧬 ApiModel (IR)"]
-    P --> Q["serializer()<br/>IR → OpenAPI 3.0 / 3.1"]
-    Q --> R["📄 openapi.json"]
+  subgraph OUT ["④ api docs → OpenAPI"]
+    J["📂 api_docs/**"] --> K["validate manifest + owned paths"]
+    K --> L["trusted import of endpoint/component .ts"]
+    L --> M["runtime Zod → schema serialization"]
+    M --> N["apply refs + manifest overlays"]
+    N --> O["dialect translation + canonical document"]
   end
 ```
 
-The manifest rendering stage is implemented as the dedicated
-`src/conversions/manifest-writer.ts` boundary: pure snapshot construction and
-canonical validation/serialization are separated from its atomic filesystem
-write, and engine ③ delegates to that boundary rather than assembling an ad
-hoc object.
+The manifest boundary in `src/conversions/manifest-writer.ts` separates pure,
+detached snapshot construction and canonical validation/serialization from
+atomic filesystem output. Engine ③ records source facts that generated Zod or
+km-api values cannot carry; engine ④ combines those snapshots with imported
+runtime values so developer edits remain authoritative where representable.
 
-**The internal model (IR) is the fulcrum.** Engines ③ and ④ never talk to each
-other directly — both converge on the same `ApiModel`. That is what makes the
-round-trip (T-11) a property of the architecture, not of the implementation.
+Round-trip stability does not depend on one repository-wide `ApiModel`. The
+implemented boundaries use a validated document envelope, an operation-level
+IR for generation, normalized operation contracts, and the versioned manifest
+for reverse reconstruction. Each shape is narrower than the stage that consumes
+it, and fixture properties verify their composition (T-11/R-409).
 
-## 🧬 The internal model
+## 🧬 The internal representations
 
-Simplified TypeScript sketch (full types live in `src/ir/model.ts`):
+The implementation uses stage-specific public shapes rather than one oversized
+model. The generation path starts with the validated source envelope:
 
 ```ts
-/** 🧬 One normalized API, independent of source spec version. */
-export interface ApiModel {
-  /** 🏷️  Where the model came from. */
-  source: {
-    kind: 'openapi-2.0' | 'openapi-3.0' | 'openapi-3.1';
-    title: string;
-    version: string;
-    description?: string;
-    sha256?: string; // 🆔 source identity — used by the manifest
-  };
-  /** 🌍 Server URLs (OpenAPI 3 style). */
-  servers: string[];
-  /** 🏷️  Ordered tag list (name + optional description). */
-  tags: Array<{ name: string; description?: string }>;
-  /** 🔐 Security scheme definitions (normalized to OpenAPI 3 style). */
-  securitySchemes: Record<string, SecurityScheme>;
-  /** 🔐 Default security requirements (when operations don't override). */
-  defaultSecurity: SecurityRequirement[];
-  /** 🧱 All components.schemas — ordered, refs unresolved (graph is separate). */
-  components: ComponentSchema[];
-  /** 📡 Every operation, in document order. */
-  operations: OperationModel[];
-}
-
-/** 📡 One HTTP operation (endpoint). */
-export interface OperationModel {
-  id: string;            // 🆔 operationId, or derived (see 07 → Naming)
-  path: string;          // 🛣️  OpenAPI style: /admin/users/{id}
-  method: HttpMethod;    // 🧭  the eight standard methods (km-api ≥ 0.4.1): get | post | put | delete | head | options | patch | trace
-  summary?: string;      // 📝
-  description?: string;  // 📝 (Markdown allowed)
-  tags: string[];        // 🏷️
-  deprecated: boolean;   // ⛔
-  auth: boolean;         // 🔐 any security requirement present?
-  security: SecurityRequirement[];
-  request: {
-    contentType?: string;   // 📦 e.g. 'application/json'
-    body?: JsonSchemaObject; // 📦 undefined ⇔ no body (generator emits z.any())
-    params:  ParameterModel[]; // 🛣️  in: path
-    query:   ParameterModel[]; // ❓  in: query
-    headers: ParameterModel[]; // 🎩 in: header
-    cookies: ParameterModel[]; // 🍪 in: cookie (v3 only — v2 has none)
-  };
-  response: {
-    statuses: Array<{
-      code: string;            // 🚦 '200', '404', …
-      description: string;     // 📝 required by the spec
-      schema?: JsonSchemaObject; // 📦 undefined ⇔ no content (e.g. 204)
-      examples?: Record<string, ExampleObject>;
-    }>;
-  };
-}
-
-/** 🧱 A named, reusable schema (components.schemas / definitions). */
-export interface ComponentSchema {
-  name: string;          // 🆔 exact spec name — the directory name in api_docs
-  schema: JsonSchemaObject;
+interface NormalizedOpenApiDocument {
+  document: OpenApiDocument;
+  version: '2.0' | '3.0' | '3.1';
   title?: string;
-  description?: string;
-  example?: unknown;     // 📸 kept for reverse fidelity (Phase 1: manifest)
-}
-
-/** 🧩 A request parameter in one of the four locations. */
-export interface ParameterModel {
-  name: string;
-  description?: string;
-  required: boolean;
-  schema: JsonSchemaObject; // 📐 normalized: v2 primitive params get their schema here
-  example?: unknown;
+  versionString?: string;
 }
 ```
+
+Each collected operation is then narrowed to the data endpoint rendering needs:
+
+```ts
+interface OpenApiOperationIR {
+  path: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'PATCH' | 'TRACE';
+  pathShape: string;
+  operationId: string;
+  summary?: string;
+  description?: string;
+  tags: string[];
+  deprecated: boolean;
+  security?: unknown[];
+  operation: Record<string, any>;
+  parameters: any[];
+  document: OpenApiDocument;
+}
+
+interface OperationContracts {
+  parameters: Array<{
+    name: string;
+    in: 'path' | 'query' | 'header' | 'cookie';
+    required: boolean;
+    schema?: unknown;
+  }>;
+  requestBody?: { contentType: string; schema?: unknown; required: boolean };
+  responses: Array<{
+    status: string;
+    description: string;
+    contentType?: string;
+    schema?: unknown;
+  }>;
+}
+```
+
+Reverse conversion is anchored by `ZopiaManifest`, not by a hidden in-memory
+model. It records source dialect/frame metadata, generated file ownership,
+operation snapshots, component schemas, local-reference placements, and
+restoration overlays. Current writer shapes are validated before serialization;
+the reader retains explicit compatibility allowances for older optional fields.
 
 ### 🔁 Canonical order (determinism, P-1)
 
 | 📦 Where | 📏 Order |
 | --- | --- |
-| `ApiModel.operations` | document order of the source spec |
-| emitted files (listing) | sorted by `(path, method)` — method order: `get, post, put, delete, head, options, patch, trace` (the eight standard methods; same order as km-api's `IMethod` union; km-api ≥ 0.4.1) |
+| collected operations | source path order; fixed method order `get, post, put, delete, head, options, patch, trace` |
+| public generated-file result | lexical order by portable relative `path` |
 | schema properties | document order (JSON object key order of the source) |
 | OpenAPI output document | `openapi, info, servers, security, tags, paths, components, externalDocs` |
 | path keys inside `paths` | sorted by path string |
@@ -214,41 +173,42 @@ flowchart LR
   Comment["💬 Comment"] -->|"$.ref #/components/schemas/Comment"| Comment
 ```
 
-**Algorithm** (implemented by the local-reference resolvers in `src/conversions/openapi-ref.ts` and the conversion modules):
+**Implemented flow** (`openapi-ref.ts`, generation, and manifest modules):
 
-1. 🧾 **Collect** — walk the IR; record every `$ref` string and its location.
-2. 🗺️ **Build** — graph `G = (components, edges)`.
-3. 🛑 **Validate** — unknown ref → `ZOPIA_REF_NOT_FOUND` (with the ref and the
-   JSON-pointer location); ref to another file → `ZOPIA_REF_EXTERNAL` (Phase 1
-   rejects multi-file refs, D-13/Phase 2); self/cross refs between
-   *operations* are allowed (only components form the graph nodes).
-4. 🔁 **Find cycles** — strongly-connected components (iterative Tarjan).
-5. 🧵 **Plan** — every ref *inside a cycle* is emitted as `z.lazy(() => X)` in
-   the generated code; every other ref is a plain reference to a const
-   (component mode) or an inlined copy (default mode).
+1. 🛑 **Preflight** — walk source values, reject external refs, validate local
+   pointer escapes, and report missing targets with exact locations.
+2. 🔗 **Resolve operation refs** — path-item and parameter chains use per-chain
+   seen sets, so malformed and circular non-schema references fail explicitly.
+3. 🧩 **Collect component dependencies** — rendering finds schema-component
+   targets while excluding literal/example data that merely contains `$ref` text.
+4. 🧵 **Render schemas** — engine ②'s local-definition state and component
+   dependency reachability detect recursive edges; self and mutual cycles become
+   `z.lazy()` references.
+5. 📦 **Record identity** — the manifest stores original reference placements;
+   reverse conversion combines those records with imported runtime schema
+   identity to restore local `$ref`s.
 
-> 📌 **Rule R-402** — circular schemas never fail: they always become
-> `z.lazy()`. Linear refs become direct references/imports. **Scope:** graph
-> nodes are *schema* components only; refs to reusable non-schema objects
-> (Swagger 2.0 global `parameters`/`responses`, OpenAPI 3 `components.parameters`
-> /`responses`/`examples`) are **inlined by the normalizer** before the graph is
-> built (Phase 1 — see [Roadmap Phase 2](03-roadmap.md)).
+> 📌 **Rule R-402** — circular schema components remain executable through
+> `z.lazy()`, while linear refs become direct references/imports. **Scope:**
+> graph nodes are schema components only. Reusable non-schema objects (Swagger
+> 2.0 global `parameters`/`responses`, OpenAPI 3
+> `components.parameters`/`responses`/`examples`) are resolved at use sites for
+> generated runtime configs; manifest snapshots and ref placements restore their
+> declarations and reusable identity on reverse conversion. Phase 2 may emit
+> them as standalone generated files.
 
-## 🧮 Schema deduplication (within one file)
+## 🧮 Schema reuse within generated files
 
-When a schema shape appears **multiple times** in one endpoint file, the
-renderer hoists it into a **file-local const**:
+Default mode keeps every endpoint self-contained: each request/parameter/response
+schema occurrence is rendered in place. Engine ② may build a local-definition
+closure inside an expression when resolving `$defs` or inlined component refs;
+it does not hoist structurally identical endpoint contracts into shared top-level
+constants.
 
-```ts
-const error = z.object({ message: z.string() });   // ⤵ used by 401 and 404
-response: { 401: error, 404: error }
-```
-
-> 📌 **Rule R-403** — hoisting decision is *structural*: a sub-schema with
-> **≥ 2 occurrences** in the file becomes a const named after its component
-> name (when it is a `$ref`) or after its first property; single occurrences
-> stay inlined. This is what keeps generated files readable without imports
-> (default mode is self-contained — no cross-file references at all).
+> 📌 **Rule R-403** — schema reuse is explicit, not inferred from structural
+> equality. Default mode independently inlines each contract occurrence. With
+> `useComponentAsReference: true`, each referenced component export is imported
+> at most once per endpoint and reused wherever that identity occurs.
 
 ## 🛑 Error model
 
@@ -330,21 +290,22 @@ on stdout parseable.
 
 | # | Rule | Where enforced |
 | --- | --- | --- |
-| R-405 | **Pure core** — no `fs`, `process`, or `Date` inside `engines/*`; only public input adapters/wrappers and the CLI touch the outside world (`jsonSchemaToZod()` resolves its documented `.json` path before entering the emitter) | architecture (module boundaries) + import-lint in tests |
-| R-406 | **outDir guard** — every generated path is canonicalized and verified to stay inside `outDir`; regeneration refuses symlinked path ancestors, and manifest temporary writes use exclusive creation so stale symlinks cannot redirect output. Obsolete cleanup trusts only a fully validated manifest and never recursively deletes an output root | generation + manifest boundaries |
-| R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `loader.ts` |
+| R-405 | **Pure core** — schema/operation transforms work on in-memory values; documented file input, generated-tree writes/imports, and process output stay in public adapters and the CLI | conversion modules + `cli-command.ts` |
+| R-406 | **outDir guard** — every generated path is canonicalized and verified to stay inside `outDir`; regeneration refuses symlinked path ancestors, and manifest temporary writes use exclusive creation so stale symlinks cannot redirect output. Obsolete cleanup trusts only a fully validated manifest and never recursively deletes an output root | `api-docs-generate.ts` + manifest boundaries |
+| R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `manifest-to-openapi.ts` |
 | R-408 | **No silent loss** — every lossy/unsupported conversion produces a normalized `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144). Public wrappers return or callback each warning; engine ② and generated api-doc files mirror schema warnings as canonical `// @zopia:warn …` comments; CLI diagnostics go only to stderr | every engine + CLI |
 | R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; regenerating source-preserving engine ④ output does too. Fixture properties cover Swagger 2.0 and OpenAPI 3.0/3.1 across layout/component modes, while stale source/config/incomplete-tree state is warned and repaired and only obsolete manifest-owned files are pruned; engine ④ output is canonical (R-401) | round-trip + staleness tests |
 
 ## 📏 Performance
 
-- 🧮 Ref resolution is `O(components + refs)` — no repeated deep walks.
-- 🌳 Rendering is streaming-friendly: files are emitted one at a time; a spec
-  with thousands of operations stays linear in memory.
-- 🚫 No recursion in the ref walker (iterative Tarjan) — deep specs won't
-  blow the stack.
-- 📦 Generated code size is bounded by deduplication (R-403) and component
-  extraction (T-8/T-9).
+- 🧮 Operation and local-reference passes are deterministic traversals with
+  explicit seen sets for reference chains.
+- 🌳 Component source is rendered and validated before its files are written;
+  endpoint files are then rendered and written in planned order.
+- 🧵 Cycle-aware definition/reachability state terminates recursive schemas and
+  emits lazy edges rather than expanding them forever.
+- 📦 Optional component extraction/reference imports avoid repeated component
+  definitions; default mode deliberately favors self-contained endpoint files.
 
 ## 🔗 Next
 

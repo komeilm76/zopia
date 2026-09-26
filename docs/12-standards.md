@@ -43,13 +43,13 @@ implementation so local, CI, and publish-time validation cannot drift.
 
 | # | Rule |
 | --- | --- |
-| R-1001 | 🧼 **Pure by default** — public engine functions are pure (P-3); side effects (fs/process) live in the wrappers & CLI only (R-405) |
-| R-1002 | 🚫 **No `any` leakage** — boundaries use `unknown` + narrowing; internal `any` is forbidden (lint-enforced) |
+| R-1001 | 🧼 **Pure transforms, explicit adapters** — in-memory schema/operation transforms are pure; documented file reads, generated-tree writes/imports, and process output live at public adapter/CLI boundaries (R-405) |
+| R-1002 | 🧭 **Narrow at decisions** — user-facing option/result contracts are concrete; deliberately open JSON/OpenAPI records are narrowed before branching, rendering, or filesystem use |
 | R-1003 | 📦 **Named exports only** — no default exports anywhere in `src/` (generated files may have defaults: that's their contract, R-732) |
-| R-1004 | 🧩 **One concern per module** — a file > ~300 lines gets split; `index.ts` re-exports only |
-| R-1005 | 🧵 **No recursion for graphs** — iterative algorithms for ref walking/cycles (Architecture) |
+| R-1004 | 🧩 **One concern per module** — modules are divided by conversion/boundary responsibility; `src/index.ts` remains re-exports only |
+| R-1005 | 🧵 **Cycle-aware traversal** — reference chains carry seen sets and schema definition/dependency traversals carry cycle state; cycles terminate as errors or `z.lazy()` according to reference kind (R-402) |
 | R-1006 | 🎯 **Determinism (P-1)** — canonical order everywhere (R-401); no `Date.now()`, `Math.random()`, or environment reads in the pure core |
-| R-1007 | 🛡️ **Safe I/O** — every write passes the outDir guard (R-406); no shell-out, no `eval`, no `new Function` |
+| R-1007 | 🛡️ **Safe I/O** — every generated write passes the outDir guard (R-406); no shell-out, `eval`, or `new Function` in conversion paths |
 
 ## 📖 JSDoc standard (T-12)
 
@@ -107,18 +107,18 @@ export function openApiToApiDocs(
 | R-151 | **outDir guard** (R-406) — canonicalize + prefix-check every path, reject symlinked generated ancestors, exclusively create manifest temporary files, and prune only paths owned by a validated prior manifest; unit-tested with traversal/symlink attempts |
 | R-152 | **Trusted-input contract (D-08)** — engine ④ imports generated `.ts`; the manifest is the trust marker. Documented loudly in [Usage](10-usage.md) and in the CLI help |
 | R-153 | **No secret handling** — zopia reads specs and writes docs; it never touches credentials, never sends data anywhere (no network at all) |
-| R-154 | **Predictable failure** — partial generation on error leaves a *consistent* tree: files are written to a temp dir and moved into place atomically at the end |
+| R-154 | **Predictable failure** — configuration, source, layout, and component-render validation happen before governed writes; every surfaced write/import failure is typed. Individual manifest replacement is atomic, while the generated tree is updated as ordered guarded file writes rather than as one directory transaction |
 
 ## 🏷️ Naming
 
 | 🧩 Thing | 📏 Convention |
 | --- | --- |
-| Files | `kebab-case.ts` (`zod-to-json-schema/`) |
-| Modules/dirs | `kebab-case`, plural for collections (`render/`, `fixtures/`) |
-| Functions | `camelCase`, verb-first (`zodToJsonSchema`, `detectVersion`) |
-| Types/interfaces | `PascalCase` (`ZopiaGenerateOptions`, `ApiModel`) |
-| Constants | `UPPER_SNAKE_CASE` (`DEFAULT_MODE`) |
-| Tests | colocated `*.test.ts`; describe blocks mirror module names; `it()` cites rules (R-122) |
+| Files | `kebab-case.ts` (`zod-to-json-schema.ts`) |
+| Modules/dirs | `kebab-case`, plural for collections (`conversions/`, `fixtures/`) |
+| Functions | `camelCase`, verb-first (`zodToJsonSchema`, `normalizeOpenApiDocument`) |
+| Types/interfaces | `PascalCase` (`GenerateApiDocsOptions`, `OpenApiOperationIR`) |
+| Constants | `UPPER_SNAKE_CASE` (`ZOPIA_MANIFEST_SCHEMA`) |
+| Tests | centralized under `tests/` as `*.test.ts`; contract and round-trip suites use dedicated subdirectories; `it()` cites rules (R-122) |
 | Generated identifiers | fixed by [API docs → Naming](07-api-docs.md#-naming-conventions-fixed) |
 
 ## 📜 Commit convention
@@ -191,9 +191,9 @@ remain explicit maintainer actions after the committed release gate is green.
 
 | 📦 Dep | 🏷️ Kind | 📝 Rule |
 | --- | --- | --- |
-| `zod` `^4` | peer + dev | generated code needs it; tests need it |
-| `km-api` `^0.4` (0.4.x) | peer + dev | generated code imports it; tests execute it — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** published npm package `km-api@^0.4.1` (D-15) |
-| *(nothing else at runtime)* | — | **zero runtime dependencies** in Phase 1 (D-11); every new runtime dep needs a D-… decision |
+| `zod` `^4` | peer + dev | engines ①/② and generated schemas use it at runtime; tests exercise both paths |
+| `km-api` `^0.4.1` (0.4.x) | peer + dev | generated code imports it and engine ④ loads those results — its type surface (method/status codes/content types/operationId) is part of zopia's output contract (D-14). **Resolution:** published npm package `km-api@^0.4.1` (D-15) |
+| *(no `dependencies` entries)* | — | **zero direct/bundled runtime dependencies** in v0.1.0 (D-11); runtime capabilities are declared as peers and every new dependency needs a D-… decision |
 
 ## 🔑 Key decisions
 
@@ -212,9 +212,9 @@ remain explicit maintainer actions after the committed release gate is green.
 | **D-08** | ④ imports generated `.ts` at runtime (Bun) | the files *are* the source of truth (developers may extend them); importing is the only way to read edited schemas; trust is bounded by the manifest (R-152) |
 | **D-09** | 📤 reverse output defaults to OpenAPI **3.1** | 3.1 schemas = full JSON Schema 2020-12 (the "same standard" the project is built on); 3.0 remains one flag away |
 | **D-10** | 🔐 MIT license | consistency with the whole `km-*` ecosystem |
-| **D-11** | 📦 zero runtime dependencies (Phase 1) | `zod` + `km-api` are peers of the *generated* code; a small surface = small attack area (P-6) |
+| **D-11** | 📦 zero direct/bundled runtime dependencies in v0.1.0 | `zod` + `km-api` are explicit peers used by conversion/generated-code paths; a small owned dependency surface reduces install and security risk (P-6) |
 | **D-12** | ⚠️ unsupported facts never fail silently — every engine emits the shared structured warning; schema emission adds a canonical `// @zopia:warn` marker; restorable source facts also enter the manifest; CLI diagnostics use stderr only | "pure, safe, clean" means *visible* loss without corrupting generated output; reverse conversion restores manifest-recorded facts verbatim where the target dialect permits |
-| **D-13** | 📝 Phase 1 input is JSON only (YAML, external refs, server variables → Phase 2) | keeps the v0.1.0 contract tight; every deferral is listed in [Roadmap](03-roadmap.md) with a date-like horizon |
+| **D-13** | 📝 v0.1.0 input is JSON only (YAML and external refs → Phase 2); server variables are manifest-preserved but warn because endpoint modules cannot represent them | keeps the v0.1.0 parsing/resolution contract tight while round-tripping document-frame data |
 | **D-14** | 📐 zopia **targets km-api ≥ 0.4.1** — the output contract is "the generated tree **typechecks** against installed published km-api 0.4.1" (enforced by the golden-tree test, R-126). Eight methods including `trace`, custom/`default` statuses, arbitrary MIME strings, and `operationId` are emitted as code. Published 0.4.1 enumerates known MIME values, so exact OpenAPI extension strings cross one narrow type-only assertion; non-representable parameter metadata and response `headers` remain in manifest overlays (R-635/R-754) | `makeApiConfig` is a type-level factory with no runtime validation. The dedicated strict golden `tsc` gate verifies its real published declarations; exact runtime MIME values remain reversible. Re-verify the boundary on every km-api bump |
 | **D-15** | 📦 **km-api is consumed from npm** — zopia depends on the published `km-api@^0.4.1`; no Git submodule or unpublished commit is required. | reproducible fresh clones and published dependency resolution |
 

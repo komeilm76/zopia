@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Changed
+- 📚 Synchronized current documentation with the completed Phase 1 implementation: status labels, actual source/test layout and pipeline boundaries, generated golden examples, facade/component-reuse behavior, dependency wording, and safety/performance claims now match the repository; added a contract test for documentation links, completion state, concrete paths, and canonical output drift.
+
 ## [0.1.0] - 2026-09-27
 
 ### ✨ Added
