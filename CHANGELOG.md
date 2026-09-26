@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-27
+
+### ✨ Added
+- 📦 Prepared the public `zopia@0.1.0` package with complete npm metadata, an allowlisted source distribution, synchronized release identity, executable CLI permissions, packed-consumer library/CLI smoke tests, and a mandatory prepublish release gate.
 - 📖 Completed the JSDoc audit: every exported declaration and exposed public shape member now has useful API documentation, public callables specify parameters and return values, optional configuration fields state defaults, the public example is runnable, and an AST contract suite prevents regressions in summaries, tags, links, examples, and named-only exports.
 - ⌨️ Completed the CLI contract: `generate` and `reverse` now use strict command-specific parsing, reject missing/extra/unknown/incompatible/duplicate/valueless arguments before engine work, accept options around positionals, expose complete trusted-tree-aware help, preserve stdout/stderr isolation, and return stable success, user-error, and internal-error exit statuses.
 - 🟣 Completed the Bun gate: added the authoritative `bun.lock`, pinned-runtime and frozen-install validation, ESM package metadata, one CI-ready gate command, full typecheck/test/coverage checks, direct and packaged CLI smoke tests, and a real Bun generation/reverse cycle that imports generated TypeScript.
@@ -29,80 +33,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📐 Completed Engine ②: JSON Schema conversion now accepts `.json` paths, returns structured warnings and manifest-compatible overlays, emits visible `@zopia:warn` markers, preserves annotations, emits lazy local definitions and discriminated unions, and hands lossy schema restorations through endpoint and component manifests for reverse conversion.
 - ⚛️ Completed Engine ①: Zod conversion now defaults to OpenAPI 3.1 with dialect markers enabled, preserves metadata without `id`-driven extraction, converts every Zod-reported unrepresentable site to `{}` with structured `ZOPIA_WARN_UNREPRESENTABLE` callbacks, recursively canonicalizes keyword order, and strips built-in format patterns plus safe-integer sentinel bounds.
 - 📤 Reverse conversion now selects OpenAPI 3.0 or 3.1 through `ZopiaReverseOptions.version`; the documented `apiDocsToOpenApi()` API and CLI default to 3.1, selected dialects drive runtime schema serialization, and Swagger manifests can be emitted as OpenAPI 3.x.
-- 🐛 Reverse dialect translation now preserves literal example/default/enum data, nullable `$ref` semantics, combined exclusive bounds, and every Swagger `consumes`/`produces` media type while omitting 3.1-only document fields from 3.0 output.
-- 🔄 File-backed reverse conversion now safely applies manifest `$ref` placement, schema `set`/`remove`/frozen-node overlays, operation overlays, and response overlays after Zod re-serialization while preserving a developer-selected different component reference.
-- 🛡️ File-backed reverse conversion now preflights every endpoint and emitted-component path before importing code, reports missing manifests as `ZOPIA_DOCS_MISSING_MANIFEST`, and reports missing or renamed generated files as `ZOPIA_DOCS_MANIFEST_MISMATCH`.
-- 🐛 File-backed reverse conversion now replaces stale media types and examples after generated-code edits, honors Swagger form-to-body transitions and legacy response examples, and rejects Swagger cookie/object parameters instead of emitting invalid documents.
-- 🐛 Escaped JSON Pointer component and reusable-object names now resolve correctly; direct component aliases preserve `$ref` siblings, and generated `~` directories can be imported at runtime.
-- 🐛 Multi-config endpoint modules now select the named config matching the manifest operation before an unrelated default export.
-- 🧬 Runtime endpoint and component schemas now take precedence over manifest schema snapshots, including developer edits that switch a `$ref` to a different component.
-- 🐛 Direct component aliases now use distinct lazy Zod schemas so reverse conversion can distinguish an unchanged alias from a developer-selected target.
-- 🔄 File-based reverse conversion now re-serializes edited endpoint body, parameter, and response Zod schemas through Engine ① with request-input and response-output semantics across OpenAPI 3.x and Swagger 2.0.
-- 🐛 Runtime endpoint imports now support generated directories containing `{path}` segments, and Swagger body schemas are emitted from normalized operation contracts instead of falling back to `z.any()`.
-- 🐛 Generated component schemas now import `additionalProperties` references, keep deeply nested cycles lazy, preserve open-object behavior, annotations, property-count bounds, and flexible tuple cardinality, and round-trip unique arrays plus structured `const`/`enum` values.
-- 🐛 OpenAPI 3.1 Zod conversion now emits JSON Schema 2020-12 shapes instead of falling through to legacy tuple forms.
-- 🧱 File-based reverse conversion now securely imports emitted component modules, converts edited Zod schemas to the source API dialect, and preserves references between imported components.
-- 🐛 Generated component modules and their barrel now contain real newlines, keeping the emitted TypeScript executable at runtime.
-- 🔄 File-based reverse conversion now securely imports generated endpoint TypeScript modules and lets edited km-api method, path, operation ID, summary, description, tags, and deprecation metadata override manifest snapshots.
-- 🐛 JSON Schema conversion now warns for malformed `not` schemas, ignores malformed mixed `dependentRequired` entries instead of partially enforcing them, and uses own-property dependency checks.
 - ✨ JSON Schema conversion now supports draft-04/06/07 `dependencies` with both property arrays and schema dependencies, including boolean schemas and malformed-entry warnings.
 - ✨ Keyword-only object, array, string, and numeric schemas now enforce constraints only for matching JSON instance types while leaving other types valid.
 - ✨ JSON Schema conversion now enforces `if`/`then`/`else` conditionals, including boolean branches, typed-parent context, exact keyword-only branch applicability, and malformed-definition warnings.
-- 🐛 Manifest reverse conversion now preserves non-schema OpenAPI component sections and reusable Swagger parameter and response definitions.
-- 🔒 Generated component and parameter Zod shapes now use computed property keys, while example metadata is reconstructed with `JSON.parse`, preserving `__proto__` as ordinary data at runtime.
-- 🔒 Endpoint generation now preserves prototype-like request example names without mutating the examples object's prototype or dropping metadata.
-- 🔒 Endpoint generation now escapes line terminators in source metadata comments, preventing malformed or injected generated TypeScript.
-- 🐛 Generated endpoint auth is now `NO` when an OpenAPI security requirement contains an empty alternative that permits anonymous access.
-- 🐛 Endpoint generation now honors `useComponentAsReference` for operation- and path-level parameter schemas, preserves nested component references in endpoint schemas, imports their component definitions, and inlines direct or nested local schema references when component imports are disabled.
-- 🐛 OpenAPI operation collection now resolves parameter references before duplicate detection and override merging; referenced Swagger body and form-data parameters are extracted correctly.
-- 🔒 Reverse conversion now rejects unsafe or duplicate manifest operations and prevents overlays from replacing canonical OpenAPI fields.
-- 🐛 JSON Schema conversion now honors OpenAPI 3.0 `nullable: true` around the complete schema and warns for malformed nullable flags.
-- 🐛 JSON Schema conversion now preserves sibling constraints alongside `enum`, `const`, `oneOf`, `anyOf`, and `allOf`, and validates structured enum/constant values using order-independent JSON object equality.
-- 🛡️ JSON Schema conversion now validates numeric, size, pattern, object, and array keyword values before generating Zod code, warns instead of emitting malformed expressions, and ignores constraints on inapplicable instance types.
-- 🐛 JSON Schema conversion now preserves empty `prefixItems` and legacy tuple definitions, including typed or forbidden `items`, `additionalItems`, and `unevaluatedItems` rest values.
-- 🐛 JSON Schema conversion now honors `false` boolean schemas in `contains` and `propertyNames`, warns for malformed values, and no longer reports empty schemas as unsupported types.
-- 🔒 Reverse conversion restores manifest overlays with prototype-safe property definition.
-
 - 🖥️ The npm CLI now invokes a Node-compatible wrapper that launches the TypeScript CLI through Bun instead of asking Node to execute TypeScript directly; help now lists the component-reference option.
-
-- ⬆️ Updated the km-api dependency and peer dependency to `^0.4.1`; generated deprecated OpenAPI operations now emit `deprecated: 'YES'`.
-- 📖 Corrected reverse-conversion documentation to keep `deprecated` separate from `disable`.
-- 🔐 Generated endpoint auth metadata now uses km-api's required `'YES' | 'NO'` values.
 - 🧪 Endpoint generation now preserves OpenAPI request and response examples in km-api's examples structure, including Swagger 2.0 response examples and local `$ref` targets.
-- 📖 Corrected conversion documentation to describe km-api auth as `'YES' | 'NO'` rather than a boolean.
 - 🧩 Added initial component-file and sorted component-barrel generation with `insertComponents`.
-- 🛡️ Component generation now preserves OpenAPI 3.1 boolean schemas instead of converting them to unconstrained schemas.
 - 🧩 Component generation validates names and renders all component contents before writing files, preventing partial output from validation/conversion failures.
 - 🧩 `useComponentAsReference` now imports exact endpoint component schema references through the component barrel; component alias files, self-references, direct object-property references, and direct array-item references now emit safely quoted imports while preserving original component directory names.
 - 🧪 Added regression coverage for nested array component imports and safe quoting of their generated paths.
 - 🧩 Object and array components now import direct nested references while preserving recursive rendering, tuple rest, `unevaluatedItems`, and tuple/array length and order-independent nested-object uniqueness constraints, nullable recursion, and correct strict/passthrough object behavior; lazy root schemas for direct self-cycles, lazy references for mutual component cycles, nested `oneOf`/`anyOf`/`allOf` compositions, nullable schemas, enums, and constants remain supported; corresponding component documentation was updated; documentation now records direct and mutual cycle support.
 - 🧩 JSON Schema conversion now emits valid Zod `.min()`/`.max()` calls for numeric `minimum`/`maximum` constraints, legacy boolean exclusive bounds, valid `.regex(new RegExp(...))` code for `pattern`, hostname (including label validation), IPv4, IPv6, base64, byte, base64url, emoji, time, duration, OpenAPI signed integer formats with int32 bounds, and unsigned integer formats with uint32 bounds, plus base64 and hexadecimal content encoding, with invalid non-string content-encoding usage warnings, and approximates `patternProperties`, `propertyNames` (including enum/const/string rules), `minProperties`, and `maxProperties` with visible Zod catchall/refinement code; array `uniqueItems` and `contains` constraints, positive `multipleOf` (including decimal floating-point values), `unevaluatedProperties`, `dependentRequired`, dependent schemas (with malformed-definition warnings), and `not` exclusions now emit without false unsupported-keyword warnings; invalid `multipleOf` values for numbers and integers produce warnings are emitted as refinements, malformed dependent rules and invalid property-name regexes now produce warnings instead of throwing, and `allOf` combines multiple scalar rules such as password requirements.
-- 📚 Updated component documentation to distinguish implemented exact imports from pending nested/cyclic imports.
 - 📦 Component generation results now include the generated `components/index.ts` barrel.
-
 - 🏗️ Added filesystem generation for endpoint `index.ts` files from the validated API-doc plan.
 - 🧾 Generated endpoint exports and schema helper names now sanitize non-identifier and reserved names into valid TypeScript names.
 - 🏷️ Generated endpoint metadata now preserves normalized tags and explicit security overrides.
-- ℹ️ Deprecated operations remain preserved in the validated IR; they are not conflated with km-api's distinct `disable` status.
-
-### ✨ Added
 - ⚙️ Started Phase 1 with Zod/JSON Schema conversion, OpenAPI normalization, operation collection, API-doc layout planning, and the optional ergonomic facade.
-
-### 🔄 Changed
-- 📚 Updated the roadmap and dependency standards to reflect the published `km-api@0.4.1` npm dependency.
-- 🛡️ Added validation for malformed schemas, unsafe paths, references, identifiers, operation IDs, and facade properties.
 - 🧬 Added validated OpenAPI operation contract extraction for request/response media types.
 - 🔗 Added strict local OpenAPI JSON Pointer reference handling and documentation.
 - ✅ Added validation for response status keys, descriptions, request-body content, and chained component references.
 - 📤 Added Swagger 2.0 `formData` request-contract extraction and strict field validation.
 - 🔗 Local path-item references now support chaining and circular-reference detection.
-- 🛡️ JSON Pointer resolution now rejects inherited object properties.
-- 📚 Corrected the architecture documentation to reference the implemented local-reference resolvers.
-- 🔀 Operation-level parameters now correctly override path-level parameters.
-
-### 🚧 Planned
-- 🧩 Continue Phase 1 with component-file generation and component imports.
-- 🗂️ Add the remaining scenario-matrix coverage and final release validation.
 - 🖥️ Added initial `zopia generate` and `zopia reverse` CLI commands, with generation mode, component-reference, component, manifest, reverse `--out`, and `--help` options; the CLI now uses the project-standard Bun runtime.
 - 🔄 Added manifest-driven OpenAPI reconstruction while preserving original operation objects, plus a file-based `manifestFileToOpenApi()` API.
 - 📖 Aligned reverse-conversion documentation with the implemented manifest-based API.
@@ -110,10 +61,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🛠️ Reverse conversion now validates manifest source kinds and restores Swagger `basePath`, `host`, `schemes`, `consumes`, `produces`, and `securityDefinitions` metadata.
 - 📝 Manifests now preserve and restore OpenAPI `info.description`, additional info fields, document extensions, `externalDocs`, `webhooks`, and `jsonSchemaDialect`.
 - 📦 Added default `.zopia-manifest.json` generation with source hash, security metadata, component schemas, API file mappings, per-operation `$ref` metadata, operation overlays, and response-header overlays.
-
 - 🔒 Synchronized the lockfile peer dependency range with `km-api: ^0.4.1`.
 - 🗂️ Manifest source kinds now normalize versioned OpenAPI values to `openapi-3.0` or `openapi-3.1`.
 - 🔐 Manifest source hashes now use canonical key ordering, avoiding false changes when JSON property order differs, and reject circular/unsupported input values explicitly.
+
+### 🔄 Changed
+- 🔄 File-backed reverse conversion now safely applies manifest `$ref` placement, schema `set`/`remove`/frozen-node overlays, operation overlays, and response overlays after Zod re-serialization while preserving a developer-selected different component reference.
+- 🧬 Runtime endpoint and component schemas now take precedence over manifest schema snapshots, including developer edits that switch a `$ref` to a different component.
+- 🔄 File-based reverse conversion now re-serializes edited endpoint body, parameter, and response Zod schemas through Engine ① with request-input and response-output semantics across OpenAPI 3.x and Swagger 2.0.
+- 🧱 File-based reverse conversion now securely imports emitted component modules, converts edited Zod schemas to the source API dialect, and preserves references between imported components.
+- 🔄 File-based reverse conversion now securely imports generated endpoint TypeScript modules and lets edited km-api method, path, operation ID, summary, description, tags, and deprecation metadata override manifest snapshots.
+- ⬆️ Updated the km-api dependency and peer dependency to `^0.4.1`; generated deprecated OpenAPI operations now emit `deprecated: 'YES'`.
+- 📖 Corrected reverse-conversion documentation to keep `deprecated` separate from `disable`.
+- 🔐 Generated endpoint auth metadata now uses km-api's required `'YES' | 'NO'` values.
+- 📖 Corrected conversion documentation to describe km-api auth as `'YES' | 'NO'` rather than a boolean.
+- 📚 Updated component documentation to cover implemented exact, nested, and cyclic imports.
+- ℹ️ Deprecated operations remain preserved in the validated IR; they are not conflated with km-api's distinct `disable` status.
+- 📚 Updated the roadmap and dependency standards to reflect the published `km-api@0.4.1` npm dependency.
+- 📚 Corrected the architecture documentation to reference the implemented local-reference resolvers.
+- 🔀 Operation-level parameters now correctly override path-level parameters.
+
+### 🐛 Fixed
+- 🐛 Reverse dialect translation now preserves literal example/default/enum data, nullable `$ref` semantics, combined exclusive bounds, and every Swagger `consumes`/`produces` media type while omitting 3.1-only document fields from 3.0 output.
+- 🐛 File-backed reverse conversion now replaces stale media types and examples after generated-code edits, honors Swagger form-to-body transitions and legacy response examples, and rejects Swagger cookie/object parameters instead of emitting invalid documents.
+- 🐛 Escaped JSON Pointer component and reusable-object names now resolve correctly; direct component aliases preserve `$ref` siblings, and generated `~` directories can be imported at runtime.
+- 🐛 Multi-config endpoint modules now select the named config matching the manifest operation before an unrelated default export.
+- 🐛 Direct component aliases now use distinct lazy Zod schemas so reverse conversion can distinguish an unchanged alias from a developer-selected target.
+- 🐛 Runtime endpoint imports now support generated directories containing `{path}` segments, and Swagger body schemas are emitted from normalized operation contracts instead of falling back to `z.any()`.
+- 🐛 Generated component schemas now import `additionalProperties` references, keep deeply nested cycles lazy, preserve open-object behavior, annotations, property-count bounds, and flexible tuple cardinality, and round-trip unique arrays plus structured `const`/`enum` values.
+- 🐛 OpenAPI 3.1 Zod conversion now emits JSON Schema 2020-12 shapes instead of falling through to legacy tuple forms.
+- 🐛 Generated component modules and their barrel now contain real newlines, keeping the emitted TypeScript executable at runtime.
+- 🐛 JSON Schema conversion now warns for malformed `not` schemas, ignores malformed mixed `dependentRequired` entries instead of partially enforcing them, and uses own-property dependency checks.
+- 🐛 Manifest reverse conversion now preserves non-schema OpenAPI component sections and reusable Swagger parameter and response definitions.
+- 🐛 Generated endpoint auth is now `NO` when an OpenAPI security requirement contains an empty alternative that permits anonymous access.
+- 🐛 Endpoint generation now honors `useComponentAsReference` for operation- and path-level parameter schemas, preserves nested component references in endpoint schemas, imports their component definitions, and inlines direct or nested local schema references when component imports are disabled.
+- 🐛 OpenAPI operation collection now resolves parameter references before duplicate detection and override merging; referenced Swagger body and form-data parameters are extracted correctly.
+- 🐛 JSON Schema conversion now honors OpenAPI 3.0 `nullable: true` around the complete schema and warns for malformed nullable flags.
+- 🐛 JSON Schema conversion now preserves sibling constraints alongside `enum`, `const`, `oneOf`, `anyOf`, and `allOf`, and validates structured enum/constant values using order-independent JSON object equality.
+- 🐛 JSON Schema conversion now preserves empty `prefixItems` and legacy tuple definitions, including typed or forbidden `items`, `additionalItems`, and `unevaluatedItems` rest values.
+- 🐛 JSON Schema conversion now honors `false` boolean schemas in `contains` and `propertyNames`, warns for malformed values, and no longer reports empty schemas as unsupported types.
+
+### 🛡️ Security
+- 🛡️ File-backed reverse conversion now preflights every endpoint and emitted-component path before importing code, reports missing manifests as `ZOPIA_DOCS_MISSING_MANIFEST`, and reports missing or renamed generated files as `ZOPIA_DOCS_MANIFEST_MISMATCH`.
+- 🔒 Generated component and parameter Zod shapes now use computed property keys, while example metadata is reconstructed with `JSON.parse`, preserving `__proto__` as ordinary data at runtime.
+- 🔒 Endpoint generation now preserves prototype-like request example names without mutating the examples object's prototype or dropping metadata.
+- 🔒 Endpoint generation now escapes line terminators in source metadata comments, preventing malformed or injected generated TypeScript.
+- 🔒 Reverse conversion now rejects unsafe or duplicate manifest operations and prevents overlays from replacing canonical OpenAPI fields.
+- 🛡️ JSON Schema conversion now validates numeric, size, pattern, object, and array keyword values before generating Zod code, warns instead of emitting malformed expressions, and ignores constraints on inapplicable instance types.
+- 🔒 Reverse conversion restores manifest overlays with prototype-safe property definition.
+- 🛡️ Component generation now preserves OpenAPI 3.1 boolean schemas instead of converting them to unconstrained schemas.
+- 🛡️ Added validation for malformed schemas, unsafe paths, references, identifiers, operation IDs, and facade properties.
+- 🛡️ JSON Pointer resolution now rejects inherited object properties.
 
 ## [0.0.1] - 2026-09-24
 

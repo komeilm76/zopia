@@ -68,7 +68,9 @@ try {
     throw new Error('Bun CLI smoke test produced an unexpected reverse document');
   }
 
-  console.log(`\nBun ${actualVersion} gate passed.`);
+  await run('Packed npm artifact', ['run', 'package:check']);
+
+  console.log(`\nBun ${actualVersion} release gate passed.`);
 } finally {
   await rm(temporaryDirectory, { recursive: true, force: true });
 }

@@ -24,15 +24,17 @@ pins every dependency. Run the complete gate with one PowerShell- and shell-vali
 command:
 
 ```bash
-bun run bun:gate
+bun run release:check
 ```
 
 The gate rejects a different runtime/version, performs a frozen Bun install,
 runs strict TypeScript, the full Vitest suite, and coverage gates, exercises both
 the direct CLI and package binary, then generates and reverses a component-based
-tree so Bun itself must import the generated `.ts` modules. Temporary output is
-created under `os.tmpdir()` and always removed. The single command is suitable
-for local release validation and CI without maintaining two gate definitions.
+tree so Bun itself must import the generated `.ts` modules. It also installs the
+exact npm archive in an isolated offline consumer and exercises its package-root
+import and CLI. Temporary output is created under `os.tmpdir()` and always
+removed. `bun:gate`, `release:check`, and `prepublishOnly` share this one gate
+implementation so local, CI, and publish-time validation cannot drift.
 
 `package-lock.json` remains checked in as the npm/Node compatibility resolution;
 `bun.lock` is authoritative for the Bun gate and release workflow.
@@ -169,11 +171,21 @@ export function openApiToApiDocs(
 ```text
 1. 🔖 bump version (SemVer — [Roadmap → Versioning](03-roadmap.md#-versioning))
 2. 📜 CHANGELOG: [Unreleased] → [x.y.z] - YYYY-MM-DD
-3. 🏷️ git tag  v0.1.0
-4. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
+3. 📝 README status banner updated to the new phase
+4. 🚢 bun run release:check
+5. 🏷️ git tag v0.1.0
+6. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
    the published `km-api@0.4.1` dependency is installed, D-15)
-5. 📝 README status banner updated to the new phase
 ```
+
+| # | Release-readiness rule |
+| --- | --- |
+| R-191 | **One release identity** — `package.json`, the manifest writer, lockfile, versioned changelog heading, and README status agree on the SemVer version |
+| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, `docs/`, and the package/legal markdown; the exact archive is installed in isolation and must pass library-import plus generate/reverse CLI smoke tests |
+| R-193 | **Publish guard** — `prepublishOnly` runs the pinned-Bun release gate, including typecheck, all tests, coverage, direct runtime checks, and R-192's packed-consumer check |
+
+Preparing these artifacts does not publish or tag a release. Those external steps
+remain explicit maintainer actions after the committed release gate is green.
 
 ## 📦 Dependencies
 

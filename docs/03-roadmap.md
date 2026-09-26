@@ -18,9 +18,9 @@ The standard documentation of the project:
 **Done when:** a new contributor can read only `docs/` and implement Phase 1
 without asking questions. ✅ *That bar is the acceptance test of this phase.*
 
-## 🚀 Phase 1 — The four engines (v0.1.0)
+## 🚀 Phase 1 — The four engines (v0.1.0) ✅
 
-Everything in [Targets](02-targets.md) marked ✅ 🚧:
+Everything in [Targets](02-targets.md) marked ✅:
 
 - [x] ⚙️ Package scaffold — ESM `package.json` (Bun-first, zero runtime deps,
       `zod` peer + `km-api ^0.4.1` from npm — D-15), strict `tsconfig`,
@@ -33,11 +33,11 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       → render `directory` / `flat` trees of `index.ts` files
       ([rules](06-conversions.md),
       [format](07-api-docs.md))
-- [ ] ④ **Engine 4** — `apiDocsToOpenApi()` — manifest-driven reverse
+- [x] ④ **Engine 4** — `apiDocsToOpenApi()` — manifest-driven reverse
       conversion to OpenAPI 3.0/3.1
       ([rules](06-conversions.md))
-- [ ] 🧱 Component options — `insertComponents`, `useComponentAsReference`
-      ([rules](08-components.md))
+- [x] 🧱 Component options — `insertComponents`, `useComponentAsReference`,
+      nested references, and direct/mutual cycles ([rules](08-components.md))
 - [x] 📦 Manifest writer/reader — `.zopia-manifest.json` (D-06)
 - [x] ⚠️ **Warnings pipeline** — stable typed codes, exact JSON Pointer locations,
       deterministic collection/callbacks, generated-code markers, and CLI stderr
@@ -70,15 +70,18 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [x] 🟣 **Bun gate** — pinned Bun 1.2.21, frozen `bun.lock` installation,
       typecheck, Vitest, coverage, direct/package CLI smoke tests, and Bun-native
       generated-TypeScript reverse imports run through one command (T-14/D-01)
-- [ ] 🧪 Vitest suite — remaining full scenario matrix and other contract suites
-      (round-trip properties, golden trees, and coverage gates are complete;
-      [testing](11-testing.md))
+- [x] 🧪 **Vitest suite** — unit, integration, round-trip, golden-tree, JSDoc,
+      CLI, and package-release contracts run in the pinned Bun gate
+      ([testing](11-testing.md))
 - [x] 📖 **JSDoc audit** — every exported declaration and exposed interface/class
       member has a useful summary; public callables document parameters and return
       values; optional configuration fields state defaults; examples and links are
       checked; and named-only exports are enforced by an AST contract suite (T-12,
       R-131…R-135/R-1003)
-- [ ] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**
+- [x] 📦 **Package/release readiness** — public npm metadata, an allowlisted
+      source archive, executable CLI, isolated packed-consumer import and CLI
+      smoke tests, and a mandatory prepublish gate (R-191…R-193)
+- [x] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**
 
 ### ✅ Definition of done — Phase 1
 

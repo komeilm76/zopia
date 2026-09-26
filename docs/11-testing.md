@@ -19,14 +19,16 @@ bun run test          # 🧪 vitest run (CI mode)
 bun run test:watch    # 👀 vitest watch
 bun run coverage      # 📈 vitest --coverage
 bun run golden:update # 📸 regenerate golden trees deliberately (R-112)
-bun run bun:gate      # 🟣 frozen install + all checks + Bun CLI/runtime smoke
+bun run package:check # 📦 exact npm archive + isolated consumer smoke
+bun run release:check # 🚢 frozen install + every release check
 ```
 
 The Bun gate is the release-level wrapper around these individual commands. It
 also validates the pinned Bun version and `bun.lock`, executes the package binary,
-and proves reverse conversion can import freshly generated TypeScript under Bun
-itself. The command is CI-ready and never substitutes npm for the Bun install,
-script runner, CLI, or generated-module runtime.
+proves reverse conversion can import freshly generated TypeScript under Bun,
+and packs the exact npm artifact for an isolated offline install, package-root
+import, and generate/reverse CLI smoke test. `prepublishOnly` delegates to this
+same gate so local and publish-time validation cannot drift.
 
 ## 📐 Test pyramid
 
@@ -36,7 +38,7 @@ script runner, CLI, or generated-module runtime.
 | **Integration** | `tests/integration/**/*.test.ts` | full engine runs: spec in → tree out (both modes, both option combos); tree in → spec out |
 | **Round-trip** | `tests/roundtrip/**/*.test.ts` | property: `openapi(docs(spec)) ≈ spec` and `zodSchema(zod(jsonSchema(zodSchema))) ≈ schema` (see below) |
 | **Golden files** | `tests/fixtures/expected/**` | byte-exact snapshots of generated trees (determinism, P-1) — regenerated deliberately, reviewed in PRs |
-| **Contract** | `tests/contract/**/*.test.ts` | the public API shape, JSDoc presence, error codes, manifest schema |
+| **Contract** | `tests/contract/**/*.test.ts` | public API/JSDoc, error and manifest contracts, golden output, npm artifact, and release metadata |
 
 > 📌 **Rule R-111** — *no test touches the network*; *no test writes outside
 > a per-test temp directory* (`fs.mkdtemp` under `os.tmpdir()`, cleaned in
@@ -129,6 +131,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-73 | CLI warning channels — generate/reverse diagnostics go to stderr while reverse stdout remains parseable JSON | R-408/R-933 |
 | S-74 | CLI contract — every flag maps to its API option; options may surround positionals; missing/extra arguments, unknown/cross-command/duplicate/valueless flags fail before engine work; help includes the trusted-tree warning; exit statuses distinguish typed and unexpected failures | R-931…R-934 |
 | S-75 | JSDoc AST audit — every exported declaration and exposed public member has a useful summary; callable parameters/returns, optional configuration defaults, TypeScript examples, relative `@see` links, and named-only exports are checked across `src/` | T-12/R-131…R-135/R-1003 |
+| S-76 | Package/release contract — version and public metadata stay synchronized; the npm archive is allowlisted and executable; `prepublishOnly` runs the complete release gate; the exact tarball installs offline and passes package-root import plus generate/reverse CLI smoke tests | R-191…R-193 |
 
 ## 🔄 Round-trip property tests
 
@@ -175,8 +178,7 @@ tests/fixtures/
 │   ├── cookies-3.0.json          # 🍪 cookie parameters
 │   ├── unsupported-keywords.json # 🚫 D-12 matrix in one spec
 │   ├── path-item-ref-3.1.json    # 🔗 local path-item reference identity
-│   ├── km-api-contract-3.1.json  # 📐 trace/custom/default/extension type surface
-│   └── edge/                     # 🚧 S-07 error fixtures (invalid JSON, bad refs, …)
+│   └── km-api-contract-3.1.json  # 📐 trace/custom/default/extension type surface
 └── expected/
     ├── admin-api-3.0.directory/  # 📸 golden tree (defaults)
     ├── admin-api-3.0.flat/       # 📸 golden tree (flat)

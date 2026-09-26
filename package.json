@@ -1,14 +1,44 @@
 {
   "name": "zopia",
-  "version": "0.0.1",
-  "private": true,
-  "type": "module",
+  "version": "0.1.0",
   "description": "Type-safe OpenAPI, JSON Schema, and Zod conversion toolkit.",
+  "keywords": [
+    "api-docs",
+    "json-schema",
+    "km-api",
+    "openapi",
+    "swagger",
+    "typescript",
+    "zod"
+  ],
+  "homepage": "https://github.com/komeilm76/zopia#readme",
+  "bugs": {
+    "url": "https://github.com/komeilm76/zopia/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/komeilm76/zopia.git"
+  },
+  "author": "komeilm76",
   "license": "MIT",
+  "type": "module",
+  "types": "./src/index.ts",
+  "sideEffects": false,
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md"
+  ],
   "packageManager": "bun@1.2.21",
   "engines": {
     "bun": ">=1.1",
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
@@ -28,6 +58,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage && vite-node scripts/check-coverage.ts",
+    "package:check": "bun scripts/package-check.ts",
+    "release:check": "bun run bun:gate",
+    "prepublishOnly": "bun run release:check",
     "bun:gate": "bun scripts/bun-gate.ts",
     "golden:update": "vite-node scripts/update-golden.ts",
     "build": "tsc --noEmit"

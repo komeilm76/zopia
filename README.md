@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-🚧 **Status — Phase 0 complete (documentation & standards) · Phase 1 implementation in progress**
+✅ **Status — Phase 1 complete · v0.1.0 release-ready**
 
 </div>
 
@@ -133,8 +133,8 @@ zopia/
 │   ├── 10-usage.md           #    🚀 Usage
 │   ├── 11-testing.md         #    🧪 Testing
 │   └── 12-standards.md       #    📏 Engineering standards
-├── src/                      # ⚙️ Package source (Phase 1 implementation)
-└── tests/                    # 🧪 Integration & round-trip suites (Phase 1 implementation)
+├── src/                      # ⚙️ Published package source
+└── tests/                    # 🧪 Unit, integration, contract & round-trip suites
 ```
 
 ## 🧪 Development
@@ -146,12 +146,14 @@ bun install --frozen-lockfile # 📦 reproducible install from bun.lock
 bun run typecheck             # ✅ strict TypeScript
 bun run test                  # 🧪 vitest (all scenarios)
 bun run coverage              # 📈 enforced coverage report
-bun run bun:gate              # 🟣 complete pinned-Bun release gate
+bun run package:check         # 📦 pack, install, import, and run the npm artifact
+bun run release:check         # 🚢 complete pinned-Bun prepublish gate
 ```
 
-> ✅ `bun run bun:gate` is the CI-equivalent local check: it verifies the pinned
-> Bun version and frozen lockfile, then runs TypeScript, Vitest, coverage, the
-> package CLI, generation, and Bun-native imports of generated TypeScript.
+> ✅ `bun run release:check` is the CI-equivalent prepublish check: it verifies
+> the pinned Bun version and frozen lockfile, then runs TypeScript, Vitest,
+> coverage, direct CLI generation/reverse smoke tests, and an isolated install
+> of the exact npm archive with packed-library and packed-CLI smoke tests.
 
 ## 🤝 Contributing
 
