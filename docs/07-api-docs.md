@@ -304,6 +304,8 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 
 Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[].file` and every non-null `components[].file` still resolves to a regular file inside the manifest directory. Missing or renamed entries fail the whole preflight with `ZOPIA_DOCS_MANIFEST_MISMATCH`; no earlier module is executed.
 
+Security requirements remain manifest-owned because km-api stores only `auth: 'YES' | 'NO'`: an operation-level requirement (including `[]`, or the recoverable `sourceOperation.security` in a legacy manifest) wins first, then `defaultSecurity` applies. Runtime `auth: 'YES'` triggers a reverse fallback only when neither source records a requirement. That fallback emits one `ZOPIA_WARN_DEFAULT_SECURITY` warning per affected operation, reuses one deterministic bearer scheme across operations, and never overwrites an existing incompatible `bearerAuth` definition (it selects `bearerAuth2`, `bearerAuth3`, and so on). OpenAPI 3 output receives an HTTP bearer scheme; source-preserving Swagger 2.0 output receives an `Authorization` header `apiKey` approximation because Swagger 2.0 has no HTTP bearer scheme type.
+
 > 📌 **Rule R-751** — the manifest carries a **full** `schema` for every
 > declared component, in every mode. It is the verbatim source of
 > `components.schemas` on the reverse trip; when `file` is set, the imported

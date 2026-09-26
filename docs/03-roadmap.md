@@ -45,6 +45,9 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [x] ♻️ **Manifest staleness** — canonical source/config comparison, invalid and
       incomplete-tree detection, source-located warnings, safe obsolete-artifact
       pruning, and symlink-safe regeneration (R-741…R-743)
+- [x] 🔐 **Reverse security fallback** — manifest-authoritative requirements,
+      validated metadata, collision-safe deterministic bearer synthesis,
+      OpenAPI/Swagger representations, and operation-located warnings (R-656)
 - [ ] ⌨️ CLI — `zopia generate` / `zopia reverse` ([usage](10-usage.md#-cli))
 - [ ] 🧪 Vitest suite — full scenario matrix, golden files, round-trip
       property tests ([testing](11-testing.md))

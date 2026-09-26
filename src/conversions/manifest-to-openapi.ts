@@ -5,6 +5,7 @@ import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { ZOPIA_MANIFEST_FILE, ZOPIA_MANIFEST_SCHEMA, type ZopiaManifest } from './manifest-writer';
+import { ensureFallbackSecurityScheme, normalizeSecurityRequirements } from './reverse-security';
 export type { ZopiaManifest } from './manifest-writer';
 
 /** Options for selecting the OpenAPI dialect emitted by reverse conversion. */
@@ -962,12 +963,18 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
   if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes?.length) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces?.length) document.produces = manifest.swaggerProduces; if (manifest.swaggerParameters) document.parameters = manifest.swaggerParameters; if (manifest.swaggerResponses) document.responses = manifest.swaggerResponses; }
   else if (manifest.componentsOverlay && Object.keys(manifest.componentsOverlay).length) document.components = { ...manifest.componentsOverlay };
   if (manifest.tags?.length) document.tags = manifest.tags;
-  if (manifest.securitySchemes) {
-    if (!isRecord(manifest.securitySchemes)) throw new TypeError('Invalid manifest securitySchemes');
-    if (isSwagger) document.securityDefinitions = manifest.securitySchemes;
-    else document.components = { ...(document.components ?? {}), securitySchemes: manifest.securitySchemes };
-  }
-  if (manifest.defaultSecurity !== undefined) document.security = manifest.defaultSecurity;
+  if (manifest.securitySchemes !== undefined && (!isRecord(manifest.securitySchemes)
+    || Object.entries(manifest.securitySchemes).some(([name, scheme]) => !name || !isRecord(scheme)))) throw new TypeError('Invalid manifest securitySchemes');
+  let securitySchemes: Record<string, unknown> = { ...(manifest.securitySchemes ?? {}) };
+  const writeSecuritySchemes = (): void => {
+    if (isSwagger) document.securityDefinitions = securitySchemes;
+    else document.components = { ...(document.components ?? {}), securitySchemes };
+  };
+  if (manifest.securitySchemes !== undefined) writeSecuritySchemes();
+  const defaultSecurity = manifest.defaultSecurity === undefined
+    ? undefined
+    : normalizeSecurityRequirements(manifest.defaultSecurity, 'manifest defaultSecurity');
+  if (defaultSecurity !== undefined) document.security = defaultSecurity;
   const schemas = Object.fromEntries((manifest.components ?? []).map((component, index) => [component.name, componentSchemas.has(index) ? componentSchemas.get(index) : component.schema]));
   if (Object.keys(schemas).length) {
     if (isSwagger) document.definitions = schemas;
@@ -979,12 +986,25 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
     const sourceOperation: Record<string, any> = api.sourceOperation ? { ...api.sourceOperation } : { operationId: api.operationId, responses: { default: { description: 'Generated from manifest' } } };
     const runtime = endpointConfigs.get(index);
     const reconstructed = runtime ? runtimeOperation(api, sourceOperation, runtime, manifest, componentReferences, warnings) : { path: api.path, method: api.method, operation: sourceOperation };
-    if (api.security !== undefined) reconstructed.operation.security = api.security;
-    else if (runtime?.auth === 'YES' && manifest.defaultSecurity === undefined) {
-      reconstructed.operation.security = [{ bearerAuth: [] }];
-      if (isSwagger) document.securityDefinitions = { ...(document.securityDefinitions ?? {}), bearerAuth: document.securityDefinitions?.bearerAuth ?? { type: 'apiKey', name: 'Authorization', in: 'header' } };
-      else document.components = { ...(document.components ?? {}), securitySchemes: { ...(document.components?.securitySchemes ?? {}), bearerAuth: document.components?.securitySchemes?.bearerAuth ?? { type: 'http', scheme: 'bearer' } } };
-      warnings?.add({ code: 'ZOPIA_WARN_DEFAULT_SECURITY', at: `#/paths/${pointerToken(reconstructed.path)}/${reconstructed.method}/security`, message: 'auth is YES but the manifest has no security requirement; using bearerAuth' });
+    const operationSecurity = api.security === undefined
+      ? undefined
+      : normalizeSecurityRequirements(api.security, `manifest security for ${api.path} ${api.method}`);
+    const legacyOperationSecurity = operationSecurity === undefined
+      && Object.prototype.hasOwnProperty.call(sourceOperation, 'security')
+      ? normalizeSecurityRequirements(sourceOperation.security, `legacy manifest security for ${api.path} ${api.method}`)
+      : undefined;
+    if (operationSecurity !== undefined) reconstructed.operation.security = operationSecurity;
+    else if (legacyOperationSecurity !== undefined) reconstructed.operation.security = legacyOperationSecurity;
+    else if (runtime?.auth === 'YES' && defaultSecurity === undefined) {
+      const fallback = ensureFallbackSecurityScheme(securitySchemes, isSwagger);
+      securitySchemes = fallback.schemes;
+      writeSecuritySchemes();
+      reconstructed.operation.security = [{ [fallback.name]: [] }];
+      warnings?.add({
+        code: 'ZOPIA_WARN_DEFAULT_SECURITY',
+        at: `#/paths/${pointerToken(reconstructed.path)}/${reconstructed.method}/security`,
+        message: `auth is YES but the manifest has no security requirement; using ${fallback.name}`,
+      });
     }
     const pathItem = Object.prototype.hasOwnProperty.call(document.paths, reconstructed.path) ? document.paths[reconstructed.path] : {};
     if (Object.prototype.hasOwnProperty.call(pathItem, reconstructed.method)) throw new TypeError(`Duplicate manifest API: ${reconstructed.path} ${reconstructed.method}`);

@@ -136,6 +136,142 @@ describe('manifest reverse conversion', () => {
     expect(operation.security).toEqual([]);
     expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
   });
+  it('keeps manifest security authoritative when runtime auth conflicts', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-security-'));
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Security authority', version: '1' },
+      components: { securitySchemes: {
+        globalAuth: { type: 'apiKey', name: 'X-Global-Key', in: 'header' },
+        localAuth: { type: 'oauth2', flows: { clientCredentials: { tokenUrl: 'https://example.test/token', scopes: { read: 'Read access' } } } },
+      } },
+      security: [{ globalAuth: [] }],
+      paths: {
+        '/anonymous': { get: { security: [], responses: { '200': { description: 'ok' } } } },
+        '/inherited': { get: { responses: { '200': { description: 'ok' } } } },
+        '/optional': { get: { security: [{}, { globalAuth: [] }], responses: { '200': { description: 'ok' } } } },
+        '/scoped': { get: { security: [{ localAuth: ['read'] }], responses: { '200': { description: 'ok' } } } },
+      },
+    }, { outputDir });
+    const editAuth = async (name: string, before: 'YES' | 'NO', after: 'YES' | 'NO'): Promise<void> => {
+      const file = join(outputDir, name, 'get', 'index.ts');
+      const generated = await readFile(file, 'utf8');
+      expect(generated).toContain(`auth: "${before}"`);
+      await writeFile(file, generated.replace(`auth: "${before}"`, `auth: "${after}"`), 'utf8');
+    };
+    await editAuth('anonymous', 'NO', 'YES');
+    await editAuth('inherited', 'YES', 'NO');
+    await editAuth('optional', 'NO', 'YES');
+
+    const reversed = await apiDocsToOpenApi(outputDir);
+    const document = reversed.openapi as any;
+
+    expect(document.security).toEqual([{ globalAuth: [] }]);
+    expect(document.paths['/anonymous'].get.security).toEqual([]);
+    expect(document.paths['/inherited'].get.security).toBeUndefined();
+    expect(document.paths['/optional'].get.security).toEqual([{}, { globalAuth: [] }]);
+    expect(document.paths['/scoped'].get.security).toEqual([{ localAuth: ['read'] }]);
+    expect(reversed.warnings.filter((warning) => warning.code === 'ZOPIA_WARN_DEFAULT_SECURITY')).toEqual([]);
+
+    const manifestFile = join(outputDir, '.zopia-manifest.json');
+    const legacyManifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+    delete legacyManifest.apis.find((api: any) => api.path === '/scoped').security;
+    await writeFile(manifestFile, JSON.stringify(legacyManifest), 'utf8');
+    const legacy = await apiDocsToOpenApi(outputDir);
+    expect((legacy.openapi as any).paths['/scoped'].get.security).toEqual([{ localAuth: ['read'] }]);
+    expect(legacy.warnings.filter((warning) => warning.code === 'ZOPIA_WARN_DEFAULT_SECURITY')).toEqual([]);
+
+    const anonymousDefaultDir = await mkdtemp(join(tmpdir(), 'zopia-security-'));
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Anonymous default', version: '1' },
+      security: [],
+      paths: { '/public': { get: { responses: { '200': { description: 'ok' } } } } },
+    }, { outputDir: anonymousDefaultDir });
+    const publicEndpoint = join(anonymousDefaultDir, 'public', 'get', 'index.ts');
+    const publicSource = await readFile(publicEndpoint, 'utf8');
+    await writeFile(publicEndpoint, publicSource.replace('auth: "NO"', 'auth: "YES"'), 'utf8');
+    const anonymousDefault = await apiDocsToOpenApi(anonymousDefaultDir);
+    expect((anonymousDefault.openapi as any).security).toEqual([]);
+    expect((anonymousDefault.openapi as any).paths['/public'].get.security).toBeUndefined();
+    expect(anonymousDefault.warnings.filter((warning) => warning.code === 'ZOPIA_WARN_DEFAULT_SECURITY')).toEqual([]);
+  });
+  it('reuses one collision-safe fallback for every operation that lacks manifest security', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-security-'));
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Security fallback', version: '1' },
+      components: { securitySchemes: {
+        bearerAuth: { type: 'apiKey', name: 'X-Existing-Key', in: 'header' },
+        bearerAuth2: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      } },
+      paths: {
+        '/alpha': { get: { responses: { '200': { description: 'ok' } } } },
+        '/beta': { post: { responses: { '204': { description: 'ok' } } } },
+      },
+    }, { outputDir });
+    for (const [name, method] of [['alpha', 'get'], ['beta', 'post']] as const) {
+      const file = join(outputDir, name, method, 'index.ts');
+      const generated = await readFile(file, 'utf8');
+      await writeFile(file, generated.replace('auth: "NO"', 'auth: "YES"'), 'utf8');
+    }
+
+    const reversed = await apiDocsToOpenApi(outputDir);
+    const document = reversed.openapi as any;
+
+    expect(document.paths['/alpha'].get.security).toEqual([{ bearerAuth2: [] }]);
+    expect(document.paths['/beta'].post.security).toEqual([{ bearerAuth2: [] }]);
+    expect(document.components.securitySchemes.bearerAuth).toEqual({ type: 'apiKey', name: 'X-Existing-Key', in: 'header' });
+    expect(document.components.securitySchemes.bearerAuth2).toEqual({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' });
+    expect(reversed.warnings.filter((warning) => warning.code === 'ZOPIA_WARN_DEFAULT_SECURITY').map((warning) => warning.at)).toEqual([
+      '#/paths/~1alpha/get/security',
+      '#/paths/~1beta/post/security',
+    ]);
+  });
+  it('uses a Swagger-compatible fallback while preserving colliding definitions', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-security-'));
+    await generateApiDocsFiles({
+      swagger: '2.0',
+      info: { title: 'Swagger fallback', version: '1' },
+      securityDefinitions: { bearerAuth: { type: 'apiKey', name: 'X-Existing-Key', in: 'header' } },
+      paths: { '/legacy': { get: { responses: { '200': { description: 'ok' } } } } },
+    }, { outputDir });
+    const endpoint = join(outputDir, 'legacy', 'get', 'index.ts');
+    const generated = await readFile(endpoint, 'utf8');
+    await writeFile(endpoint, generated.replace('auth: "NO"', 'auth: "YES"'), 'utf8');
+    const warnings: Array<{ code: string; at?: string; message: string }> = [];
+
+    const swagger = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'), { onWarning: (warning) => warnings.push(warning) }) as any;
+
+    expect(swagger.swagger).toBe('2.0');
+    expect(swagger.paths['/legacy'].get.security).toEqual([{ bearerAuth2: [] }]);
+    expect(swagger.securityDefinitions.bearerAuth).toEqual({ type: 'apiKey', name: 'X-Existing-Key', in: 'header' });
+    expect(swagger.securityDefinitions.bearerAuth2).toEqual({
+      type: 'apiKey',
+      name: 'Authorization',
+      in: 'header',
+    });
+    expect(warnings).toEqual([{
+      code: 'ZOPIA_WARN_DEFAULT_SECURITY',
+      at: '#/paths/~1legacy/get/security',
+      message: 'auth is YES but the manifest has no security requirement; using bearerAuth2',
+    }]);
+
+    const openApi = await apiDocsToOpenApi(outputDir, { version: '3.0' });
+    expect((openApi.openapi as any).openapi).toBe('3.0.0');
+    expect((openApi.openapi as any).paths['/legacy'].get.security).toEqual([{ bearerAuth2: [] }]);
+    expect((openApi.openapi as any).components.securitySchemes.bearerAuth2).toEqual({ type: 'http', scheme: 'bearer' });
+  });
+  it('rejects malformed manifest security requirements explicitly', () => {
+    const source = { kind: 'openapi-3.1', title: 'Security validation', version: '1' };
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, defaultSecurity: {} as any, apis: [] })).toThrow('Invalid manifest defaultSecurity: expected an array');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, securitySchemes: { bad: null } as any, apis: [] })).toThrow('Invalid manifest securitySchemes');
+    expect(() => manifestToOpenApi({
+      $schema: 'zopia:manifest@1',
+      source,
+      apis: [{ path: '/bad', method: 'get', security: [{ apiKey: ['ok', 42] }] as any }],
+    })).toThrow('Invalid manifest security for /bad get alternative 0');
+  });
   it('re-serializes edited request and response Zod schemas', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Runtime schemas', version: '1' }, paths: { '/users/{id}': { post: {

@@ -386,6 +386,13 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
   return manifest;
 }
 
+function validateSecurityRequirements(value: unknown, context: string): void {
+  if (!Array.isArray(value) || value.some((alternative) => !isRecord(alternative)
+    || Object.entries(alternative).some(([name, scopes]) => !name || !Array.isArray(scopes) || scopes.some((scope) => typeof scope !== 'string')))) {
+    throw new TypeError(`Invalid zopia manifest ${context}`);
+  }
+}
+
 function validateSchemaOverlay(overlay: unknown, context: string): void {
   if (!isRecord(overlay) || typeof overlay.at !== 'string') throw new TypeError(`Invalid zopia manifest ${context}`);
   validateKeys(overlay, ['at', 'set', 'remove', 'node'], context);
@@ -411,6 +418,7 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   for (const [name, value] of [['infoOverlay', manifest.infoOverlay], ['documentOverlay', manifest.documentOverlay], ['securitySchemes', manifest.securitySchemes]] as const) {
     if (!isRecord(value)) throw new TypeError(`Invalid zopia manifest ${name}`);
   }
+  if (Object.entries(manifest.securitySchemes!).some(([name, scheme]) => !name || !isRecord(scheme))) throw new TypeError('Invalid zopia manifest security scheme');
   for (const [name, value] of [['componentsOverlay', manifest.componentsOverlay], ['swaggerParameters', manifest.swaggerParameters], ['swaggerResponses', manifest.swaggerResponses]] as const) {
     if (value !== undefined && !isRecord(value)) throw new TypeError(`Invalid zopia manifest ${name}`);
   }
@@ -426,7 +434,7 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
     if (value !== undefined && (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string'))) throw new TypeError(`Invalid zopia manifest ${name}`);
   }
   if (manifest.swaggerHost !== undefined && typeof manifest.swaggerHost !== 'string') throw new TypeError('Invalid zopia manifest swaggerHost');
-  if (manifest.defaultSecurity !== undefined && !Array.isArray(manifest.defaultSecurity)) throw new TypeError('Invalid zopia manifest default security');
+  if (manifest.defaultSecurity !== undefined) validateSecurityRequirements(manifest.defaultSecurity, 'default security');
   if (!Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest APIs');
   if (!Array.isArray(manifest.components)) throw new TypeError('Invalid zopia manifest components');
 
@@ -458,7 +466,7 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
     if (files.has(api.file)) throw new TypeError(`Duplicate zopia manifest file: ${api.file}`);
     files.add(api.file);
     if (!isRecord(api.sourceOperation) || !Array.isArray(api.refs) || !Array.isArray(api.overlay) || !Array.isArray(api.responseOverlay)) throw new TypeError(`Invalid zopia manifest API metadata: ${api.file}`);
-    if (Object.prototype.hasOwnProperty.call(api, 'security') && !Array.isArray(api.security)) throw new TypeError(`Invalid zopia manifest API security: ${api.file}`);
+    if (Object.prototype.hasOwnProperty.call(api, 'security')) validateSecurityRequirements(api.security, `API security: ${api.file}`);
     for (const ref of api.refs) {
       if (!isRecord(ref) || typeof ref.at !== 'string' || typeof ref.ref !== 'string' || ref.component !== undefined && typeof ref.component !== 'string') throw new TypeError(`Invalid zopia manifest ref: ${api.file}`);
       validateKeys(ref, ['at', 'ref', 'component'], 'ref');
