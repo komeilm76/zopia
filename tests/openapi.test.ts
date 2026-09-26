@@ -20,5 +20,7 @@ describe('normalizeOpenApiDocument', () => {
     expect(normalizeOpenApiDocument({ ...base('3.1.0'), paths: { 'x-note': 'allowed extension' } }).version).toBe('3.1');
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users': null } })).toThrow('path item must be an object');
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users/{id': {} } })).toThrow('malformed path template');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users?active=true': {} } })).toThrow('path must not contain a query or fragment');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users#top': {} } })).toThrow('path must not contain a query or fragment');
   });
 });

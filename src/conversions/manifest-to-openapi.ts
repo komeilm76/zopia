@@ -981,7 +981,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   let path: unknown;
   try { path = typeof config.makeOpenApiPathShape === 'function' ? config.makeOpenApiPathShape() : config.pathShape.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}'); }
   catch (error) { throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Unable to read generated endpoint path ${api.file}: ${error instanceof Error ? error.message : String(error)}`, { at: api.file, cause: error }); }
-  if (typeof path !== 'string' || !path.startsWith('/') || path.includes('?') || path.includes('#')) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint path: ${String(path)}`);
+  if (typeof path !== 'string' || !path.startsWith('/') || path.includes('?') || path.includes('#') || /[{}]/.test(path) && !/^\/([^{}]|\{[A-Za-z0-9._-]+\})*$/.test(path)) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint path: ${String(path)}`);
   if (config.operationId !== undefined && (typeof config.operationId !== 'string' || !config.operationId.trim())) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint operationId: ${String(config.operationId)}`);
   for (const field of ['summary', 'description'] as const) if (config[field] !== undefined && typeof config[field] !== 'string') throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint ${field}: ${String(config[field])}`);
   if (config.tags !== undefined && (!Array.isArray(config.tags) || !config.tags.every((tag: unknown) => typeof tag === 'string'))) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', 'Invalid generated endpoint tags');
@@ -1080,6 +1080,7 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
     if (isSwagger) document.definitions = schemas;
     else document.components = { ...(document.components ?? {}), schemas };
   }
+  const operationIds = new Map<string, string>();
   for (const [index, api] of manifest.apis.entries()) {
     if (!isRecord(api) || typeof api.path !== 'string' || !api.path.startsWith('/') || api.path.includes('?') || api.path.includes('#') || typeof api.method !== 'string' || !HTTP_METHODS.has(api.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid manifest API: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
     if (api.sourceOperation !== undefined && !isRecord(api.sourceOperation)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid manifest source operation: ${api.path} ${api.method}`);
@@ -1095,6 +1096,15 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
         throw new ZopiaError(error.code, message, { at: api.file ?? `#/apis/${index}`, hint: error.hint, cause: error.cause ?? error });
       }
       throw asZopiaError(error, 'ZOPIA_DOCS_IMPORT_FAILED', 'unable to reconstruct generated endpoint', { at: api.file ?? `#/apis/${index}` });
+    }
+    const operationId = reconstructed.operation.operationId;
+    if (operationId !== undefined && (typeof operationId !== 'string' || !operationId.trim())) {
+      throw new ZopiaError(runtime ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID', `Invalid reconstructed operationId: ${String(operationId)}`, { at: runtime ? api.file : `#/apis/${index}/sourceOperation/operationId` });
+    }
+    if (typeof operationId === 'string') {
+      const previous = operationIds.get(operationId);
+      if (previous !== undefined) throw new ZopiaError(runtime ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID', `Duplicate reconstructed operationId: ${operationId}`, { at: runtime ? api.file : `#/apis/${index}/sourceOperation/operationId` });
+      operationIds.set(operationId, api.file ?? `#/apis/${index}`);
     }
     const operationSecurity = api.security === undefined
       ? undefined
@@ -1118,7 +1128,9 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
     }
     if (api.pathItemRef === true && reconstructed.path === api.path && reconstructed.method === api.method && sameSchema(reconstructed.operation, sourceOperation)) continue;
     const pathItem = Object.prototype.hasOwnProperty.call(document.paths, reconstructed.path) ? document.paths[reconstructed.path] : {};
-    if (Object.prototype.hasOwnProperty.call(pathItem, reconstructed.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate manifest API: ${reconstructed.path} ${reconstructed.method}`);
+    if (Object.prototype.hasOwnProperty.call(pathItem, reconstructed.method)) {
+      throw new ZopiaError(runtime ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID', `${runtime ? 'Duplicate reconstructed endpoint' : 'Duplicate manifest API'}: ${reconstructed.path} ${reconstructed.method}`, { at: runtime ? api.file : `#/apis/${index}` });
+    }
     Object.defineProperty(document.paths, reconstructed.path, { value: { ...pathItem, [reconstructed.method]: reconstructed.operation }, enumerable: true, configurable: true, writable: true });
   }
   return document;

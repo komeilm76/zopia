@@ -239,6 +239,26 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     try { return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item); }
     catch { return undefined; }
   };
+  const jsonLiteral = (value: unknown): string | undefined => {
+    const active = new Set<object>();
+    const visit = (item: unknown): boolean => {
+      if (item === null || typeof item === 'string' || typeof item === 'boolean') return true;
+      if (typeof item === 'number') return Number.isFinite(item);
+      if (!item || typeof item !== 'object') return false;
+      if (active.has(item)) return false;
+      if (!Array.isArray(item) && ![Object.prototype, null].includes(Object.getPrototypeOf(item))) return false;
+      if (Object.getOwnPropertySymbols(item).length) return false;
+      active.add(item);
+      const valid = Array.isArray(item)
+        ? Object.keys(item).length === item.length && item.every((child, index) => Object.prototype.hasOwnProperty.call(item, index) && visit(child))
+        : Object.values(item).every(visit);
+      active.delete(item);
+      return valid;
+    };
+    if (!visit(value)) return undefined;
+    try { return JSON.stringify(value); }
+    catch { return undefined; }
+  };
   let source: JsonSchema;
   try {
     if (typeof input !== 'string') source = input;
@@ -287,11 +307,25 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     if (node === true) return { schema: z.any(), code: 'z.any()' };
     if (node === false) return { schema: z.never(), code: 'z.never()' };
     if (!node || typeof node !== 'object' || Array.isArray(node)) { pushWarning('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
+    if (node.nullable !== undefined) {
+      const withoutNullable = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'nullable')) as JsonSchema;
+      if (typeof node.nullable !== 'boolean') { pushWarning('Invalid nullable: expected a boolean'); return convert(withoutNullable, resolving, at); }
+      const converted = convert(withoutNullable, resolving, at);
+      return node.nullable ? { schema: converted.schema.nullable(), code: `${converted.code}.nullable()` } : converted;
+    }
+    if (node.default !== undefined) {
+      const withoutDefault = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'default')) as JsonSchema;
+      const converted = convert(withoutDefault, resolving, at);
+      const literal = jsonLiteral(node.default);
+      if (literal === undefined) { pushWarning('Invalid default: expected a JSON value'); return converted; }
+      const value = JSON.parse(literal);
+      return { schema: converted.schema.default(value), code: `${converted.code}.default(${literal})` };
+    }
     if ('$ref' in node) {
       if (typeof node.$ref !== 'string' || node.$ref.length === 0) { pushWarning('Invalid $ref: expected a non-empty string'); return { schema: z.any(), code: 'z.any()' }; }
       const ref = node.$ref; const target = resolveLocalRef(ref);
       if (!target) { pushWarning(`Unsupported $ref: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
-      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => !['$ref', '$defs', 'definitions', '$schema', '$id', '$comment', 'title', 'description', 'examples', 'example'].includes(key)));
+      const siblings = Object.fromEntries(Object.entries(node).filter(([key]) => !['$ref', '$defs', 'definitions', '$schema', '$id', '$comment', 'title', 'description', 'examples', 'example', 'readOnly', 'writeOnly', 'deprecated', 'discriminator', 'xml', 'externalDocs'].includes(key) && !key.startsWith('x-')));
       const definitionName = definitionNames.get(ref);
       if (definitionName) {
         usedDefinitionRefs.add(ref);
@@ -311,12 +345,6 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       if (Object.keys(siblings).length === 0) return referenced;
       const sibling = convert(siblings, resolving, at);
       return { schema: referenced.schema.and(sibling.schema), code: `${referenced.code}.and(${sibling.code})` };
-    }
-    if (node.nullable !== undefined) {
-      const withoutNullable = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'nullable')) as JsonSchema;
-      if (typeof node.nullable !== 'boolean') { pushWarning('Invalid nullable: expected a boolean'); return convert(withoutNullable, resolving, at); }
-      const converted = convert(withoutNullable, resolving, at);
-      return node.nullable ? { schema: converted.schema.nullable(), code: `${converted.code}.nullable()` } : converted;
     }
     if (Array.isArray(node.type)) {
       const allowedTypes = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);
@@ -741,7 +769,6 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     else if (node.contentEncoding === 'hex' && node.type === 'string') result = { schema: (result.schema as any).regex(/^(?:[0-9A-Fa-f]{2})*$/), code: `${result.code}.regex(/^(?:[0-9A-Fa-f]{2})*$/)` };
     else if (node.contentEncoding !== undefined && node.type === 'string') pushWarning(`Unsupported contentEncoding: ${String(node.contentEncoding)}`);
     else if (node.contentEncoding !== undefined && node.type !== 'string') pushWarning('Invalid contentEncoding: expected a string schema');
-    if (node.default !== undefined) result = { schema: result.schema.default(node.default), code: `${result.code}.default(${JSON.stringify(node.default)})` };
     return result;
   };
 
@@ -752,7 +779,8 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       const converted = convertCore(node, resolving, at);
       if (typeof node === 'boolean') return converted;
       const metadata: Record<string, unknown> = {};
-      for (const key of ['title', 'description', 'examples'] as const) if (Object.prototype.hasOwnProperty.call(node, key) && node[key] !== undefined) metadata[key] = node[key];
+      for (const key of ['title', 'description', 'examples', 'readOnly', 'writeOnly', 'deprecated', 'discriminator', 'xml', 'externalDocs'] as const) if (Object.prototype.hasOwnProperty.call(node, key) && node[key] !== undefined) metadata[key] = node[key];
+      for (const [key, value] of Object.entries(node)) if (key.startsWith('x-') && value !== undefined) metadata[key] = value;
       if (!Object.prototype.hasOwnProperty.call(metadata, 'examples') && Object.prototype.hasOwnProperty.call(node, 'example') && node.example !== undefined) metadata.examples = [node.example];
       if (Object.keys(metadata).length === 0) return converted;
       return { schema: converted.schema.meta(metadata), code: `${converted.code}.meta(${JSON.stringify(metadata)})` };

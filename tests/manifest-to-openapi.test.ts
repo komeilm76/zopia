@@ -20,6 +20,10 @@ describe('manifest reverse conversion', () => {
     const source = { kind: 'openapi-3.1', title: 'Test', version: '1' };
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '__proto__', method: 'get' }] })).toThrow('Invalid manifest API');
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get' }, { path: '/users', method: 'get' }] })).toThrow('Duplicate manifest API');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [
+      { path: '/users', method: 'get', sourceOperation: { operationId: 'duplicate', responses: {} } },
+      { path: '/groups', method: 'get', sourceOperation: { operationId: 'duplicate', responses: {} } },
+    ] })).toThrow('Duplicate reconstructed operationId: duplicate');
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get', sourceOperation: [] as any }] })).toThrow('Invalid manifest source operation');
   });
   it('prevents overlays from replacing canonical manifest fields', () => {
@@ -135,6 +139,23 @@ describe('manifest reverse conversion', () => {
     expect(operation.deprecated).toBe(false);
     expect(operation.security).toEqual([]);
     expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
+
+    await writeFile(endpointFile, edited.replace('pathShape: "/members/:memberId"', 'pathShape: "/members/{broken"'), 'utf8');
+    await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Invalid generated endpoint path: /members/{broken');
+  });
+  it('classifies edited runtime endpoint collisions as generated-module failures', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Collision', version: '1' }, paths: {
+      '/one': { get: { operationId: 'one', responses: { '200': { description: 'ok' } } } },
+      '/two': { get: { operationId: 'two', responses: { '200': { description: 'ok' } } } },
+    } }, { outputDir });
+    const secondFile = join(outputDir, 'two', 'get', 'index.ts');
+    await writeFile(secondFile, (await readFile(secondFile, 'utf8')).replace('pathShape: "/two"', 'pathShape: "/one"'), 'utf8');
+    await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toMatchObject({
+      code: 'ZOPIA_DOCS_IMPORT_FAILED',
+      at: 'two/get/index.ts',
+      message: expect.stringContaining('Duplicate reconstructed endpoint: /one get'),
+    });
   });
   it('reloads edited endpoint content even when file size and timestamps are unchanged', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-cache-'));

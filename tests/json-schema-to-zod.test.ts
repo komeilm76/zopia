@@ -309,6 +309,30 @@ describe('jsonSchemaToZod', () => {
     const nullableEnum = jsonSchemaToZod({ type: 'string', enum: ['active'], nullable: true });
     expect(nullableEnum.schema.safeParse(null).success).toBe(true);
     expect(nullableEnum.schema.safeParse('inactive').success).toBe(false);
+
+    const nullableReference = jsonSchemaToZod({ $defs: { Name: { type: 'string', minLength: 2 } }, $ref: '#/$defs/Name', nullable: true });
+    expect(nullableReference.schema.safeParse(null).success).toBe(true);
+    expect(nullableReference.schema.safeParse('ok').success).toBe(true);
+    expect(nullableReference.schema.safeParse('x').success).toBe(false);
+    expect(nullableReference.code).toContain('z.lazy(() => name).nullable()');
+    const generatedNullableReference = new Function('z', `${nullableReference.code}\nreturn schema;`)(z);
+    expect(generatedNullableReference.safeParse(null).success).toBe(true);
+
+    const defaultedReference = jsonSchemaToZod({ $defs: { Name: { type: 'string' } }, $ref: '#/$defs/Name', default: 'anonymous' });
+    expect(defaultedReference.schema.parse(undefined)).toBe('anonymous');
+    expect(defaultedReference.code).toContain('z.lazy(() => name).default("anonymous")');
+
+    const invalidDefault = jsonSchemaToZod({ type: 'object', default: { score: Number.NaN } });
+    expect(invalidDefault.schema.safeParse(undefined).success).toBe(false);
+    expect(invalidDefault.code).not.toContain('.default(');
+    expect(invalidDefault.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#', message: 'Invalid default: expected a JSON value' })]);
+
+    const annotated = jsonSchemaToZod({ type: 'string', readOnly: true, writeOnly: false, deprecated: true, xml: { name: 'value' }, 'x-scope': 'internal' });
+    expect(annotated.code).toContain('.meta({"readOnly":true,"writeOnly":false,"deprecated":true,"xml":{"name":"value"},"x-scope":"internal"})');
+    expect(zodToJsonSchema(annotated.schema, { target: 'openapi-3.1', $schema: false })).toEqual({
+      type: 'string', readOnly: true, writeOnly: false, deprecated: true, xml: { name: 'value' }, 'x-scope': 'internal',
+    });
+
     expect(jsonSchemaToZod({ type: 'string', nullable: 'yes' }).warnings.map((warning) => warning.message)).toContain('Invalid nullable: expected a boolean');
   });
   it('validates generated identifier names', () => {

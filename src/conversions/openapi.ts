@@ -42,6 +42,7 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
   for (const [path, item] of Object.entries(document.paths)) {
     if (!path.startsWith('/') && !path.startsWith('x-')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: path key must start with /: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: "start API path keys with '/'" });
     if (path.startsWith('x-')) continue;
+    if (path.includes('?') || path.includes('#')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: path must not contain a query or fragment: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: 'move query values into parameter objects and remove URL fragments' });
     if (/[{}]/.test(path) && !/^\/([^{}]|\{[A-Za-z0-9._-]+\})*$/.test(path)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: malformed path template: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: 'use balanced {parameter} path segments' });
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: path item must be an object: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: 'provide a Path Item object' });
   }
