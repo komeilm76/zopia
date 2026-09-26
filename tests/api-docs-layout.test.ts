@@ -12,6 +12,10 @@ describe('API docs layout', () => {
     expect(() => endpointFilePath('/users\\secret', 'get')).toThrow('Unsafe API path segment');
     expect(() => endpointFilePath('/users?id=1', 'get')).toThrow('Invalid API path');
     expect(() => endpointFilePath('/C:drive', 'get')).toThrow('Unsafe API path segment');
+    for (const path of ['/bad*name', '/trailing.', '/con', '/COM1.txt', '/control\u0001name']) {
+      expect(() => endpointFilePath(path, 'get')).toThrow('Unsafe API path segment');
+      expect(() => endpointFilePath(path, 'get', 'flat')).toThrow('Unsafe API path segment');
+    }
     expect(() => endpointFilePath('/users', 'get', 'unknown' as any)).toThrow('Unsupported API docs mode');
     expect(() => endpointFilePath('/users', '../write' as any)).toThrow('Unsupported HTTP method');
   });

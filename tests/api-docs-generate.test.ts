@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateApiDocsFiles } from '../src';
@@ -20,6 +20,87 @@ describe('API docs endpoint generation', () => {
     await generateApiDocsFiles({ components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {}, info: { version: '1', title: 'Test' }, openapi: '3.1.0' }, { outputDir: reorderedDir, insertComponents: true });
     expect(JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')).source.sha256).toBe(JSON.parse(await readFile(join(reorderedDir, '.zopia-manifest.json'), 'utf8')).source.sha256);
     await expect(generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { 'A-B': { type: 'string' }, AB: { type: 'string' } } }, paths: {} }, { outputDir, insertComponents: true })).rejects.toThrow('Component export name collision');
+  });
+  it('writes collision-safe directory plans and computes component imports from planned files', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const response = (operationId: string) => ({
+      operationId,
+      responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } },
+    });
+    const files = await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Collision safe', version: '1' },
+      components: { schemas: { User: { type: 'object' } } },
+      paths: {
+        '/': { get: response('root') },
+        '/root': { get: response('literalRoot') },
+        '/users//{id}': { get: response('repeatedSlash') },
+        '/users/{id}': { get: response('singleSlash') },
+      },
+    }, { outputDir, insertComponents: true, useComponentAsReference: true });
+
+    const endpointFiles = files.map((file) => file.file).filter((file) => file.endsWith('/get/index.ts'));
+    expect(endpointFiles).toEqual([
+      'root/get/index.ts',
+      'root-2/get/index.ts',
+      'users/{id}/get/index.ts',
+      'users/{id}-2/get/index.ts',
+    ]);
+    expect(await readFile(join(outputDir, 'root', 'get', 'index.ts'), 'utf8')).toContain("from '../../components/index'");
+    expect(await readFile(join(outputDir, 'root-2', 'get', 'index.ts'), 'utf8')).toContain("from '../../components/index'");
+    expect(await readFile(join(outputDir, 'users', '{id}-2', 'get', 'index.ts'), 'utf8')).toContain("from '../../../components/index'");
+    const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
+    expect(new Set(manifest.apis.map((api: { file: string }) => api.file)).size).toBe(4);
+  });
+  it('disambiguates endpoint files that collide with component artifacts', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    const files = await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Component collision', version: '1' },
+      components: { schemas: { get: { type: 'string' } } },
+      paths: { '/components': { get: { operationId: 'getComponents', responses: { '200': { description: 'ok' } } } } },
+    }, { outputDir, insertComponents: true });
+
+    expect(files.map((file) => file.file)).toEqual([
+      'components/get/index.ts',
+      'components/index.ts',
+      'components-2/get/index.ts',
+      '.zopia-manifest.json',
+    ]);
+    const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
+    expect(manifest.components[0].file).toBe('components/get/index.ts');
+    expect(manifest.apis[0]).toMatchObject({ path: '/components', method: 'get', file: 'components-2/get/index.ts' });
+  });
+  it('rejects non-portable component directories even when manifests are disabled', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await expect(generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Portable components', version: '1' },
+      components: { schemas: { 'bad:name': { type: 'string' } } },
+      paths: {},
+    }, { outputDir, insertComponents: true, manifest: false })).rejects.toThrow('Unsafe component name: bad:name');
+    await expect(generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Portable components', version: '1' },
+      components: { schemas: { con: { type: 'string' } } },
+      paths: {},
+    }, { outputDir, insertComponents: true, manifest: false })).rejects.toThrow('Unsafe component name: con');
+    await expect(generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Portable components', version: '1' },
+      components: { schemas: { User: { type: 'string' }, user: { type: 'number' } } },
+      paths: {},
+    }, { outputDir, insertComponents: true, manifest: false })).rejects.toThrow('Component file name collision: User and user');
+  });
+  it('validates every endpoint render before writing component files', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await expect(generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Atomic validation', version: '1' },
+      components: { schemas: { User: { type: 'string' } } },
+      paths: { '/broken': { get: { responses: { '200': {} } } } },
+    }, { outputDir, insertComponents: true })).rejects.toThrow('Invalid response description: 200');
+    expect(await readdir(outputDir)).toEqual([]);
   });
   it('preserves original component directory names in generated imports', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -54,6 +135,27 @@ describe('API docs endpoint generation', () => {
     expect(component).not.toContain('LiteralOnlySchema');
     expect(endpoint).toContain('"default": UserSchema');
     expect(endpoint).not.toContain('LiteralOnlySchema');
+  });
+  it('resolves nested component pointers without inventing component imports', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Nested pointers', version: '1' },
+      components: { schemas: {
+        User: { type: 'object', properties: { name: { type: 'string', minLength: 2 } } },
+        UserName: { $ref: '#/components/schemas/User/properties/name' },
+      } },
+      paths: { '/name': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User/properties/name' } } } } } } } },
+    }, { outputDir, insertComponents: true, useComponentAsReference: true });
+
+    const endpoint = await readFile(join(outputDir, 'name', 'get', 'index.ts'), 'utf8');
+    const component = await readFile(join(outputDir, 'components', 'UserName', 'index.ts'), 'utf8');
+    expect(endpoint).not.toContain('UserPropertiesNameSchema');
+    expect(endpoint).toContain('z.string().min(2)');
+    expect(component).not.toContain('UserPropertiesNameSchema');
+    expect(component).toContain('z.string().min(2)');
+    const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
+    expect(manifest.apis[0].refs[0]).not.toHaveProperty('component');
   });
   it('renders deeply nested object references recursively', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));

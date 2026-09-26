@@ -1,4 +1,5 @@
 import { asZopiaError, ZopiaError } from '../errors';
+import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -126,8 +127,8 @@ async function importGeneratedModule(root: string, file: string, kind: 'endpoint
     try {
       const url = pathToFileURL(generatedFile);
       if (cacheBust) {
-        const metadata = await stat(generatedFile);
-        url.searchParams.set('zopia-reverse', `${metadata.mtimeMs}-${metadata.size}`);
+        const digest = createHash('sha256').update(await readFile(generatedFile)).digest('hex');
+        url.searchParams.set('zopia-reverse', digest);
       }
       const importUrl = url.href.replace(/%7B/gi, '{').replace(/%7D/gi, '}').replace(/%7E/gi, '~');
       generatedModule = await import(importUrl) as Record<string, unknown>;
@@ -195,7 +196,9 @@ async function importComponentSchemas(manifest: ZopiaManifest, root: string, mod
 function componentRefTarget(schema: unknown): string | undefined {
   if (!isRecord(schema) || typeof schema.$ref !== 'string') return undefined;
   const prefix = schema.$ref.startsWith('#/components/schemas/') ? '#/components/schemas/' : schema.$ref.startsWith('#/definitions/') ? '#/definitions/' : undefined;
-  return prefix ? decodeJsonPointerSegment(schema.$ref.slice(prefix.length), schema.$ref) : undefined;
+  if (!prefix) return undefined;
+  const suffix = schema.$ref.slice(prefix.length);
+  return suffix.includes('/') ? undefined : decodeJsonPointerSegment(suffix, schema.$ref);
 }
 
 function reverseVersion(options: ZopiaReverseOptions | undefined): '3.0' | '3.1' | undefined {

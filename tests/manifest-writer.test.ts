@@ -235,6 +235,7 @@ describe('dedicated manifest writer', () => {
       ['component file', (manifest) => { manifest.components[0].name = 'CON'; manifest.components[0].file = 'components/CON/index.ts'; }],
       ['API', (manifest) => { manifest.apis.push({ ...manifest.apis[0] }); }],
       ['file', (manifest) => { manifest.apis[0].file = '../escape.ts'; }],
+      ['case-insensitive file collision', (manifest) => { manifest.apis[0].file = manifest.components[0].file.toLowerCase(); }],
       ['ref target', (manifest) => { manifest.apis[0].refs[0].ref = 'external.json#/Thing'; }],
       ['ref pointer escape', (manifest) => { manifest.apis[0].refs[0].at = '/bad~2pointer'; }],
       ['schema overlay', (manifest) => { manifest.apis[0].overlay.push({ at: 'not-a-pointer', set: { type: 'string' } }); }],

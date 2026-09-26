@@ -7,6 +7,19 @@ describe('OpenAPI operation collection', () => {
     expect(result.map((item) => item.method)).toEqual(['get', 'delete', 'trace']);
     expect(result[0].operationId).toBe('getUsersId');
   });
+  it('disambiguates derived operation IDs while preserving explicit IDs', () => {
+    const derived = collectOpenApiOperations({
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/a-b': { get: {} }, '/a/b': { get: {} } },
+    });
+    expect(derived.map((operation) => operation.operationId)).toEqual(['getAB', 'getAB2']);
+
+    const explicit = collectOpenApiOperations({
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/a-b': { get: {} }, '/a/b': { get: { operationId: 'getAB' } } },
+    });
+    expect(explicit.map((operation) => operation.operationId)).toEqual(['getAB2', 'getAB']);
+  });
   it('lets operation parameters override path parameters', () => {
     const [result] = collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], get: { parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }] } } } });
     expect(result.parameters).toHaveLength(1);

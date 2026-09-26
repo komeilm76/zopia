@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
-import { mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -135,6 +135,31 @@ describe('manifest reverse conversion', () => {
     expect(operation.deprecated).toBe(false);
     expect(operation.security).toEqual([]);
     expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
+  });
+  it('reloads edited endpoint content even when file size and timestamps are unchanged', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-cache-'));
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Cache', version: '1' },
+      paths: { '/status': { get: { responses: { '200': { description: 'ok' } } } } },
+    }, { outputDir });
+    const endpointFile = join(outputDir, 'status', 'get', 'index.ts');
+    const manifestFile = join(outputDir, '.zopia-manifest.json');
+    const fixedTime = new Date('2020-01-02T03:04:05.000Z');
+    await utimes(endpointFile, fixedTime, fixedTime);
+
+    const before = await manifestFileToOpenApi(manifestFile) as any;
+    expect(before.paths['/status'].get).toBeDefined();
+
+    const generated = await readFile(endpointFile, 'utf8');
+    const edited = generated.replace('method: "GET"', 'method: "PUT"');
+    expect(edited).toHaveLength(generated.length);
+    await writeFile(endpointFile, edited, 'utf8');
+    await utimes(endpointFile, fixedTime, fixedTime);
+
+    const after = await manifestFileToOpenApi(manifestFile) as any;
+    expect(after.paths['/status'].get).toBeUndefined();
+    expect(after.paths['/status'].put).toBeDefined();
   });
   it('keeps manifest security authoritative when runtime auth conflicts', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-security-'));

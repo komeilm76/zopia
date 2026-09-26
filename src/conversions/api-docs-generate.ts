@@ -4,8 +4,8 @@ import { asZopiaError, ZopiaError } from '../errors';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { extractOperationContracts } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
-import { planApiDocsFiles } from './api-docs-plan';
-import type { ApiDocsMode } from './api-docs-layout';
+import { planApiDocsFiles, type ApiDocsFilePlan } from './api-docs-plan';
+import { isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
 import { createZopiaManifest, hashOpenApiDocument, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { inspectZopiaManifestStaleness, removeObsoleteManifestFiles } from './manifest-staleness';
@@ -36,10 +36,14 @@ export interface GenerateApiDocsOptions {
   manifest?: boolean;
 }
 
-function componentTarget(ref: unknown): string | undefined {
+function componentReferenceSuffix(ref: unknown): string | undefined {
   if (typeof ref !== 'string') return undefined;
   const prefix = ref.startsWith('#/components/schemas/') ? '#/components/schemas/' : ref.startsWith('#/definitions/') ? '#/definitions/' : undefined;
-  return prefix ? decodeJsonPointerSegment(ref.slice(prefix.length), ref) : undefined;
+  return prefix ? ref.slice(prefix.length) : undefined;
+}
+function componentTarget(ref: unknown): string | undefined {
+  const suffix = componentReferenceSuffix(ref);
+  return suffix !== undefined && !suffix.includes('/') ? decodeJsonPointerSegment(suffix, String(ref)) : undefined;
 }
 function componentExport(ref: unknown): string | undefined {
   const target = componentTarget(ref); return target === undefined ? undefined : `${exportName(target)}Schema`;
@@ -61,6 +65,40 @@ function schemaCode(schema: unknown, name: string): string {
   const source = converted.code.trimEnd();
   const direct = source.match(new RegExp(`^const ${safeName.replace(/[$]/g, '\\$&')} = ([\\s\\S]*);$`));
   return direct ? direct[1] : `(() => { ${source} return ${safeName}; })()`;
+}
+
+function schemaCodeWithDocumentRefs(schema: unknown, name: string, source: OpenApiDocument): string {
+  const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
+  const schemaObject = schema && typeof schema === 'object' && !Array.isArray(schema) ? schema as Record<string, unknown> : undefined;
+  const ownDefinitions = schemaObject?.$defs && typeof schemaObject.$defs === 'object' && !Array.isArray(schemaObject.$defs) ? schemaObject.$defs as Record<string, unknown> : {};
+  let namespace = '__zopiaComponents';
+  while (Object.prototype.hasOwnProperty.call(ownDefinitions, namespace)) namespace += '_';
+  let found = false;
+  const normalizeRefs = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(normalizeRefs);
+    if (!value || typeof value !== 'object') return value;
+    const object = value as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(object).map(([key, child]) => {
+      if (key === '$ref') {
+        const suffix = componentReferenceSuffix(child);
+        if (suffix !== undefined) { found = true; return [key, `#/$defs/${namespace}/${suffix}`]; }
+      }
+      if (['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-')) return [key, child];
+      return [key, normalizeRefs(child)];
+    }));
+  };
+  const normalized = normalizeRefs(schema);
+  if (!found || !normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return schemaCode(normalized, name);
+  found = false;
+  const normalizedComponents = Object.fromEntries(Object.entries(schemas).map(([componentName, component]) => [componentName, normalizeRefs(component)]));
+  const normalizedOwnDefinitions = (normalized as Record<string, unknown>).$defs;
+  return schemaCode({
+    ...(normalized as Record<string, unknown>),
+    $defs: {
+      ...(normalizedOwnDefinitions && typeof normalizedOwnDefinitions === 'object' && !Array.isArray(normalizedOwnDefinitions) ? normalizedOwnDefinitions as Record<string, unknown> : {}),
+      [namespace]: normalizedComponents,
+    },
+  }, name);
 }
 
 function generatedWarningComments(schema: unknown, name: string): string {
@@ -221,7 +259,7 @@ function renderNestedSchema(value: unknown, name: string, imports: Map<string, s
     const additional = additionalValue && typeof additionalValue === 'object' ? `.catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, stack, source, root)})` : additionalValue === false ? '.strict()' : additionalValue === undefined || additionalValue === true ? '.passthrough()' : '';
     return objectConstraints(`z.object({ ${fields.join(', ')} })${additional}`, object);
   }
-  return schemaCode(value, name);
+  return source && componentReferenceSuffix(object?.$ref) !== undefined ? schemaCodeWithDocumentRefs(value, name, source) : schemaCode(value, name);
 }
 function renderComponent(name: string, schema: unknown, source: OpenApiDocument): string {
   const componentName = `${exportName(name)}Schema`;
@@ -249,10 +287,7 @@ function renderComponent(name: string, schema: unknown, source: OpenApiDocument)
     const expression = componentMetadata(objectConstraints(imports.has(componentName) ? `z.lazy(() => z.object({ ${fields} })${additional})` : `z.object({ ${fields} })${additional}`, schema as Record<string, unknown>), schema);
     return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\n${warningComments}export const ${componentName} = ${expression};\n\nexport default ${componentName};\n`;
   }
-  const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
-  const normalized = JSON.parse(JSON.stringify(schema, (_key, value) => typeof value === 'string' && (value.startsWith('#/components/schemas/') || value.startsWith('#/definitions/')) ? `#/$defs/${value.includes('/components/schemas/') ? value.slice('#/components/schemas/'.length) : value.slice('#/definitions/'.length)}` : value));
-  const componentInput = typeof normalized === 'boolean' || collectComponentRefs(schema).size === 0 ? normalized : { ...(normalized as any), $defs: schemas };
-  const converted = schemaCode(componentInput, componentName);
+  const converted = schemaCodeWithDocumentRefs(schema, componentName, source);
   return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n\nexport const ${exportName(name)}Schema = ${converted};\n\nexport default ${exportName(name)}Schema;\n`;
 }
 function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMode = 'directory', useComponents = false): string {
@@ -284,32 +319,11 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
         }
         return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, rewrite(child)]));
       };
-      let code = schemaCode(rewrite(schema), fallback);
+      let code = schemaCodeWithDocumentRefs(rewrite(schema), fallback, source);
       for (const [marker, component] of replacements) code = code.split(`z.literal(${JSON.stringify(marker)})`).join(component);
       return code;
     }
-    const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
-    const schemaObject = schema && typeof schema === 'object' && !Array.isArray(schema) ? schema as Record<string, unknown> : undefined;
-    const ownDefinitions = schemaObject?.$defs && typeof schemaObject.$defs === 'object' && !Array.isArray(schemaObject.$defs) ? schemaObject.$defs as Record<string, unknown> : {};
-    let namespace = '__zopiaComponents';
-    while (Object.prototype.hasOwnProperty.call(ownDefinitions, namespace)) namespace += '_';
-    const escapePointer = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1');
-    const normalizeRefs = (value: unknown): unknown => {
-      if (Array.isArray(value)) return value.map(normalizeRefs);
-      if (!value || typeof value !== 'object') return value;
-      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => {
-        if (key === '$ref') {
-          const target = componentTarget(child);
-          if (target !== undefined) return [key, `#/$defs/${namespace}/${escapePointer(target)}`];
-        }
-        return [key, normalizeRefs(child)];
-      }));
-    };
-    const normalized = normalizeRefs(schema);
-    if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return schemaCode(normalized, fallback);
-    if (collectComponentRefs(schema).size === 0) return schemaCode(normalized, fallback);
-    const normalizedComponents = Object.fromEntries(Object.entries(schemas).map(([name, component]) => [name, normalizeRefs(component)]));
-    return schemaCode({ ...(normalized as Record<string, unknown>), $defs: { ...ownDefinitions, [namespace]: normalizedComponents } }, fallback);
+    return schemaCodeWithDocumentRefs(schema, fallback, source);
   };
   const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `[${JSON.stringify(p.name)}]: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
   const rawRequestSchema = contracts.requestBody?.schema;
@@ -342,8 +356,36 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const tags = ir.tags;
   const auth = ir.security !== undefined && ir.security.length > 0 && ir.security.every((requirement) => Object.keys(requirement as Record<string, unknown>).length > 0) ? 'YES' : 'NO';
   const sourceName = JSON.stringify(`${source.info.title} v${source.info.version}`).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-  const componentImport = useComponents && componentRefs.size ? `\nimport { ${[...componentRefs].sort().join(', ')} } from '${'../'.repeat(mode === 'flat' ? 2 : operation.path.split('/').filter(Boolean).length + 1)}components/index';` : '';
+  const endpointDepth = typeof operation.file === 'string' ? operation.file.split('/').length - 1 : mode === 'flat' ? 2 : operation.path.split('/').filter(Boolean).length + 1;
+  const componentImport = useComponents && componentRefs.size ? `\nimport { ${[...componentRefs].sort().join(', ')} } from '${'../'.repeat(endpointDepth)}components/index';` : '';
   return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\nimport { makeApiConfig } from 'km-api';${componentImport}\n\nexport const ${exportId} = makeApiConfig({\n  method: ${JSON.stringify(operation.method.toUpperCase())},\n  pathShape: ${JSON.stringify(operation.path)},\n  operationId: ${JSON.stringify(opId)},\n  ${contracts.requestBody ? `requestContentType: ${kmApiContentType(contracts.requestBody.contentType, 'IRequestContentType')},` : ''}\n  ${responseContentType ? `responseContentType: ${kmApiContentType(responseContentType, 'IResponseContentType')},` : ''}\n  ${ir.deprecated ? "deprecated: 'YES'," : ''}\n  auth: ${JSON.stringify(auth)},\n  summary: ${JSON.stringify(operation.operation.summary ?? '')},\n  description: ${JSON.stringify(operation.operation.description ?? '')},\n  tags: ${JSON.stringify(tags)},\n  ${examples}\n  ${request},\n  response: { ${response} },\n});\n\nexport default ${exportId};\n// Source: ${sourceName}\n`;
+}
+
+function avoidReservedFileCollisions(plans: readonly ApiDocsFilePlan[], reservedFiles: Iterable<string>): ApiDocsFilePlan[] {
+  const used = new Set([...reservedFiles].map((file) => file.toLowerCase()));
+  const groups = new Map<string, ApiDocsFilePlan[]>();
+  for (const plan of plans) {
+    const group = groups.get(plan.path);
+    if (group) group.push(plan);
+    else groups.set(plan.path, [plan]);
+  }
+  const filesByPath = new Map<string, Map<string, string>>();
+  for (const [path, group] of groups) {
+    const baseSegments = group[0].file.split('/').slice(0, -2);
+    const baseLeaf = baseSegments.at(-1)!;
+    let suffix = 1;
+    let candidateSegments = baseSegments;
+    let candidateFiles: string[];
+    do {
+      candidateFiles = group.map((plan) => `${candidateSegments.join('/')}/${plan.method}/index.ts`);
+      if (!candidateFiles.some((file) => used.has(file.toLowerCase()))) break;
+      candidateSegments = [...baseSegments];
+      candidateSegments[candidateSegments.length - 1] = `${baseLeaf}-${++suffix}`;
+    } while (true);
+    filesByPath.set(path, new Map(group.map((plan, index) => [plan.method, candidateFiles[index]])));
+    for (const file of candidateFiles) used.add(file.toLowerCase());
+  }
+  return plans.map((plan) => ({ ...plan, file: filesByPath.get(plan.path)!.get(plan.method)! }));
 }
 
 /**
@@ -378,7 +420,11 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   const insertComponents = options.insertComponents === true;
   const useComponentAsReference = options.useComponentAsReference === true;
   const retainManifest = options.manifest !== false;
-  const plans = planApiDocsFiles(source, mode);
+  const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
+  const componentNames = insertComponents ? Object.keys(schemas).sort() : [];
+  const reservedFiles = componentNames.map((name) => `components/${name}/index.ts`);
+  if (insertComponents) reservedFiles.push('components/index.ts');
+  const plans = avoidReservedFileCollisions(planApiDocsFiles(source, mode), reservedFiles);
   const previous = await inspectZopiaManifestStaleness(options.outputDir, {
     sourceSha256: hashOpenApiDocument(source),
     mode,
@@ -393,19 +439,22 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   }) : undefined;
   const root = resolve(options.outputDir);
   const previouslyOwned = new Set(previous.ownedFiles);
+  const renderedEndpoints = plans.map((plan) => ({ plan, content: renderEndpoint(plan, source, mode, useComponentAsReference) }));
   const generated: GeneratedApiDocsFile[] = [];
   if (insertComponents) {
-    const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
-    const names = Object.keys(schemas).sort();
     const componentExports = new Map<string, string>();
-    for (const name of names) {
+    const componentDirectories = new Map<string, string>();
+    for (const name of componentNames) {
+      const existingDirectory = componentDirectories.get(name.toLowerCase());
+      if (existingDirectory) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component file name collision: ${existingDirectory} and ${name}`);
+      componentDirectories.set(name.toLowerCase(), name);
       const componentExport = `${exportName(name)}Schema`;
       const previous = componentExports.get(componentExport);
       if (previous) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component export name collision: ${previous} and ${name}`);
       componentExports.set(componentExport, name);
     }
-    const renderedComponents = names.map((name) => {
-      if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || name.includes('\0')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsafe component name: ${name}`);
+    const renderedComponents = componentNames.map((name) => {
+      if (name.includes('/') || !isPortableApiDocsSegment(name)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsafe component name: ${name}`);
       return { name, content: renderComponent(name, schemas[name], source) };
     });
     for (const { name, content } of renderedComponents) {
@@ -413,13 +462,13 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
       const absolutePath = await writeGeneratedFile(root, file, content, previouslyOwned);
       generated.push({ file, absolutePath, operationId: name });
     }
-    const barrel = names.map((name) => `export { ${exportName(name)}Schema } from ${JSON.stringify(`./${name}/index`)};`).join('\n') + (names.length ? '\n' : '');
+    const barrel = componentNames.map((name) => `export { ${exportName(name)}Schema } from ${JSON.stringify(`./${name}/index`)};`).join('\n') + (componentNames.length ? '\n' : '');
     const barrelFile = 'components/index.ts';
     const barrelPath = await writeGeneratedFile(root, barrelFile, barrel, previouslyOwned);
     generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: 'components' });
   }
-  for (const plan of plans) {
-    const absolutePath = await writeGeneratedFile(root, plan.file, renderEndpoint(plan, source, mode, useComponentAsReference), previouslyOwned);
+  for (const { plan, content } of renderedEndpoints) {
+    const absolutePath = await writeGeneratedFile(root, plan.file, content, previouslyOwned);
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
   }
   if (manifest) {

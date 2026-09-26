@@ -6,6 +6,7 @@ import { jsonSchemaToZod, type JsonSchemaOverlay } from './json-schema-to-zod';
 import type { ApiDocsMode } from './api-docs-layout';
 import type { ApiDocsFilePlan } from './api-docs-plan';
 import type { OpenApiDocument } from './openapi';
+import { decodeJsonPointerSegment } from './openapi-ref';
 
 /** Versioned schema identifier written into every zopia manifest. */
 export const ZOPIA_MANIFEST_SCHEMA = 'zopia:manifest@1' as const;
@@ -286,8 +287,9 @@ function componentName(ref: string): string | undefined {
   const prefix = ref.startsWith('#/components/schemas/') ? '#/components/schemas/' : ref.startsWith('#/definitions/') ? '#/definitions/' : undefined;
   if (!prefix) return undefined;
   const encoded = ref.slice(prefix.length);
-  if (/~(?![01])/.test(encoded)) return undefined;
-  return encoded.replace(/~1/g, '/').replace(/~0/g, '~');
+  if (encoded.includes('/')) return undefined;
+  try { return decodeJsonPointerSegment(encoded, ref); }
+  catch { return undefined; }
 }
 
 const STRUCTURAL_MAP_KEYS = new Set(['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'responses', 'content', 'headers', 'links', 'encoding', 'callbacks']);
@@ -530,8 +532,9 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
     const expectedFile = manifest.options.insertComponents ? `components/${component.name}/index.ts` : null;
     if ((manifest.options.insertComponents && component.name.includes('/')) || component.file !== expectedFile || (component.file !== null && !isPortableManifestPath(component.file))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest component file: ${String(component.file)}`);
     if (component.file !== null) {
-      if (files.has(component.file)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${component.file}`);
-      files.add(component.file);
+      const fileKey = component.file.toLowerCase();
+      if (files.has(fileKey)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${component.file}`);
+      files.add(fileKey);
     }
     if (!Array.isArray(component.overlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest component overlay: ${component.name}`);
     for (const overlay of component.overlay) validateSchemaOverlay(overlay, `component overlay: ${component.name}`);
@@ -546,8 +549,9 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
     const operation = `${api.method}\0${api.path}`;
     if (operations.has(operation)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest API: ${api.method.toUpperCase()} ${api.path}`);
     operations.add(operation);
-    if (files.has(api.file)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${api.file}`);
-    files.add(api.file);
+    const fileKey = api.file.toLowerCase();
+    if (files.has(fileKey)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${api.file}`);
+    files.add(fileKey);
     if (!isRecord(api.sourceOperation) || !Array.isArray(api.refs) || !Array.isArray(api.overlay) || !Array.isArray(api.responseOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest API metadata: ${api.file}`);
     if (Object.prototype.hasOwnProperty.call(api, 'security')) validateSecurityRequirements(api.security, `API security: ${api.file}`);
     for (const ref of api.refs) {

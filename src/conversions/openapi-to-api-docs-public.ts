@@ -86,7 +86,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
 async function readInput(input: string | Record<string, unknown>): Promise<OpenApiDocument> {
   if (input && typeof input === 'object' && !Array.isArray(input)) return input;
   if (typeof input !== 'string' || input.trim() === '') {
-    throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', 'input must be a JSON object, JSON text, or .json file path', { hint: 'pass a Swagger/OpenAPI JSON object or file' });
+    throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a JSON object, JSON text, or .json file path', { at: '#', hint: 'pass a Swagger/OpenAPI JSON object or file' });
   }
   let text = input;
   const trimmed = input.trimStart();
@@ -96,13 +96,13 @@ async function readInput(input: string | Record<string, unknown>): Promise<OpenA
       throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `unable to read JSON input: ${input}`, { at: input, hint: 'check that the JSON file exists and is readable', cause: error });
     }
   }
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a JSON object');
-    return parsed as OpenApiDocument;
-  } catch (error) {
+  let parsed: unknown;
+  try { parsed = JSON.parse(text) as unknown; }
+  catch (error) {
     throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `invalid JSON: ${error instanceof Error ? error.message : String(error)}`, { at: typeof input === 'string' && text !== input ? input : undefined, hint: 'fix the JSON syntax', cause: error });
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a JSON object', { at: '#', hint: 'provide a Swagger/OpenAPI document object' });
+  return parsed as OpenApiDocument;
 }
 
 function normalizePublic(document: OpenApiDocument): OpenApiDocument {
@@ -342,9 +342,13 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
     throw mapGenerationError(error);
   }
 
+  const componentSchemas = document.swagger === '2.0' ? document.definitions ?? {} : document.components?.schemas ?? {};
+  const componentFiles = new Set(config.insertComponents
+    ? ['components/index.ts', ...Object.keys(componentSchemas).map((name) => `components/${name}/index.ts`)]
+    : []);
   const files: ZopiaGeneratedFile[] = generated.map(({ file }): ZopiaGeneratedFile => ({
     path: file,
-    kind: file === ZOPIA_MANIFEST_FILE ? 'manifest' : file.startsWith('components/') ? 'component' : 'endpoint',
+    kind: file === ZOPIA_MANIFEST_FILE ? 'manifest' : componentFiles.has(file) ? 'component' : 'endpoint',
   })).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const warningCollector = new ZopiaWarningCollector(); warningCollector.addAll(warnings);
   return { files, warnings: warningCollector.toArray(), ...(config.manifest ? { manifestPath: ZOPIA_MANIFEST_FILE } : {}) };

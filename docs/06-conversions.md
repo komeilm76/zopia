@@ -140,8 +140,8 @@ and boolean inputs stay entirely in memory.
 | `{ "type": "boolean" }` | `z.boolean()` | R-621 |
 | `{ "type": "null" }` | `z.null()` | R-621 |
 | `{ "type": "array", "items": S }` | `z.array(⟦S⟧)` | R-622 |
-| `{ "type": "array", "items": [A, B] }` *(tuple, draft-04/07)* | `z.tuple([⟦A⟧, ⟦B⟧])` | R-622 |
-| `{ "type": "array", "prefixItems": [A, B] }` *(2020-12 tuple)* | `z.tuple([⟦A⟧, ⟦B⟧])` | R-622 |
+| `{ "type": "array", "items": [A, B] }` *(tuple, draft-04/07)* | `z.tuple([⟦A⟧.optional(), ⟦B⟧.optional()])`; `minItems` makes the corresponding leading positions required | R-622 |
+| `{ "type": "array", "prefixItems": [A, B] }` *(2020-12 tuple)* | `z.tuple([⟦A⟧.optional(), ⟦B⟧.optional()])`; `minItems` makes the corresponding leading positions required | R-622 |
 | `{ "type": "object", "properties": P, "required": R }` | `z.object({…})` — keys in `R` plain, others `.optional()` | R-623 |
 | `{}` or annotations without `type` | `z.any()` | R-624 |
 | object-, array-, string-, or numeric-only keywords without `type` | intersection of applicable-type unions: each constrained matching type plus unconstrained non-matching JSON types, preserving JSON Schema keyword applicability; frozen overlay restores the original keyword-only shape | R-624, R-635 |
@@ -164,7 +164,7 @@ and boolean inputs stay entirely in memory.
 | `{ "pattern": p }` | `.regex(new RegExp(p))` | R-628 |
 | `{ "contentEncoding": "base64" \| "base64url" \| "hex" }` | corresponding native/pattern string check; overlay restores the exact encoding keyword. Other encodings and `contentMediaType` retain base validation, warn, and are preserved by overlays | R-634, R-635 |
 | `{ "multipleOf": n }` | `.multipleOf(n)` | R-628 |
-| `{ "minItems": n }` / `{ "maxItems": n }` | array `.min(n)` / `.max(n)` | R-628 |
+| `{ "minItems": n }` / `{ "maxItems": n }` | homogeneous array `.min(n)` / `.max(n)`; tuple length refinements (with leading tuple positions required by `minItems`) | R-628 |
 | `{ "uniqueItems": true }` | exact JSON-value equality refinement + **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + overlay `set: { "uniqueItems": true }` (Zod cannot serialize the refinement keyword, so reverse restores it verbatim) | D-12 |
 | `{ "default": v }` (on optional) | `.default(v)` | R-629 |
 | `{ "required": [...] }` | keys listed are non-optional | R-623 |
@@ -182,10 +182,10 @@ and boolean inputs stay entirely in memory.
 | `{ "not": S }` | refinement rejecting values accepted by `S` + warning `ZOPIA_WARN_NOT` + overlay `node` (Zod cannot serialize `not`, so the original subtree is restored verbatim) | D-12 |
 | `{ "$schema": … } / { "$id": … } / { "$comment": … }` | no Zod runtime effect; preserved verbatim by an overlay `set` entry | R-636 |
 | `{ "title": t }` / `{ "description": d }` / `{ "example": v }` / `{ "examples": […] }` | a single `.meta({ title?, description?, examples? })` call on the schema (only the fields present) — verified copied verbatim back by ① (R-612), plus a JSDoc comment for human readers. `example` (single) is normalized to `examples: [v]` | R-633 |
-| `{ "$ref": "#/…/schemas/X" }` | engine ② resolves local definitions through its `$defs` closure; engine ③ default mode embeds the needed component definitions in each schema expression, while reference mode imports `XSchema` | R-402/R-403/R-634 |
+| `{ "$ref": "#/…/schemas/X" }` | engine ② resolves local definitions (including percent-encoded URI-fragment segments) through its `$defs` closure and intersects sibling constraints; engine ③ default mode embeds needed component definitions, reference mode imports direct `XSchema` targets, and nested component pointers are embedded rather than misclassified as component names | R-402/R-403/R-634 |
 | `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order | R-634 |
 | `{ "if": I, "then": T, "else": E }` | base schema plus a refinement that validates `T` when `I` succeeds and `E` otherwise; boolean branches and exact keyword-only applicability are supported, while malformed/detached branches warn | R-632 |
-| `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | ⚠️ nearest approximation (`z.record(z.string(), z.unknown())` where sensible) + warnings + overlay `node` for the unsupported keywords | D-12 |
+| `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | runtime refinements apply each matching pattern/property/count/containment constraint; `additionalProperties` applies only to keys unmatched by declared properties and patterns; warning + overlay `node` restores the original unsupported structure | D-12 |
 
 > ⟦S⟧ = "the Zod code of the sub-schema S" (recursion).
 

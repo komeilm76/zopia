@@ -60,7 +60,7 @@ function parameterIdentity(parameter: Record<string, any>, document: OpenApiDocu
  * @throws {@link ZopiaError} when the source, references, or operations are invalid.
  */
 export function collectOpenApiOperations(input: OpenApiDocument | string): OpenApiOperation[] {
-  const { document } = normalizeOpenApiDocument(input); const operations: OpenApiOperation[] = []; const ids = new Set<string>();
+  const { document } = normalizeOpenApiDocument(input); const operations: OpenApiOperation[] = []; const ids = new Set<string>(); const owners = new Map<string, OpenApiOperation>();
   for (const path of Object.keys(document.paths)) {
     if (path.startsWith('x-')) continue;
     const item = document.paths[path];
@@ -101,10 +101,24 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
         if (index >= 0) mergedParameters[index] = parameter;
         else { mergedParameters.push(parameter); mergedIdentities.push(identity); }
       }
-      const operationId = operation.operationId ?? deriveOperationId(path, method);
-      if (ids.has(operationId)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId: ${operationId}`);
-      ids.add(operationId);
-      operations.push({ path, method, operation, operationId, parameters: mergedParameters });
+      let operationId: string;
+      if (operation.operationId !== undefined) {
+        operationId = operation.operationId;
+        const previous = owners.get(operationId);
+        if (previous) {
+          if (previous.operation.operationId !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId: ${operationId}`);
+          let replacement = previous.operationId; let suffix = 1;
+          while (ids.has(replacement)) replacement = `${operationId}${++suffix}`;
+          ids.delete(previous.operationId); owners.delete(previous.operationId);
+          previous.operationId = replacement; ids.add(replacement); owners.set(replacement, previous);
+        }
+      } else {
+        const base = deriveOperationId(path, method);
+        operationId = base; let suffix = 1;
+        while (ids.has(operationId)) operationId = `${base}${++suffix}`;
+      }
+      const collected = { path, method, operation, operationId, parameters: mergedParameters };
+      ids.add(operationId); owners.set(operationId, collected); operations.push(collected);
     }
   }
   return operations;

@@ -35,8 +35,9 @@ export interface ZopiaWarning {
   message: string;
 }
 
-const cleanText = (value: string): string => value.replace(/[\r\n\u2028\u2029]+/g, ' ').trim();
-const warningKey = (warning: ZopiaWarning): string => `${warning.at ?? ''}\0${warning.code}\0${warning.message}`;
+const cleanText = (value: string): string => value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').trim();
+const displayLocation = (value: string): string => value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+const warningKey = (warning: ZopiaWarning): string => JSON.stringify([warning.at ?? null, warning.code, warning.message]);
 
 function normalizeWarning(warning: ZopiaWarning): ZopiaWarning {
   if (!warning || typeof warning !== 'object' || Array.isArray(warning)) throw new ZopiaError('ZOPIA_WARNING_INVALID', 'warning must be an object', { at: 'warning' });
@@ -94,7 +95,7 @@ export function rebaseZopiaWarning(warning: ZopiaWarning, base: string): ZopiaWa
  */
 export function formatZopiaWarning(warning: ZopiaWarning): string {
   const value = normalizeWarning(warning);
-  return `${value.code}${value.at ? ` ${value.at}` : ''}: ${value.message}`;
+  return `${value.code}${value.at ? ` ${displayLocation(value.at)}` : ''}: ${value.message}`;
 }
 
 /**
@@ -109,7 +110,7 @@ export function formatZopiaWarningComment(warning: ZopiaWarning, subject: string
   const value = normalizeWarning(warning);
   if (typeof subject !== 'string') throw new ZopiaError('ZOPIA_WARNING_INVALID', 'warning subject must be a string', { at: 'subject' });
   const label = cleanText(subject) || 'schema';
-  return `// @zopia:warn ${value.code} ${label} — ${value.message}${value.at ? ` (${value.at})` : ''}`;
+  return `// @zopia:warn ${value.code} ${label} — ${value.message}${value.at ? ` (${displayLocation(value.at)})` : ''}`;
 }
 
 /** Deterministic warning accumulator shared by public engine wrappers. */

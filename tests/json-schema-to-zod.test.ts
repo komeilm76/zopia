@@ -2,6 +2,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { jsonSchemaToZod, zodToJsonSchema } from '../src';
 
 describe('jsonSchemaToZod', () => {
@@ -58,9 +59,43 @@ describe('jsonSchemaToZod', () => {
   });
   it('supports pattern properties and property count constraints', () => {
     const result = jsonSchemaToZod({ type: 'object', patternProperties: { '^x-': { type: 'string' } }, minProperties: 1, maxProperties: 2 });
-    expect(result.code).toContain('.catchall(z.string())');
+    expect(result.schema.safeParse({ 'x-name': 'valid' }).success).toBe(true);
+    expect(result.schema.safeParse({ 'x-name': 1 }).success).toBe(false);
+    expect(result.schema.safeParse({ unmatched: 1 }).success).toBe(true);
+    expect(result.code).toContain('new RegExp("^x-")');
     expect(result.code).toContain('Object.keys(value).length >= 1');
     expect(result.code).toContain('Object.keys(value).length <= 2');
+  });
+  it('applies every matching pattern schema and additionalProperties only to unmatched keys', () => {
+    const result = jsonSchemaToZod({
+      type: 'object',
+      properties: { fixed: { type: 'number' } },
+      patternProperties: {
+        '^x-': { type: 'string', minLength: 2 },
+        '-id$': { type: 'string', pattern: '^[a-z]+$' },
+      },
+      additionalProperties: { type: 'boolean' },
+    });
+
+    expect(result.schema.safeParse({ fixed: 1, 'x-name': 'ok', other: true }).success).toBe(true);
+    expect(result.schema.safeParse({ fixed: 1, 'x-name': 'x' }).success).toBe(false);
+    expect(result.schema.safeParse({ fixed: 1, 'x-id': '12' }).success).toBe(false);
+    expect(result.schema.safeParse({ fixed: 1, other: 1 }).success).toBe(false);
+    expect(result.schema.safeParse({ fixed: 1 }).success).toBe(true);
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+    expect(generated.safeParse({ fixed: 1, 'x-id': '12' }).success).toBe(false);
+    expect(generated.safeParse({ fixed: 1, other: true }).success).toBe(true);
+  });
+  it('permits pattern-matched keys while rejecting unmatched additional properties', () => {
+    const result = jsonSchemaToZod({
+      type: 'object',
+      patternProperties: { '^x-': { type: 'number' } },
+      additionalProperties: false,
+    });
+
+    expect(result.schema.safeParse({ 'x-count': 1 }).success).toBe(true);
+    expect(result.schema.safeParse({ 'x-count': '1' }).success).toBe(false);
+    expect(result.schema.safeParse({ other: 1 }).success).toBe(false);
   });
   it('supports property name patterns', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '^[a-z]+$' } });
@@ -281,17 +316,45 @@ describe('jsonSchemaToZod', () => {
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'default' })).toThrow('Invalid rootName');
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'arguments' })).toThrow('Invalid rootName');
   });
-  it('converts tuple arrays', () => {
+  it('converts tuple arrays without requiring optional prefix positions', () => {
     const result = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }] });
+    expect(result.schema.safeParse([]).success).toBe(true);
+    expect(result.schema.safeParse(['x']).success).toBe(true);
     expect(result.schema.safeParse(['x', 1]).success).toBe(true);
     expect(result.schema.safeParse([1, 'x']).success).toBe(false);
     expect(result.warnings).toEqual([]);
     expect(result.schema.safeParse(['x', 1, true]).success).toBe(true);
+    expect(result.code).toContain('z.string().optional(), z.number().optional()');
     const closed = jsonSchemaToZod({ type: 'array', items: [{ type: 'string' }], additionalItems: false });
+    expect(closed.schema.safeParse([]).success).toBe(true);
     expect(closed.schema.safeParse(['x', 1]).success).toBe(false);
+  });
+  it('enforces tuple minItems and maxItems without unsupported Zod tuple methods', () => {
+    const result = jsonSchemaToZod({
+      type: 'array',
+      prefixItems: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }],
+      minItems: 1,
+      maxItems: 2,
+    });
+
+    expect(result.schema.safeParse([]).success).toBe(false);
+    expect(result.schema.safeParse(['x']).success).toBe(true);
+    expect(result.schema.safeParse(['x', 1]).success).toBe(true);
+    expect(result.schema.safeParse(['x', 1, true]).success).toBe(false);
+    expect(result.warnings.map((warning) => warning.message)).not.toContain('Unsupported constraint: minItems');
+    expect(result.warnings.map((warning) => warning.message)).not.toContain('Unsupported constraint: maxItems');
+    expect(result.overlays).toEqual([{ at: '', set: { minItems: 1, maxItems: 2 } }]);
+    expect(result.code).toContain('z.tuple([z.string(), z.number().optional(), z.boolean().optional()])');
+    expect(result.code).toContain('items.length >= 1');
+    expect(result.code).toContain('items.length <= 2');
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+    expect(generated.safeParse([]).success).toBe(false);
+    expect(generated.safeParse(['x', 1]).success).toBe(true);
+    expect(generated.safeParse(['x', 1, true]).success).toBe(false);
   });
   it('preserves empty tuples and false tuple rest schemas', () => {
     const closedPrefix = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }], unevaluatedItems: false });
+    expect(closedPrefix.schema.safeParse([]).success).toBe(true);
     expect(closedPrefix.schema.safeParse(['x']).success).toBe(true);
     expect(closedPrefix.schema.safeParse(['x', 1]).success).toBe(false);
 
@@ -327,6 +390,22 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({}).success).toBe(false);
     expect(result.schema.safeParse({ id: 1 }).success).toBe(true);
   });
+  it('applies additional and pattern schemas to required keys without property declarations', () => {
+    const impossible = jsonSchemaToZod({ type: 'object', required: ['id'], additionalProperties: false });
+    expect(impossible.schema.safeParse({}).success).toBe(false);
+    expect(impossible.schema.safeParse({ id: 1 }).success).toBe(false);
+
+    const typed = jsonSchemaToZod({ type: 'object', required: ['id'], additionalProperties: { type: 'string' } });
+    expect(typed.schema.safeParse({ id: 'ok' }).success).toBe(true);
+    expect(typed.schema.safeParse({ id: 1 }).success).toBe(false);
+    const generated = new Function('z', `${typed.code}\nreturn schema;`)(z);
+    expect(generated.safeParse({ id: 'ok' }).success).toBe(true);
+    expect(generated.safeParse({ id: 1 }).success).toBe(false);
+
+    const patterned = jsonSchemaToZod({ type: 'object', required: ['x-id'], patternProperties: { '^x-': { type: 'number' } }, additionalProperties: false });
+    expect(patterned.schema.safeParse({ 'x-id': 1 }).success).toBe(true);
+    expect(patterned.schema.safeParse({ 'x-id': 'bad' }).success).toBe(false);
+  });
   it('preserves additionalProperties behavior', () => {
     const defaultOpen = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'number' } } });
     expect(defaultOpen.schema.safeParse({ extra: true }).success).toBe(true);
@@ -351,6 +430,39 @@ describe('jsonSchemaToZod', () => {
     expect(recursive.warnings).toEqual([]);
     expect(recursive.code).toContain('["next"]: z.lazy(() => node).optional()');
     expect(recursive.schema.safeParse({ next: { next: {} } }).success).toBe(true);
+  });
+  it('resolves percent-encoded local JSON Schema references', () => {
+    const result = jsonSchemaToZod({
+      $defs: { 'User Profile': { type: 'string', minLength: 2 } },
+      $ref: '#/$defs/User%20Profile',
+    });
+
+    expect(result.schema.safeParse('ok').success).toBe(true);
+    expect(result.schema.safeParse('x').success).toBe(false);
+    expect(result.warnings).toEqual([]);
+  });
+  it('intersects siblings of arbitrary local references instead of overriding referenced constraints', () => {
+    const result = jsonSchemaToZod({
+      $defs: {
+        Holder: {
+          type: 'object',
+          properties: { value: { type: 'string', minLength: 5 } },
+        },
+      },
+      $ref: '#/$defs/Holder/properties/value',
+      minLength: 2,
+    });
+
+    expect(result.schema.safeParse('ab').success).toBe(false);
+    expect(result.schema.safeParse('abcde').success).toBe(true);
+    expect(result.code).toContain('z.string().min(5).and(');
+    const incompatible = jsonSchemaToZod({
+      $defs: { Holder: { type: 'object', properties: { value: { type: 'string' } } } },
+      $ref: '#/$defs/Holder/properties/value',
+      type: 'number',
+    });
+    expect(incompatible.schema.safeParse('text').success).toBe(false);
+    expect(incompatible.schema.safeParse(1).success).toBe(false);
   });
   it('rejects all items when items is false', () => {
     const result = jsonSchemaToZod({ type: 'array', items: false });

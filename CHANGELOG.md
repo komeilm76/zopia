@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔄 Changed
 - 📚 Synchronized current documentation with the completed Phase 1 implementation: status labels, actual source/test layout and pipeline boundaries, generated golden examples, facade/component-reuse behavior, dependency wording, and safety/performance claims now match the repository; added a contract test for documentation links, completion state, concrete paths, and canonical output drift.
 
+### 🐛 Fixed
+- 🐛 Corrected Engine ② tuple semantics so prefix positions are optional unless required by `minItems`, tuple `minItems`/`maxItems` are enforced with valid refinements, every matching `patternProperties` schema is applied, unmatched and required-but-undeclared keys follow `additionalProperties`, and arbitrary local `$ref` siblings intersect instead of overwriting referenced constraints.
+- 🐛 Made endpoint planning collision-safe for repeated slashes, root-like paths, case-only path differences, component artifact conflicts, and colliding derived operation IDs; explicit operation IDs remain authoritative, root endpoint component imports now use their actual planned depth, and generated paths/components are rejected when they are not portable across supported filesystems.
+- 🐛 Local references now decode URI-fragment percent escapes and distinguish direct components from nested component pointers; nested pointers are inlined without inventing nonexistent component imports.
+- 🐛 File-backed reverse conversion now keys module refreshes by generated-file content, so same-size edits with restored timestamps are not hidden by the runtime module cache.
+- 🐛 Engine ③ now validates all endpoint renders before writing component artifacts, classifies endpoint files beneath an OpenAPI `/components` path as endpoints rather than mistaking every `components/` prefix for a generated schema artifact, and reports syntactically valid non-object JSON as `ZOPIA_SPEC_INVALID` instead of invalid JSON.
+
+### 🛡️ Security
+- 🛡️ Warning deduplication now uses collision-free structured identities, and formatted diagnostics/comments escape control characters in locations while sanitizing control characters in messages.
+- 🛡️ Manifest file ownership now detects case-insensitive path collisions before trees are written on case-sensitive hosts.
+
 ## [0.1.0] - 2026-09-27
 
 ### ✨ Added

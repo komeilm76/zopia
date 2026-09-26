@@ -46,6 +46,21 @@ describe('openApiToApiDocs public API', () => {
     expect(result.manifestPath).toBeUndefined();
   });
 
+  it('classifies endpoint files under a components path as endpoints', async () => {
+    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const result = await openApiToApiDocs({
+      ...minimal({ '/components/users': { get: { responses: { '200': { description: 'ok' } } } } }),
+      components: { schemas: { User: { type: 'string' } } },
+    }, { outDir, insertComponents: true });
+
+    expect(result.files).toContainEqual({ path: 'components/users/get/index.ts', kind: 'endpoint' });
+    expect(result.files).toContainEqual({ path: 'components/User/index.ts', kind: 'component' });
+
+    const withoutComponents = await openApiToApiDocs(minimal({
+      '/components': { get: { responses: { '200': { description: 'ok' } } } },
+    }), { outDir: await mkdtemp(join(tmpdir(), 'zopia-public-')), manifest: false });
+    expect(withoutComponents.files).toEqual([{ path: 'components/get/index.ts', kind: 'endpoint' }]);
+  });
   it('uses application/json as the primary content regardless of document order', async () => {
     const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
     const result = await openApiToApiDocs(minimal({
@@ -118,6 +133,8 @@ describe('openApiToApiDocs public API', () => {
     await writeFile(malformed, '{', 'utf8');
 
     await expect(openApiToApiDocs(malformed, { outDir: join(directory, 'one') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_INVALID_JSON' });
+    await expect(openApiToApiDocs('[]', { outDir: join(directory, 'array') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_INVALID', at: '#' });
+    await expect(openApiToApiDocs(null as any, { outDir: join(directory, 'null') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_INVALID', at: '#' });
     await expect(openApiToApiDocs({ info: { title: 'x', version: '1' }, paths: {} }, { outDir: join(directory, 'two') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_UNSUPPORTED_VERSION' });
     await expect(openApiToApiDocs({ openapi: '3.1.0', info: { title: 'x', version: '1' } }, { outDir: join(directory, 'three') })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_MISSING_PATHS', at: '#/paths' });
     await expect(openApiToApiDocs(minimal(), { outDir: join(directory, 'four'), useComponentAsReference: true })).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID', hint: 'enable `insertComponents` first' });

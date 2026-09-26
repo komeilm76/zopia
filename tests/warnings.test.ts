@@ -27,6 +27,19 @@ describe('warnings pipeline', () => {
     expect(() => normalizeZopiaWarnings([{ code: 'ZOPIA_WARN_UNKNOWN', message: 'bad' } as any])).toThrow('Unknown zopia warning code');
   });
 
+  it('does not collapse delimiter-like warnings and keeps formatted diagnostics on one safe line', () => {
+    const warnings = normalizeZopiaWarnings([
+      { code: 'ZOPIA_WARN_WEBHOOKS', at: '#', message: 'x\0ZOPIA_WARN_CUSTOM_FORMAT\0m' },
+      { code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#\0ZOPIA_WARN_WEBHOOKS\0x', message: 'm' },
+    ]);
+
+    expect(warnings).toHaveLength(2);
+    expect(warnings).toContainEqual({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#', message: 'x ZOPIA_WARN_CUSTOM_FORMAT m' });
+    const unsafe = { code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/line\n\u001bname', message: 'bad\u001b\tmessage' } as const;
+    expect(formatZopiaWarning(unsafe)).toBe('ZOPIA_WARN_CUSTOM_FORMAT #/line\\u000a\\u001bname: bad message');
+    expect(formatZopiaWarningComment(unsafe, 'subject\nline')).toBe('// @zopia:warn ZOPIA_WARN_CUSTOM_FORMAT subject line — bad message (#/line\\u000a\\u001bname)');
+  });
+
   it('source-locates dynamic warnings in nested JSON Schema children without suppressing siblings', () => {
     const result = jsonSchemaToZod({
       type: 'object',

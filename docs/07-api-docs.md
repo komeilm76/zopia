@@ -303,8 +303,8 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 | 🧩 Thing | 📏 Convention | Example |
 | --- | --- | --- |
 | Endpoint export (with `operationId`) | `operationId` camelCased | `getUser` |
-| Endpoint export (derived) | `method + PascalCase(segments)` — braces stripped | `getAdminUsersId` |
-| Directory-mode directories | path segments verbatim (braces preserved) | `admin/users/{id}` |
+| Endpoint export (derived) | `method + PascalCase(segments)` — braces stripped; synthetic collisions receive `2`, `3`, while explicit IDs remain authoritative | `getAdminUsersId` |
+| Directory-mode directories | path segments verbatim (braces preserved); collapsed/root/case/component-file collisions receive `-2`, `-3` on the leaf | `admin/users/{id}` |
 | Flat-mode directory | segments joined by `-` (braces preserved); collisions → `-2`, `-3` | `admin-users-{id}` |
 | Method directories | lowercase method | `get` |
 | Component directories | exact component name (case preserved — round-trip) | `User`, `CreateUser` |

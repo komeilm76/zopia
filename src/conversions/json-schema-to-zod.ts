@@ -2,6 +2,7 @@ import { asZopiaError, ZopiaError } from '../errors';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { formatZopiaWarningComment, normalizeZopiaWarnings, type ZopiaWarning, type ZopiaWarningCode } from '../warnings';
+import { decodeJsonPointerSegment } from './openapi-ref';
 
 /** A JSON Schema object or boolean schema. */
 export type JsonSchema = Record<string, any> | boolean;
@@ -94,6 +95,14 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
     if (node.uniqueItems === true) {
       warn('ZOPIA_WARN_UNIQUE_ITEMS', at, 'uniqueItems', '`uniqueItems` is enforced by a refinement and restored by an overlay');
       addOverlay({ at, set: { uniqueItems: true } });
+    }
+    if (node.type === 'array' && (Array.isArray(node.prefixItems) || Array.isArray(node.items))) {
+      const set = Object.fromEntries(['minItems', 'maxItems'].filter((key) => Object.prototype.hasOwnProperty.call(node, key)).map((key) => [key, cloneJson(node[key])]));
+      const closed = Array.isArray(node.prefixItems)
+        ? node.items === false || node.items === undefined && node.unevaluatedItems === false
+        : node.additionalItems === false;
+      const remove = !Object.prototype.hasOwnProperty.call(node, 'maxItems') && closed ? ['maxItems'] : [];
+      if (Object.keys(set).length || remove.length) addOverlay({ at, ...(Object.keys(set).length ? { set } : {}), ...(remove.length ? { remove } : {}) });
     }
     if (node.type === 'object' && !Object.prototype.hasOwnProperty.call(node, 'additionalProperties')) {
       addOverlay({ at, remove: ['additionalProperties'] });
@@ -244,8 +253,8 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     if (ref !== '#' && !ref.startsWith('#/')) return undefined;
     if (ref === '#') return source;
     return ref.slice(2).split('/').map((part) => {
-      if (/~(?![01])/.test(part)) return undefined;
-      return part.replace(/~1/g, '/').replace(/~0/g, '~');
+      try { return decodeJsonPointerSegment(part, ref); }
+      catch { return undefined; }
     }).reduce<any>((value, key) => {
       if (key === undefined || value === null || (typeof value !== 'object' && typeof value !== 'function') || !Object.prototype.hasOwnProperty.call(value, key)) return undefined;
       return value[key];
@@ -298,11 +307,10 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
         return { schema: referenced.schema.and(sibling.schema), code: `${referenced.code}.and(${sibling.code})` };
       }
       if (resolving.has(ref)) { pushWarning(`Recursive $ref cannot be materialized outside a named definition: ${ref}`); return { schema: z.any(), code: 'z.any()' }; }
-      const targetAny: any = target;
-      const resolved: JsonSchema = Object.keys(siblings).length
-        ? targetAny === true ? siblings : targetAny === false ? false : { ...targetAny, ...siblings }
-        : targetAny;
-      return convert(resolved, new Set(resolving).add(ref), ref);
+      const referenced = convert(target, new Set(resolving).add(ref), ref);
+      if (Object.keys(siblings).length === 0) return referenced;
+      const sibling = convert(siblings, resolving, at);
+      return { schema: referenced.schema.and(sibling.schema), code: `${referenced.code}.and(${sibling.code})` };
     }
     if (node.nullable !== undefined) {
       const withoutNullable = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'nullable')) as JsonSchema;
@@ -434,6 +442,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       return { schema: (siblingResult.schema as any).and(applicable.schema), code: `${siblingResult.code}.and(${applicable.code})` };
     }
     let result: { schema: z.ZodType; code: string };
+    let arrayIsTuple = false;
     switch (node.type) {
       case 'object': {
         if (node.properties !== undefined && (!node.properties || typeof node.properties !== 'object' || Array.isArray(node.properties))) { pushWarning('Invalid properties: expected an object'); result = { schema: z.object({}).passthrough(), code: 'z.object({}).passthrough()' }; break; }
@@ -446,17 +455,60 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
         const unevaluatedPropertiesValid = node.unevaluatedProperties === undefined || isSchema(node.unevaluatedProperties);
         if (!unevaluatedPropertiesValid) pushWarning('Invalid unevaluatedProperties: expected a schema');
         const shape: Record<string, z.ZodType> = Object.create(null); const parts: string[] = [];
+        const declaredKeys = new Set(Object.keys(node.properties ?? {}));
+        const undeclaredRequiredKeys = requiredKeys.filter((key) => !declaredKeys.has(key));
         for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving, pointer(pointer(at, 'properties'), key)); const required = requiredKeys.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`[${JSON.stringify(key)}]: ${required ? item.code : `${item.code}.optional()`}`); }
-        for (const key of requiredKeys) if (!(key in shape)) { shape[key] = z.unknown(); parts.push(`[${JSON.stringify(key)}]: z.unknown()`); }
+        for (const key of undeclaredRequiredKeys) { shape[key] = z.unknown(); parts.push(`[${JSON.stringify(key)}]: z.unknown()`); }
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
-        if (node.additionalProperties === undefined && patternPropertiesValid && node.patternProperties) {
-          const patternSchemas = Object.entries(node.patternProperties as Record<string, JsonSchema>);
-          if (patternSchemas.length) { const [patternName, patternNode] = patternSchemas[0]; const pattern = convert(patternNode, resolving, pointer(pointer(at, 'patternProperties'), patternName)); objectSchema = objectSchema.catchall(pattern.schema); objectCode += `.catchall(${pattern.code})`; }
+        const patternSchemas: Array<{ expression: string; regex: RegExp; converted: Converted }> = [];
+        if (patternPropertiesValid && node.patternProperties) {
+          for (const [expression, patternNode] of Object.entries(node.patternProperties as Record<string, JsonSchema>)) {
+            try {
+              const regex = new RegExp(expression);
+              patternSchemas.push({ expression, regex, converted: convert(patternNode, resolving, pointer(pointer(at, 'patternProperties'), expression)) });
+            } catch { pushWarning(`Invalid patternProperties expression: ${expression}`); }
+          }
         }
-        if (node.additionalProperties === false || (node.additionalProperties === undefined && node.unevaluatedProperties === false)) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
+        if (patternSchemas.length) {
+          objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()';
+          for (const pattern of patternSchemas) {
+            objectSchema = objectSchema.refine((value) => Object.entries(value).every(([key, item]) => !pattern.regex.test(key) || pattern.converted.schema.safeParse(item).success));
+            objectCode += `.refine((value) => Object.entries(value).every(([key, item]) => !(new RegExp(${JSON.stringify(pattern.expression)})).test(key) || (${pattern.converted.code}).safeParse(item).success))`;
+          }
+          const knownKeys = declaredKeys;
+          const isEvaluated = (key: string): boolean => knownKeys.has(key) || patternSchemas.some((pattern) => pattern.regex.test(key));
+          const knownCode = JSON.stringify([...knownKeys]);
+          const patternCode = `[${patternSchemas.map((pattern) => `new RegExp(${JSON.stringify(pattern.expression)})`).join(', ')}]`;
+          if (node.additionalProperties === false || (node.additionalProperties === undefined && node.unevaluatedProperties === false)) {
+            objectSchema = objectSchema.refine((value) => Object.keys(value).every(isEvaluated));
+            objectCode += `.refine((value) => Object.keys(value).every((key) => ${knownCode}.includes(key) || ${patternCode}.some((pattern) => pattern.test(key))))`;
+          } else if (additionalPropertiesValid && node.additionalProperties !== undefined && typeof node.additionalProperties !== 'boolean') {
+            const item = convert(node.additionalProperties, resolving, pointer(at, 'additionalProperties'));
+            objectSchema = objectSchema.refine((value) => Object.entries(value).every(([key, candidate]) => isEvaluated(key) || item.schema.safeParse(candidate).success));
+            objectCode += `.refine((value) => Object.entries(value).every(([key, item]) => ${knownCode}.includes(key) || ${patternCode}.some((pattern) => pattern.test(key)) || (${item.code}).safeParse(item).success))`;
+          } else if (node.additionalProperties === undefined && unevaluatedPropertiesValid && node.unevaluatedProperties !== undefined && typeof node.unevaluatedProperties !== 'boolean') {
+            const item = convert(node.unevaluatedProperties, resolving, pointer(at, 'unevaluatedProperties'));
+            objectSchema = objectSchema.refine((value) => Object.entries(value).every(([key, candidate]) => isEvaluated(key) || item.schema.safeParse(candidate).success));
+            objectCode += `.refine((value) => Object.entries(value).every(([key, item]) => ${knownCode}.includes(key) || ${patternCode}.some((pattern) => pattern.test(key)) || (${item.code}).safeParse(item).success))`;
+          }
+        } else if (node.additionalProperties === false || (node.additionalProperties === undefined && node.unevaluatedProperties === false)) { objectSchema = objectSchema.strict(); objectCode += '.strict()'; }
         else if (additionalPropertiesValid && node.additionalProperties !== undefined && typeof node.additionalProperties !== 'boolean') { const item = convert(node.additionalProperties, resolving, pointer(at, 'additionalProperties')); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
         else if (node.additionalProperties === undefined && unevaluatedPropertiesValid && node.unevaluatedProperties !== undefined && typeof node.unevaluatedProperties !== 'boolean') { const item = convert(node.unevaluatedProperties, resolving, pointer(at, 'unevaluatedProperties')); objectSchema = objectSchema.catchall(item.schema); objectCode += `.catchall(${item.code})`; }
         else { objectSchema = objectSchema.passthrough(); objectCode += '.passthrough()'; }
+        if (patternSchemas.length === 0 && undeclaredRequiredKeys.length) {
+          if (node.additionalProperties === false || (node.additionalProperties === undefined && node.unevaluatedProperties === false)) {
+            objectSchema = objectSchema.refine((value) => undeclaredRequiredKeys.every((key) => !Object.prototype.hasOwnProperty.call(value, key)));
+            objectCode += `.refine((value) => ${JSON.stringify(undeclaredRequiredKeys)}.every((key) => !Object.prototype.hasOwnProperty.call(value, key)))`;
+          } else if (additionalPropertiesValid && node.additionalProperties !== undefined && typeof node.additionalProperties !== 'boolean') {
+            const item = convert(node.additionalProperties, resolving, pointer(at, 'additionalProperties'));
+            objectSchema = objectSchema.refine((value) => undeclaredRequiredKeys.every((key) => item.schema.safeParse(value[key]).success));
+            objectCode += `.refine((value) => ${JSON.stringify(undeclaredRequiredKeys)}.every((key) => (${item.code}).safeParse(value[key]).success))`;
+          } else if (node.additionalProperties === undefined && unevaluatedPropertiesValid && node.unevaluatedProperties !== undefined && typeof node.unevaluatedProperties !== 'boolean') {
+            const item = convert(node.unevaluatedProperties, resolving, pointer(at, 'unevaluatedProperties'));
+            objectSchema = objectSchema.refine((value) => undeclaredRequiredKeys.every((key) => item.schema.safeParse(value[key]).success));
+            objectCode += `.refine((value) => ${JSON.stringify(undeclaredRequiredKeys)}.every((key) => (${item.code}).safeParse(value[key]).success))`;
+          }
+        }
         result = { schema: objectSchema, code: objectCode }; break;
       }
       case 'array': {
@@ -468,14 +520,16 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
         if (!additionalItemsValid) pushWarning('Invalid additionalItems: expected a schema');
         const unevaluatedItemsValid = node.unevaluatedItems === undefined || isSchema(node.unevaluatedItems);
         if (!unevaluatedItemsValid) pushWarning('Invalid unevaluatedItems: expected a schema');
-        if (itemsValid && node.items === false && !Array.isArray(node.prefixItems)) { result = { schema: z.tuple([]), code: 'z.tuple([])' }; break; }
+        if (itemsValid && node.items === false && !Array.isArray(node.prefixItems)) { arrayIsTuple = true; result = { schema: z.tuple([]), code: 'z.tuple([])' }; break; }
         if (Array.isArray(node.prefixItems) || (itemsValid && Array.isArray(node.items))) {
+          arrayIsTuple = true;
           const usesPrefixItems = Array.isArray(node.prefixItems);
           const tupleNodes = (usesPrefixItems ? node.prefixItems : node.items) as JsonSchema[];
           const tupleKeyword = usesPrefixItems ? 'prefixItems' : 'items';
           const tuple = tupleNodes.map((item, index) => convert(item, resolving, pointer(pointer(at, tupleKeyword), index)));
-          const schemas = tuple.map((item) => item.schema);
-          const codes = tuple.map((item) => item.code);
+          const requiredItems = isNonNegativeInteger(node.minItems) ? Math.min(node.minItems, tuple.length) : 0;
+          const schemas = tuple.map((item, index) => index < requiredItems ? item.schema : item.schema.optional());
+          const codes = tuple.map((item, index) => index < requiredItems ? item.code : `${item.code}.optional()`);
           let tupleSchema: any = z.tuple(schemas as any); let tupleCode = `z.tuple([${codes.join(', ')}])`;
           const restNode: JsonSchema = usesPrefixItems
             ? itemsValid && node.items !== undefined ? node.items : unevaluatedItemsValid && node.unevaluatedItems !== undefined ? node.unevaluatedItems : true
@@ -567,8 +621,19 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       }
     }
     if (node.type === 'array') {
-      applyConstraint('minItems', node.minItems, isNonNegativeInteger(node.minItems), 'a non-negative integer', (schema, value) => schema.min(value), 'min');
-      applyConstraint('maxItems', node.maxItems, isNonNegativeInteger(node.maxItems), 'a non-negative integer', (schema, value) => schema.max(value), 'max');
+      if (arrayIsTuple) {
+        if (node.minItems !== undefined) {
+          if (!isNonNegativeInteger(node.minItems)) pushWarning('Invalid minItems: expected a non-negative integer');
+          else result = { schema: result.schema.refine((items: unknown) => Array.isArray(items) && items.length >= node.minItems), code: `${result.code}.refine((items) => items.length >= ${node.minItems})` };
+        }
+        if (node.maxItems !== undefined) {
+          if (!isNonNegativeInteger(node.maxItems)) pushWarning('Invalid maxItems: expected a non-negative integer');
+          else result = { schema: result.schema.refine((items: unknown) => Array.isArray(items) && items.length <= node.maxItems), code: `${result.code}.refine((items) => items.length <= ${node.maxItems})` };
+        }
+      } else {
+        applyConstraint('minItems', node.minItems, isNonNegativeInteger(node.minItems), 'a non-negative integer', (schema, value) => schema.min(value), 'min');
+        applyConstraint('maxItems', node.maxItems, isNonNegativeInteger(node.maxItems), 'a non-negative integer', (schema, value) => schema.max(value), 'max');
+      }
     }
     if (node.type === 'object') {
       if (node.minProperties !== undefined) {

@@ -11,8 +11,11 @@ import type { OpenApiDocument } from './openapi';
  */
 export function decodeJsonPointerSegment(segment: string, ref = segment): string {
   if (typeof segment !== 'string') throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `invalid JSON Pointer segment: ${String(segment)}`, { at: String(ref), hint: 'use string JSON Pointer segments' });
-  if (/~(?![01])/.test(segment)) throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `Invalid JSON Pointer escape in OpenAPI reference: ${ref}`, { at: ref, hint: 'fix the local JSON Pointer escape' });
-  return segment.replace(/~1/g, '/').replace(/~0/g, '~');
+  let decoded: string;
+  try { decoded = decodeURIComponent(segment); }
+  catch (error) { throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `Invalid percent encoding in OpenAPI reference: ${ref}`, { at: ref, hint: 'fix the local URI fragment encoding', cause: error }); }
+  if (/~(?![01])/.test(decoded)) throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `Invalid JSON Pointer escape in OpenAPI reference: ${ref}`, { at: ref, hint: 'fix the local JSON Pointer escape' });
+  return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
 /**
