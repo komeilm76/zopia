@@ -73,7 +73,11 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [ ] 🧪 Vitest suite — remaining full scenario matrix and other contract suites
       (round-trip properties, golden trees, and coverage gates are complete;
       [testing](11-testing.md))
-- [ ] 📖 JSDoc on every public symbol (T-12)
+- [x] 📖 **JSDoc audit** — every exported declaration and exposed interface/class
+      member has a useful summary; public callables document parameters and return
+      values; optional configuration fields state defaults; examples and links are
+      checked; and named-only exports are enforced by an AST contract suite (T-12,
+      R-131…R-135/R-1003)
 - [ ] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**
 
 ### ✅ Definition of done — Phase 1

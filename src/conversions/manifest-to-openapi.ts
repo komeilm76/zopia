@@ -11,9 +11,15 @@ export type { ZopiaManifest } from './manifest-writer';
 
 /** Options for selecting the OpenAPI dialect emitted by reverse conversion. */
 export interface ZopiaReverseOptions {
-  /** OpenAPI version to emit. Omit on low-level manifest helpers to preserve the source dialect. */
+  /**
+   * OpenAPI version to emit. Low-level manifest helpers preserve the source dialect when omitted.
+   * @default '3.1' for `apiDocsToOpenApi`; preserved source dialect for manifest helpers
+   */
   version?: '3.0' | '3.1';
-  /** Receive each deterministic structured warning emitted during reverse conversion. */
+  /**
+   * Receive each deterministic structured warning emitted during reverse conversion.
+   * @default undefined
+   */
   onWarning?: (warning: ZopiaWarning) => void;
 }
 
@@ -454,7 +460,14 @@ async function manifestFileToOpenApiInternal(file: string, version: '3.0' | '3.1
   return reconstructOpenApi(outputManifest, endpointConfigs, components.schemas, components.references, warnings);
 }
 
-/** Read a manifest, import its generated endpoint and component modules, and reconstruct the API document. */
+/**
+ * Read a manifest, import its generated modules, and reconstruct the API document.
+ *
+ * @param file Filesystem path to a generated Zopia manifest.
+ * @param options Target dialect and warning handling configuration.
+ * @returns Reconstructed Swagger/OpenAPI document.
+ * @throws {@link ZopiaError} when the manifest or a generated module is invalid.
+ */
 export async function manifestFileToOpenApi(file: string, options?: ZopiaReverseOptions): Promise<Record<string, unknown>> {
   try {
     const version = reverseVersion(options);
@@ -467,7 +480,14 @@ export async function manifestFileToOpenApi(file: string, options?: ZopiaReverse
   }
 }
 
-/** Reconstruct an API document from in-memory manifest snapshots without importing generated files. */
+/**
+ * Reconstruct an API document from in-memory manifest snapshots without importing files.
+ *
+ * @param manifest Valid Zopia manifest containing source snapshots.
+ * @param options Target dialect and warning handling configuration.
+ * @returns Reconstructed Swagger/OpenAPI document.
+ * @throws {@link ZopiaError} when the manifest or target version is invalid.
+ */
 export function manifestToOpenApi(manifest: ZopiaManifest, options?: ZopiaReverseOptions): Record<string, unknown> {
   try {
     const version = reverseVersion(options);
@@ -480,7 +500,14 @@ export function manifestToOpenApi(manifest: ZopiaManifest, options?: ZopiaRevers
   }
 }
 
-/** Convert a generated api-docs directory (or manifest path) to OpenAPI. */
+/**
+ * Convert a generated api-docs directory or manifest path to OpenAPI.
+ *
+ * @param path Generated api-docs directory or manifest JSON path.
+ * @param options Target dialect and warning handling configuration.
+ * @returns Reconstructed document and deterministically ordered warnings.
+ * @throws {@link ZopiaError} when the generated tree cannot be reconstructed.
+ */
 export async function apiDocsToOpenApi(path: string, options: ZopiaReverseOptions = {}): Promise<ZopiaReverseResult> {
   try { return await apiDocsToOpenApiInternal(path, options); }
   catch (error) { throw asZopiaError(error, 'ZOPIA_MANIFEST_INVALID', 'unable to reconstruct API from api-docs', { at: typeof path === 'string' ? path : 'path' }); }

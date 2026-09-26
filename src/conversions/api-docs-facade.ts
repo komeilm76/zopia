@@ -9,7 +9,15 @@ function propertyName(segment: string): string {
   return name;
 }
 
-/** Return the ergonomic dot-access path for an endpoint facade. */
+/**
+ * Return the ergonomic dot-access path for an endpoint facade.
+ *
+ * @param path OpenAPI path template to convert into property access.
+ * @param method Supported endpoint HTTP method.
+ * @param root Safe TypeScript identifier used as the facade root.
+ * @returns Dot/bracket access expression for the endpoint.
+ * @throws {@link ZopiaError} when the root, method, or path is invalid or unsafe.
+ */
 export function apiDocsFacadeAccess(path: string, method: OpenApiMethod, root = 'apiDocs'): string {
   if (typeof root !== 'string' || !/^[$A-Za-z_][$A-Za-z0-9_]*$/.test(root) || ['__proto__', 'prototype', 'constructor', 'eval', 'arguments'].includes(root)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `Invalid facade root: ${root}`, { at: 'root', hint: 'use a safe TypeScript identifier' });
   if (!(OPENAPI_METHODS as readonly string[]).includes(method)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsupported HTTP method: ${String(method)}`);

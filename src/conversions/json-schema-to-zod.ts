@@ -199,7 +199,14 @@ function warningKeyword(message: string): string {
   return match?.[1] ?? (message.includes('$ref') ? '$ref' : 'schema');
 }
 
-/** Convert a JSON Schema value, JSON text, or `.json` file into executable Zod 4 code and a runtime schema. */
+/**
+ * Convert JSON Schema into executable Zod 4 code and a runtime schema.
+ *
+ * @param input JSON Schema value, JSON text, or readable `.json` path.
+ * @param options Root identifier and conversion settings.
+ * @returns Generated code, runtime schema, warnings, and round-trip overlays.
+ * @throws {@link ZopiaError} when the schema, file, or options are invalid.
+ */
 export function jsonSchemaToZod(input: JsonSchema | string, options: JsonSchemaToZodOptions = {}): JsonSchemaToZodResult {
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'JSON Schema conversion options must be an object', { at: 'options', hint: 'pass an options object or omit it' });
   const unknown = Object.keys(options).find((key) => key !== 'rootName');

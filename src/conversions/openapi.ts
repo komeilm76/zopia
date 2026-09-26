@@ -1,17 +1,32 @@
 import { asZopiaError, ZopiaError } from '../errors';
+
+/** Mutable JSON-like Swagger/OpenAPI document accepted by normalization helpers. */
 export type OpenApiDocument = Record<string, any>;
+
+/** Supported normalized source dialect family. */
 export type OpenApiVersion = '2.0' | '3.0' | '3.1';
 
+/** Validated source envelope and its normalized dialect metadata. */
 export interface NormalizedOpenApiDocument {
+  /** Validated source document. */
   document: OpenApiDocument;
+  /** Detected Swagger/OpenAPI dialect family. */
   version: OpenApiVersion;
+  /** Source `info.title`, when available after validation. */
   title?: string;
+  /** Source `info.version`, when available after validation. */
   versionString?: string;
 }
 
 const pointerToken = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1');
 
-/** Parse and validate the supported OpenAPI/Swagger document envelope. */
+/**
+ * Parse and validate the supported OpenAPI/Swagger document envelope.
+ *
+ * @param input Swagger/OpenAPI object or JSON text.
+ * @returns Validated document with detected dialect and info metadata.
+ * @throws {@link ZopiaError} when parsing or envelope validation fails.
+ */
 export function normalizeOpenApiDocument(input: OpenApiDocument | string): NormalizedOpenApiDocument {
   let document: OpenApiDocument;
   try { document = (typeof input === 'string' ? JSON.parse(input) : input) as OpenApiDocument; }

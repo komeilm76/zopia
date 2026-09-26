@@ -283,7 +283,14 @@ function mapGenerationError(error: unknown): ZopiaError {
  * @throws {ZopiaError} `ZOPIA_CONFIG_INVALID` for invalid options and `ZOPIA_SPEC_*` or `ZOPIA_REF_*` for invalid input.
  * @example
  * ```ts
- * const result = await openApiToApiDocs('swagger.json', { outDir: 'api_docs', mode: 'flat' });
+ * import { openApiToApiDocs } from 'zopia';
+ *
+ * const result = await openApiToApiDocs({
+ *   openapi: '3.1.0',
+ *   info: { title: 'Example', version: '1.0.0' },
+ *   paths: {},
+ * }, { outDir: 'api_docs', mode: 'flat' });
+ * console.log(result.files);
  * ```
  * @see [docs/06-conversions.md → Engine ③](../../docs/06-conversions.md)
  */

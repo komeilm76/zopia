@@ -148,6 +148,7 @@ function printWarnings(warnings: readonly ZopiaWarning[], output: ZopiaCliOutput
  * @param argv Command arguments after the executable name.
  * @param output Destinations for generated output and diagnostics.
  * @returns A promise that resolves when generation or reverse conversion finishes.
+ * @throws {@link ZopiaError} when arguments, conversion input, or filesystem output is invalid.
  */
 export async function runCli(argv: string[], output: ZopiaCliOutput = processOutput): Promise<void> {
   if (!Array.isArray(argv) || !argv.every((argument) => typeof argument === 'string')) invalid('CLI arguments must be strings', 'argv', "run 'zopia --help' for command syntax");

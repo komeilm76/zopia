@@ -2,18 +2,31 @@ import { ZopiaError } from '../errors';
 import { collectOpenApiOperations, type OpenApiOperation } from './openapi-to-api-docs';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 
+/** Validated operation-level intermediate representation used by Engine ③. */
 export interface OpenApiOperationIR {
+  /** Original OpenAPI path template. */
   path: string;
+  /** Uppercase HTTP method emitted to km-api. */
   method: Uppercase<OpenApiOperation['method']>;
+  /** km-api path shape, preserving OpenAPI parameter braces. */
   pathShape: string;
+  /** Explicit or deterministically derived operation identifier. */
   operationId: string;
+  /** Optional operation summary. */
   summary?: string;
+  /** Optional operation description. */
   description?: string;
+  /** km-api tags, normalized with `#` prefixes. */
   tags: string[];
+  /** Whether the source operation is deprecated. */
   deprecated: boolean;
+  /** Effective operation or document security requirements. */
   security?: unknown[];
+  /** Original operation object. */
   operation: Record<string, any>;
+  /** Merged path-level and operation-level parameters. */
   parameters: any[];
+  /** Complete normalized source document used for local reference resolution. */
   document: OpenApiDocument;
 }
 
@@ -29,7 +42,13 @@ function tags(value: unknown): string[] {
   return value.map((tag) => tag.startsWith('#') ? tag : `#${tag}`);
 }
 
-/** Build the validated operation-level IR used by endpoint rendering. */
+/**
+ * Build the validated operation-level IR used by endpoint rendering.
+ *
+ * @param input Valid Swagger/OpenAPI object or JSON text.
+ * @returns Canonically ordered validated operation records.
+ * @throws {@link ZopiaError} when source operation metadata is invalid.
+ */
 export function buildOpenApiOperationIR(input: OpenApiDocument | string): OpenApiOperationIR[] {
   const { document } = normalizeOpenApiDocument(input);
   return collectOpenApiOperations(document).map((entry) => {

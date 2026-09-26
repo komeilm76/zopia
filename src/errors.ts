@@ -23,11 +23,20 @@ export type ZopiaErrorCode = typeof ZOPIA_ERROR_CODES[number];
 
 /** Optional source location, recovery hint, and causal error metadata. */
 export interface ZopiaErrorOptions {
-  /** JSON Pointer, option name, or portable file location associated with the error. */
+  /**
+   * JSON Pointer, option name, or portable file location associated with the error.
+   * @default undefined
+   */
   at?: string;
-  /** Concise action the caller can take to resolve the error. */
+  /**
+   * Concise action the caller can take to resolve the error.
+   * @default Code-specific recovery guidance.
+   */
   hint?: string;
-  /** Original exception when zopia translates a lower-level failure. */
+  /**
+   * Original exception when zopia translates a lower-level failure.
+   * @default undefined
+   */
   cause?: unknown;
 }
 
@@ -61,7 +70,13 @@ export class ZopiaError extends Error {
   /** Actionable recovery suggestion. */
   readonly hint: string;
 
-  /** Create an error from a stable code, human-readable message, and optional diagnostics. */
+  /**
+   * Create an error from a stable code, human-readable message, and optional diagnostics.
+   *
+   * @param code Stable machine-readable failure code.
+   * @param message Human-readable failure description.
+   * @param options Optional source location, recovery hint, and cause.
+   */
   constructor(code: ZopiaErrorCode, message: string, options: ZopiaErrorOptions = {}) {
     super(`${code}: ${message}`, { cause: options.cause });
     this.name = 'ZopiaError';
@@ -71,12 +86,25 @@ export class ZopiaError extends Error {
   }
 }
 
-/** Test whether an unknown thrown value is a zopia typed error. */
+/**
+ * Test whether an unknown thrown value is a zopia typed error.
+ *
+ * @param error Unknown caught or rejected value.
+ * @returns Whether `error` is a {@link ZopiaError} instance.
+ */
 export function isZopiaError(error: unknown): error is ZopiaError {
   return error instanceof ZopiaError;
 }
 
-/** Preserve an existing typed error or wrap an unknown failure with public diagnostics. */
+/**
+ * Preserve an existing typed error or wrap an unknown failure with public diagnostics.
+ *
+ * @param error Unknown caught or rejected value.
+ * @param code Stable code to use when wrapping an untyped failure.
+ * @param message Context prepended to an untyped failure's message.
+ * @param options Optional source location and recovery hint for a wrapped failure.
+ * @returns The existing typed error or a newly wrapped {@link ZopiaError}.
+ */
 export function asZopiaError(error: unknown, code: ZopiaErrorCode, message: string, options: Omit<ZopiaErrorOptions, 'cause'> = {}): ZopiaError {
   if (error instanceof ZopiaError) return error;
   const detail = error instanceof Error && error.message ? `: ${error.message}` : error === undefined ? '' : `: ${String(error)}`;

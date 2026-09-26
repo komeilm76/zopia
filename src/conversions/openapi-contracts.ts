@@ -2,11 +2,42 @@ import { ZopiaError } from '../errors';
 import type { OpenApiOperationIR } from './openapi-ir';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 
-export interface OperationParameter { name: string; in: 'path' | 'query' | 'header' | 'cookie'; required: boolean; schema?: unknown; }
+/** Normalized non-body operation parameter consumed by endpoint rendering. */
+export interface OperationParameter {
+  /** Exact source parameter name. */
+  name: string;
+  /** Supported OpenAPI parameter location. */
+  in: 'path' | 'query' | 'header' | 'cookie';
+  /** Whether callers must provide the parameter. */
+  required: boolean;
+  /** Resolved JSON Schema for the parameter value, when present. */
+  schema?: unknown;
+}
+
+/** Normalized request, parameter, and response contracts for one operation. */
 export interface OperationContracts {
+  /** Resolved non-body operation parameters. */
   parameters: OperationParameter[];
-  requestBody?: { contentType: string; schema?: unknown; required: boolean };
-  responses: Array<{ status: string; description: string; contentType?: string; schema?: unknown }>;
+  /** Primary request body contract, when the operation accepts a body. */
+  requestBody?: {
+    /** Selected request media type. */
+    contentType: string;
+    /** Resolved request JSON Schema, when present. */
+    schema?: unknown;
+    /** Whether callers must provide a request body. */
+    required: boolean;
+  };
+  /** Response contracts in source-document order. */
+  responses: Array<{
+    /** Original response status key. */
+    status: string;
+    /** Required OpenAPI response description. */
+    description: string;
+    /** Selected response media type, when the response has content. */
+    contentType?: string;
+    /** Resolved response JSON Schema, when present. */
+    schema?: unknown;
+  }>;
 }
 
 function firstContent(content: unknown): { contentType?: string; schema?: unknown } {
@@ -48,7 +79,13 @@ function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context:
   return current as Record<string, any>;
 }
 
-/** Extract request and response content without losing media-type metadata. */
+/**
+ * Extract request and response content without losing media-type metadata.
+ *
+ * @param ir Validated operation-level intermediate representation.
+ * @returns Resolved parameter, request-body, and response contracts.
+ * @throws {@link ZopiaError} when references or contract shapes are invalid.
+ */
 export function extractOperationContracts(ir: OpenApiOperationIR): OperationContracts {
   const resolvedParameters = ir.parameters.map((raw) => resolveRef(raw, ir, 'parameter'));
   const parameters = resolvedParameters.filter((parameter) => parameter.in !== 'body' && parameter.in !== 'formData').map((parameter) => {

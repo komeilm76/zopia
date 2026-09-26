@@ -52,7 +52,11 @@ for local release validation and CI without maintaining two gate definitions.
 ## 📖 JSDoc standard (T-12)
 
 **Every exported symbol** — function, class, interface, type alias, and
-constant — carries JSDoc. The template:
+constant — carries JSDoc. The audited public boundary also includes every
+exposed member of an exported interface or class and every public method or
+constructor; private and protected implementation members are excluded. The
+AST contract suite scans every production module under `src/`, not only the
+package-root re-export list. The template:
 
 ```ts
 /**

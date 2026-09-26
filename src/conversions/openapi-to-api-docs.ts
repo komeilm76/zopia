@@ -2,13 +2,37 @@ import { ZopiaError } from '../errors';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 
+/** Canonical km-api/OpenAPI operation method order. */
 export const OPENAPI_METHODS = ['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'] as const;
+
+/** Supported lowercase OpenAPI operation method. */
 export type OpenApiMethod = (typeof OPENAPI_METHODS)[number];
-export interface OpenApiOperation { path: string; method: OpenApiMethod; operation: Record<string, any>; operationId: string; parameters: any[]; }
+
+/** Collected source operation with merged parameters and a stable identifier. */
+export interface OpenApiOperation {
+  /** Original OpenAPI path template. */
+  path: string;
+  /** Lowercase HTTP method. */
+  method: OpenApiMethod;
+  /** Original operation object. */
+  operation: Record<string, any>;
+  /** Explicit or deterministically derived operation identifier. */
+  operationId: string;
+  /** Path-level and operation-level parameters after override merging. */
+  parameters: any[];
+}
 
 function pascalPath(path: string): string {
   return path.split('/').filter(Boolean).map((segment) => segment.replace(/[{}]/g, '').split(/[^A-Za-z0-9]+/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('')).join('') || 'Root';
 }
+/**
+ * Derive a stable operation identifier from a path and method.
+ *
+ * @param path OpenAPI path template beginning with `/`.
+ * @param method Supported lowercase HTTP method.
+ * @returns Method-prefixed camel-case operation identifier.
+ * @throws {@link ZopiaError} when the path or method is invalid.
+ */
 export function deriveOperationId(path: string, method: OpenApiMethod): string {
   if (typeof path !== 'string' || !path.startsWith('/')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid API path: ${String(path)}`, { at: 'path' });
   if (!OPENAPI_METHODS.includes(method)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsupported HTTP method: ${String(method)}`, { at: 'method' });
@@ -28,7 +52,13 @@ function parameterIdentity(parameter: Record<string, any>, document: OpenApiDocu
   return `${String(current.in)}:${String(current.name)}`;
 }
 
-/** Collect path operations in the canonical km-api method order. */
+/**
+ * Collect path operations in the canonical km-api method order.
+ *
+ * @param input Valid Swagger/OpenAPI object or JSON text.
+ * @returns Operations with merged parameters and unique stable identifiers.
+ * @throws {@link ZopiaError} when the source, references, or operations are invalid.
+ */
 export function collectOpenApiOperations(input: OpenApiDocument | string): OpenApiOperation[] {
   const { document } = normalizeOpenApiDocument(input); const operations: OpenApiOperation[] = []; const ids = new Set<string>();
   for (const path of Object.keys(document.paths)) {

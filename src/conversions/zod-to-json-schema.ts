@@ -11,13 +11,13 @@ export type ZodJsonSchemaTarget =
 
 /** Options controlling Zod-to-JSON-Schema conversion. */
 export interface ZodToJsonSchemaOptions {
-  /** Output dialect. Defaults to OpenAPI 3.1 / JSON Schema 2020-12. */
+  /** Output dialect. @default 'openapi-3.1' */
   target?: ZodJsonSchemaTarget;
-  /** Include the dialect's `$schema` URI. Defaults to `true`. */
+  /** Include the dialect's `$schema` URI. @default true */
   $schema?: boolean;
-  /** Convert the schema's accepted input or produced output type. Defaults to `output`. */
+  /** Convert the schema's accepted input or produced output type. @default 'output' */
   io?: 'input' | 'output';
-  /** Receive every structured warning produced by a lossy conversion. */
+  /** Receive every structured warning produced by a lossy conversion. @default undefined */
   onWarning?: (warning: ZopiaWarning) => void;
 }
 
@@ -135,7 +135,14 @@ function isZodSchema(value: unknown): value is z.ZodType {
   return isRecord(value) && isRecord(value._zod) && typeof value._zod.run === 'function';
 }
 
-/** Convert a Zod 4 schema to canonical JSON Schema or an OpenAPI Schema Object. */
+/**
+ * Convert a Zod 4 schema to canonical JSON Schema or an OpenAPI Schema Object.
+ *
+ * @param schema Zod 4 schema to convert.
+ * @param options Target dialect, input/output mode, and warning callback.
+ * @returns Detached canonical JSON Schema or OpenAPI Schema Object.
+ * @throws {@link ZopiaError} when the schema or options are invalid.
+ */
 export function zodToJsonSchema(
   schema: z.ZodType,
   options: ZodToJsonSchemaOptions = {},
@@ -154,7 +161,15 @@ export function zodToJsonSchema(
   }
 }
 
-/** Convert a named set of Zod schemas while preserving references between them. */
+/**
+ * Convert a named set of Zod schemas while preserving references between them.
+ *
+ * @param schemas Unique schema-name and Zod 4 schema pairs.
+ * @param options Target dialect, input/output mode, and warning callback.
+ * @param uri Mapper from schema names to emitted reference identifiers.
+ * @returns Converted schemas keyed by their original names.
+ * @throws {@link ZopiaError} when schemas, options, or names are invalid.
+ */
 export function zodSchemasToJsonSchema(
   schemas: Iterable<readonly [string, z.ZodType]>,
   options: InternalZodToJsonSchemaOptions = {},

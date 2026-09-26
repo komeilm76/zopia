@@ -75,7 +75,14 @@ async function hasMissingOwnedFiles(outputDir: string, ownedFiles: readonly stri
   return false;
 }
 
-/** Inspect an existing manifest without executing generated modules. */
+/**
+ * Inspect an existing manifest without executing generated modules.
+ *
+ * @param outputDir Generated api-docs directory to inspect.
+ * @param identity Current source identity and generation settings.
+ * @returns Existing manifest state, staleness reasons, and safely owned files.
+ * @throws {@link ZopiaError} when filesystem inspection fails.
+ */
 export async function inspectZopiaManifestStaleness(outputDir: string, identity: ZopiaManifestGenerationIdentity): Promise<ZopiaManifestStaleness> {
   const file = join(resolve(outputDir), ZOPIA_MANIFEST_FILE);
   let source: string;
@@ -112,7 +119,12 @@ export async function inspectZopiaManifestStaleness(outputDir: string, identity:
   };
 }
 
-/** Format one deterministic user-facing explanation for a stale manifest. */
+/**
+ * Format one deterministic user-facing explanation for a stale manifest.
+ *
+ * @param reasons Stable staleness reason codes to explain.
+ * @returns Single-line explanation including cleanup behavior.
+ */
 export function formatManifestStaleness(reasons: readonly ZopiaManifestStalenessReason[]): string {
   const labels: Record<ZopiaManifestStalenessReason, string> = {
     'invalid-manifest': 'the existing manifest is invalid or unreadable',
@@ -162,7 +174,15 @@ async function removeOwnedFile(root: string, rootReal: string, file: string): Pr
   return true;
 }
 
-/** Remove only obsolete files claimed by a previously validated manifest. */
+/**
+ * Remove only obsolete files claimed by a previously validated manifest.
+ *
+ * @param outputDir Generated api-docs directory containing the owned files.
+ * @param previousOwnedFiles Portable paths claimed by the previous manifest.
+ * @param nextOwnedFiles Portable paths retained by the next generated tree.
+ * @returns Deterministically ordered paths that were safely removed.
+ * @throws {@link ZopiaError} when safe filesystem cleanup fails.
+ */
 export async function removeObsoleteManifestFiles(outputDir: string, previousOwnedFiles: readonly string[], nextOwnedFiles: Iterable<string>): Promise<string[]> {
   if (previousOwnedFiles.length === 0) return [];
   const root = resolve(outputDir);

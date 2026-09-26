@@ -54,7 +54,12 @@ export interface ZopiaManifestRef {
 }
 
 /** Schema or operation restoration retained outside generated Zod code. */
-export type ZopiaManifestOverlay = JsonSchemaOverlay | { key: 'callbacks' | 'servers' | 'externalDocs' | 'links'; value: unknown };
+export type ZopiaManifestOverlay = JsonSchemaOverlay | {
+  /** Operation field restored from the source snapshot. */
+  key: 'callbacks' | 'servers' | 'externalDocs' | 'links';
+  /** Complete original field value. */
+  value: unknown;
+};
 
 /** Response facts that km-api cannot store directly. */
 export interface ZopiaManifestResponseOverlay {
@@ -148,34 +153,64 @@ export interface ZopiaManifest {
 
 /** Current writer component shape (legacy manifests may omit writer-owned fields). */
 export interface GeneratedZopiaManifestComponent extends ZopiaManifestComponent {
+  /** Emitted component path, or `null` when component emission is disabled. */
   file: string | null;
+  /** Canonical component schema restorations. */
   overlay: JsonSchemaOverlay[];
 }
 
 /** Current writer endpoint shape (legacy manifests may omit writer-owned fields). */
 export interface GeneratedZopiaManifestApi extends ZopiaManifestApi {
+  /** Portable generated endpoint path. */
   file: string;
+  /** Explicit or deterministically derived operation identifier. */
   operationId: string;
+  /** Complete original operation object. */
   sourceOperation: Record<string, unknown>;
+  /** Canonical source reference placements. */
   refs: ZopiaManifestRef[];
+  /** Canonical schema and operation restorations. */
   overlay: ZopiaManifestOverlay[];
+  /** Canonical response metadata restorations. */
   responseOverlay: ZopiaManifestResponseOverlay[];
 }
 
 /** Complete manifest shape emitted by the current dedicated writer. */
 export interface GeneratedZopiaManifest extends ZopiaManifest {
+  /** Current manifest schema identifier. */
   $schema: typeof ZOPIA_MANIFEST_SCHEMA;
+  /** Current writer package version. */
   zopiaVersion: typeof ZOPIA_VERSION;
-  source: ZopiaManifestSource & { kind: ZopiaManifestSourceKind; title: string; version: string; sha256: string };
+  /** Complete canonical source identity. */
+  source: ZopiaManifestSource & {
+    /** Supported canonical source dialect. */
+    kind: ZopiaManifestSourceKind;
+    /** Required original API title. */
+    title: string;
+    /** Required original API version. */
+    version: string;
+    /** Canonical SHA-256 digest of the complete source document. */
+    sha256: string;
+  };
+  /** Generated endpoint layout. */
   mode: ApiDocsMode;
+  /** Generation options that affect emitted modules. */
   options: ZopiaManifestGenerationOptions;
+  /** Canonical non-core `info` fields. */
   infoOverlay: Record<string, unknown>;
+  /** Canonical document-level restorations. */
   documentOverlay: Record<string, unknown>;
+  /** Canonical path-item restorations. */
   pathsOverlay: Record<string, unknown>;
+  /** Original server declarations, when present. */
   servers?: unknown[];
+  /** Original tag declarations, when present. */
   tags?: unknown[];
+  /** Original security schemes, when present. */
   securitySchemes?: Record<string, unknown>;
+  /** Canonical generated component records. */
   components: GeneratedZopiaManifestComponent[];
+  /** Canonical generated endpoint records. */
   apis: GeneratedZopiaManifestApi[];
 }
 
@@ -318,7 +353,13 @@ function validateKeys(value: object, allowed: readonly string[], context: string
   if (invalid !== undefined) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${context} key: ${invalid}`);
 }
 
-/** Compute the canonical SHA-256 identity used for manifest staleness checks. */
+/**
+ * Compute the canonical SHA-256 identity used for manifest staleness checks.
+ *
+ * @param document JSON-compatible Swagger/OpenAPI source document.
+ * @returns Lowercase hexadecimal SHA-256 digest of the canonical document.
+ * @throws {@link ZopiaError} when the document contains non-JSON or circular values.
+ */
 export function hashOpenApiDocument(document: OpenApiDocument): string {
   try {
     return createHash('sha256').update(stableJson(document)).digest('hex');
@@ -330,7 +371,15 @@ export function hashOpenApiDocument(document: OpenApiDocument): string {
   }
 }
 
-/** Build a detached, deterministic manifest snapshot without touching the filesystem. */
+/**
+ * Build a detached, deterministic manifest snapshot without touching the filesystem.
+ *
+ * @param source Normalized Swagger/OpenAPI source document.
+ * @param plans Planned endpoint files represented by the source document.
+ * @param options Layout and component-generation settings to record.
+ * @returns Validated canonical current-writer manifest.
+ * @throws {@link ZopiaError} when the source, plans, or options are invalid.
+ */
 export function createZopiaManifest(source: OpenApiDocument, plans: readonly ApiDocsFilePlan[], options: CreateZopiaManifestOptions): GeneratedZopiaManifest {
   if (!isRecord(source) || !isRecord(source.info)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid manifest source document', { at: '#', hint: 'provide a normalized Swagger/OpenAPI document' });
   if (!isRecord(options) || !['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Invalid manifest generation options', { at: 'options' });
@@ -424,7 +473,13 @@ function validateSchemaOverlay(overlay: unknown, context: string): void {
   if (!Object.prototype.hasOwnProperty.call(overlay, 'node') && overlay.set === undefined && overlay.remove === undefined) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Empty zopia manifest ${context}`);
 }
 
-/** Validate the writer-owned manifest contract before serialization or disk output. */
+/**
+ * Validate the writer-owned manifest contract before serialization or disk output.
+ *
+ * @param manifest Candidate manifest to validate in place.
+ * @returns Nothing; success narrows `manifest` to the current writer shape.
+ * @throws {@link ZopiaError} when any manifest field violates the contract.
+ */
 export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest is GeneratedZopiaManifest {
   if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest schema');
   validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'infoOverlay', 'documentOverlay', 'pathsOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis'], 'root');
@@ -515,13 +570,26 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   }
   stableJson(manifest);
 }
-/** Serialize a validated manifest with canonical object-key order and one trailing newline. */
+/**
+ * Serialize a validated manifest with canonical object-key order and one trailing newline.
+ *
+ * @param manifest Candidate manifest to validate and serialize.
+ * @returns Pretty-printed canonical JSON ending in one newline.
+ * @throws {@link ZopiaError} when the manifest is invalid.
+ */
 export function serializeZopiaManifest(manifest: ZopiaManifest): string {
   validateZopiaManifest(manifest);
   return `${JSON.stringify(canonicalValue(manifest), null, 2)}\n`;
 }
 
-/** Atomically write a validated manifest and return its absolute path. */
+/**
+ * Atomically write a validated manifest and return its absolute path.
+ *
+ * @param outputDir Destination api-docs directory.
+ * @param manifest Candidate manifest to validate and write.
+ * @returns Absolute path to the written manifest file.
+ * @throws {@link ZopiaError} when validation or filesystem output fails.
+ */
 export async function writeZopiaManifest(outputDir: string, manifest: ZopiaManifest): Promise<string> {
   if (typeof outputDir !== 'string' || outputDir.trim() === '' || outputDir.includes('\0')) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'invalid manifest output directory', { at: 'outputDir', hint: 'provide a non-empty output-directory path' });
   const root = resolve(outputDir);

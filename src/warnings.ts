@@ -46,7 +46,13 @@ function normalizeWarning(warning: ZopiaWarning): ZopiaWarning {
   return { code: warning.code, ...(warning.at === undefined ? {} : { at: warning.at }), message: cleanText(warning.message) };
 }
 
-/** Return detached, deduplicated warnings in deterministic location/code/message order. */
+/**
+ * Return detached, deduplicated warnings in deterministic location/code/message order.
+ *
+ * @param warnings Structured warnings to validate, normalize, and sort.
+ * @returns A detached deterministic array with exact duplicates removed.
+ * @throws {@link ZopiaError} when a warning or the iterable is invalid.
+ */
 export function normalizeZopiaWarnings(warnings: Iterable<ZopiaWarning>): ZopiaWarning[] {
   try {
     if (warnings === null || warnings === undefined || typeof (warnings as { [Symbol.iterator]?: unknown })[Symbol.iterator] !== 'function') throw new ZopiaError('ZOPIA_WARNING_INVALID', 'warnings must be iterable', { at: 'warnings' });
@@ -64,7 +70,14 @@ export function normalizeZopiaWarnings(warnings: Iterable<ZopiaWarning>): ZopiaW
   }
 }
 
-/** Prefix a warning's JSON Pointer with a containing source location. */
+/**
+ * Prefix a warning's JSON Pointer with a containing source location.
+ *
+ * @param warning Structured warning to validate and relocate.
+ * @param base Containing JSON Pointer beginning with `#`.
+ * @returns A normalized warning beneath `base`.
+ * @throws {@link ZopiaError} when the warning or base pointer is invalid.
+ */
 export function rebaseZopiaWarning(warning: ZopiaWarning, base: string): ZopiaWarning {
   if (typeof base !== 'string' || !base.startsWith('#')) throw new ZopiaError('ZOPIA_WARNING_INVALID', `invalid warning base pointer: ${base}`, { at: 'base', hint: "use a JSON Pointer beginning with '#'" });
   const value = normalizeWarning(warning);
@@ -72,13 +85,26 @@ export function rebaseZopiaWarning(warning: ZopiaWarning, base: string): ZopiaWa
   return normalizeWarning({ ...value, at: `${base}${suffix}` });
 }
 
-/** Format a warning for stderr or logs without multiline injection. */
+/**
+ * Format a warning for stderr or logs without multiline injection.
+ *
+ * @param warning Structured warning to validate and format.
+ * @returns A stable single-line diagnostic.
+ * @throws {@link ZopiaError} when the warning is invalid.
+ */
 export function formatZopiaWarning(warning: ZopiaWarning): string {
   const value = normalizeWarning(warning);
   return `${value.code}${value.at ? ` ${value.at}` : ''}: ${value.message}`;
 }
 
-/** Format the canonical generated-code marker required by D-12. */
+/**
+ * Format the canonical generated-code marker required by D-12.
+ *
+ * @param warning Structured warning to validate and format.
+ * @param subject Generated-code subject associated with the warning.
+ * @returns A stable single-line `@zopia:warn` source comment.
+ * @throws {@link ZopiaError} when the warning or subject is invalid.
+ */
 export function formatZopiaWarningComment(warning: ZopiaWarning, subject: string): string {
   const value = normalizeWarning(warning);
   if (typeof subject !== 'string') throw new ZopiaError('ZOPIA_WARNING_INVALID', 'warning subject must be a string', { at: 'subject' });
@@ -90,23 +116,46 @@ export function formatZopiaWarningComment(warning: ZopiaWarning, subject: string
 export class ZopiaWarningCollector {
   readonly #warnings = new Map<string, ZopiaWarning>();
 
-  /** Add one warning after validating and normalizing it. */
+  /**
+   * Add one warning after validating and normalizing it.
+   *
+   * @param input Structured warning to add.
+   * @returns Nothing.
+   * @throws {@link ZopiaError} when the warning is invalid.
+   */
   add(input: ZopiaWarning): void {
     const warning = normalizeWarning(input);
     this.#warnings.set(warningKey(warning), warning);
   }
 
-  /** Add all warnings from an iterable. */
+  /**
+   * Add all warnings from an iterable.
+   *
+   * @param inputs Structured warnings to normalize and add.
+   * @returns Nothing.
+   * @throws {@link ZopiaError} when the iterable or any warning is invalid.
+   */
   addAll(inputs: Iterable<ZopiaWarning>): void {
     for (const warning of normalizeZopiaWarnings(inputs)) this.add(warning);
   }
 
-  /** Add warnings rebased beneath one containing JSON Pointer. */
+  /**
+   * Add warnings rebased beneath one containing JSON Pointer.
+   *
+   * @param inputs Structured warnings to normalize and add.
+   * @param base Containing JSON Pointer beginning with `#`.
+   * @returns Nothing.
+   * @throws {@link ZopiaError} when the iterable, warning, or base pointer is invalid.
+   */
   addRebased(inputs: Iterable<ZopiaWarning>, base: string): void {
     for (const warning of normalizeZopiaWarnings(inputs)) this.add(rebaseZopiaWarning(warning, base));
   }
 
-  /** Return a detached, deduplicated, deterministically sorted snapshot. */
+  /**
+   * Return a detached, deduplicated, deterministically sorted snapshot.
+   *
+   * @returns Current normalized warnings in stable order.
+   */
   toArray(): ZopiaWarning[] {
     return normalizeZopiaWarnings(this.#warnings.values());
   }

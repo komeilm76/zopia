@@ -1,14 +1,28 @@
 import { ZopiaError } from '../errors';
 import type { OpenApiDocument } from './openapi';
 
-/** Decode one RFC 6901 JSON Pointer segment. */
+/**
+ * Decode one RFC 6901 JSON Pointer segment.
+ *
+ * @param segment Escaped JSON Pointer path segment.
+ * @param ref Complete reference used in error diagnostics.
+ * @returns Decoded property name.
+ * @throws {@link ZopiaError} when `segment` contains an invalid escape.
+ */
 export function decodeJsonPointerSegment(segment: string, ref = segment): string {
   if (typeof segment !== 'string') throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `invalid JSON Pointer segment: ${String(segment)}`, { at: String(ref), hint: 'use string JSON Pointer segments' });
   if (/~(?![01])/.test(segment)) throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `Invalid JSON Pointer escape in OpenAPI reference: ${ref}`, { at: ref, hint: 'fix the local JSON Pointer escape' });
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
-/** Resolve a local JSON Pointer reference in an OpenAPI document. */
+/**
+ * Resolve a local JSON Pointer reference in an OpenAPI document.
+ *
+ * @param document Swagger/OpenAPI document containing the target.
+ * @param ref Local reference beginning with `#`.
+ * @returns Referenced value, including explicit `null` values.
+ * @throws {@link ZopiaError} when the document, reference, or target is invalid.
+ */
 export function resolveOpenApiLocalRef(document: OpenApiDocument, ref: string): unknown {
   if (!document || typeof document !== 'object' || Array.isArray(document)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'invalid OpenAPI document: expected an object', { at: '#', hint: 'pass a Swagger/OpenAPI document object' });
   if (typeof ref !== 'string' || (!ref.startsWith('#/') && ref !== '#')) throw new ZopiaError('ZOPIA_REF_EXTERNAL', `Only local OpenAPI references are supported: ${String(ref)}`, { at: String(ref), hint: "use a local reference beginning with '#'" });

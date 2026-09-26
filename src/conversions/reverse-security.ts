@@ -12,7 +12,14 @@ export interface ZopiaFallbackSecurityScheme {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** Validate and detach an OpenAPI security requirement list. */
+/**
+ * Validate and detach an OpenAPI security requirement list.
+ *
+ * @param value Candidate security-requirement array.
+ * @param context Human-readable field name used in failure messages.
+ * @returns Detached security-requirement alternatives in source order.
+ * @throws {@link ZopiaError} when the requirement shape is invalid.
+ */
 export function normalizeSecurityRequirements(value: unknown, context: string): OpenApiSecurityRequirement[] {
   if (!Array.isArray(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid ${context}: expected an array`);
   return value.map((alternative, index) => {
@@ -32,7 +39,13 @@ function isCompatibleFallback(value: unknown, swagger: boolean): boolean {
   return value.type === 'http' && typeof value.scheme === 'string' && value.scheme.toLowerCase() === 'bearer';
 }
 
-/** Add or reuse a collision-safe bearer fallback without replacing existing schemes. */
+/**
+ * Add or reuse a collision-safe bearer fallback without replacing existing schemes.
+ *
+ * @param input Existing security-scheme map to copy and extend.
+ * @param swagger Whether to emit a Swagger 2.0 API-key-compatible fallback.
+ * @returns Selected fallback name and a detached security-scheme map.
+ */
 export function ensureFallbackSecurityScheme(input: Record<string, unknown>, swagger: boolean): ZopiaFallbackSecurityScheme {
   const schemes = { ...input };
   let suffix = 1;
