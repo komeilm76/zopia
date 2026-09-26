@@ -17,6 +17,26 @@ descriptions" (T-16) is the headline; everything below makes that checkable.
 > 📌 Generated `index.ts` files use **no** Bun-only or Node-only APIs — only
 > `zod`, `km-api`, and relative imports (R-502), so the tree runs anywhere.
 
+### 🟣 Bun gate
+
+`packageManager` pins the repository's Bun version and the checked-in `bun.lock`
+pins every dependency. Run the complete gate with one PowerShell- and shell-valid
+command:
+
+```bash
+bun run bun:gate
+```
+
+The gate rejects a different runtime/version, performs a frozen Bun install,
+runs strict TypeScript, the full Vitest suite, and coverage gates, exercises both
+the direct CLI and package binary, then generates and reverses a component-based
+tree so Bun itself must import the generated `.ts` modules. Temporary output is
+created under `os.tmpdir()` and always removed. The single command is suitable
+for local release validation and CI without maintaining two gate definitions.
+
+`package-lock.json` remains checked in as the npm/Node compatibility resolution;
+`bun.lock` is authoritative for the Bun gate and release workflow.
+
 ## 📏 Code standard
 
 | # | Rule |

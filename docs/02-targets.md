@@ -40,7 +40,7 @@ Vitest suite — see [Testing → Scenario matrix](11-testing.md).
 | --- | --- | --- | --- |
 | T-12 | **JSDoc everywhere** — every exported function, type, constant, and class is documented (template + rules fixed) | [Standards → JSDoc standard](12-standards.md) | ✅ 🚧 |
 | T-13 | **Tests in all scenarios** — Vitest suite covering the full scenario matrix (spec versions, ref graphs, modes, option combinations, zod features, edge cases), run with Bun | [Testing](11-testing.md) | ✅ 🚧 |
-| T-14 | **Bun runs the project** — install, typecheck, test, coverage, and CLI all work with `bun` | [Standards → Toolchain](12-standards.md#-toolchain) | ✅ 🚧 |
+| T-14 | **Bun runs the project** — install, typecheck, test, coverage, CLI, and generated-TypeScript imports all work through one pinned-Bun gate | [Standards → Bun gate](12-standards.md#-bun-gate) | ✅ |
 | T-15 | **Standard documentation** — `docs/` directory with targets, roadmap, architecture, conventions; README links into it; beautiful, icon-based markdown | this document set · [Standards → Docs convention](12-standards.md#-docs-convention) | ✅ |
 | T-16 | **Quality bar** — pure, safe, clean code with descriptions; deterministic output; typed errors; no silent lossy conversions | [Standards](12-standards.md) | ✅ 🚧 |
 | T-17 | **Changelog after commits** — `CHANGELOG.md` updated by every user-facing commit under `Unreleased` | [Standards → Changelog convention](12-standards.md#-changelog-convention) | ✅ |

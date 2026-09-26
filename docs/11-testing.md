@@ -19,7 +19,14 @@ bun run test          # 🧪 vitest run (CI mode)
 bun run test:watch    # 👀 vitest watch
 bun run coverage      # 📈 vitest --coverage
 bun run golden:update # 📸 regenerate golden trees deliberately (R-112)
+bun run bun:gate      # 🟣 frozen install + all checks + Bun CLI/runtime smoke
 ```
+
+The Bun gate is the release-level wrapper around these individual commands. It
+also validates the pinned Bun version and `bun.lock`, executes the package binary,
+and proves reverse conversion can import freshly generated TypeScript under Bun
+itself. The command is CI-ready and never substitutes npm for the Bun install,
+script runner, CLI, or generated-module runtime.
 
 ## 📐 Test pyramid
 

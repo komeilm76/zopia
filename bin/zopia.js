@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-const { spawn } = require('node:child_process');
-const path = require('node:path');
+import { spawn } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const cli = path.resolve(__dirname, '..', 'src', 'cli.ts');
+const directory = dirname(fileURLToPath(import.meta.url));
+const cli = resolve(directory, '..', 'src', 'cli.ts');
 const child = spawn('bun', [cli, ...process.argv.slice(2)], { stdio: 'inherit' });
 child.on('error', (error) => {
   if (error.code === 'ENOENT') {

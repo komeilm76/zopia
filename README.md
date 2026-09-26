@@ -142,14 +142,16 @@ zopia/
 zopia is a **Bun-first** project (see [docs/12-standards.md](docs/12-standards.md)):
 
 ```bash
-bun install        # 📦 install dependencies
-bun run typecheck  # ✅ strict TypeScript
-bun run test       # 🧪 vitest (all scenarios)
-bun run coverage   # 📈 coverage report
+bun install --frozen-lockfile # 📦 reproducible install from bun.lock
+bun run typecheck             # ✅ strict TypeScript
+bun run test                  # 🧪 vitest (all scenarios)
+bun run coverage              # 📈 enforced coverage report
+bun run bun:gate              # 🟣 complete pinned-Bun release gate
 ```
 
-> 🚧 The scripts above land with the Phase 1 implementation; the commands are
-> already fixed by the standards so tooling is never re-decided.
+> ✅ `bun run bun:gate` is the CI-equivalent local check: it verifies the pinned
+> Bun version and frozen lockfile, then runs TypeScript, Vitest, coverage, the
+> package CLI, generation, and Bun-native imports of generated TypeScript.
 
 ## 🤝 Contributing
 

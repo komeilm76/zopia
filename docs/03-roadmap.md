@@ -22,9 +22,9 @@ without asking questions. ✅ *That bar is the acceptance test of this phase.*
 
 Everything in [Targets](02-targets.md) marked ✅ 🚧:
 
-- [ ] ⚙️ Package scaffold — `package.json` (Bun-first, zero runtime deps,
-      `zod` peer + `km-api ^0.4.1` from npm — D-15), strict
-      `tsconfig`, Vitest + Bun setup
+- [x] ⚙️ Package scaffold — ESM `package.json` (Bun-first, zero runtime deps,
+      `zod` peer + `km-api ^0.4.1` from npm — D-15), strict `tsconfig`,
+      Vitest/V8, pinned Bun, and checked-in `bun.lock`
 - [x] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
       ([rules](06-conversions.md))
 - [x] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
@@ -65,6 +65,9 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [x] 📈 **Coverage gates** — V8 measures every source file; overall line/function
       coverage is gated at 90%, branches at 85%, conversion engines at 95% lines,
       and every source file at 80% lines, with omitted-file detection
+- [x] 🟣 **Bun gate** — pinned Bun 1.2.21, frozen `bun.lock` installation,
+      typecheck, Vitest, coverage, direct/package CLI smoke tests, and Bun-native
+      generated-TypeScript reverse imports run through one command (T-14/D-01)
 - [ ] 🧪 Vitest suite — remaining full scenario matrix and other contract suites
       (round-trip properties, golden trees, and coverage gates are complete;
       [testing](11-testing.md))
