@@ -95,7 +95,7 @@ describe('dedicated manifest writer', () => {
 
     expect(manifest.$schema).toBe(ZOPIA_MANIFEST_SCHEMA);
     expect(manifest.zopiaVersion).toBe(ZOPIA_VERSION);
-    expect(manifest.source).toMatchObject({ kind: 'openapi-3.1', title: 'Manifest API', version: '2.3.4', description: 'Writer contract' });
+    expect(manifest.source).toMatchObject({ kind: 'openapi-3.1', openapiVersion: '3.1.1', title: 'Manifest API', version: '2.3.4', description: 'Writer contract' });
     expect(manifest.source.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(manifest.options).toEqual({ insertComponents: true, useComponentAsReference: true });
     expect(manifest.infoOverlay).toEqual({ termsOfService: 'https://example.test/terms', 'x-info': true });
@@ -105,6 +105,7 @@ describe('dedicated manifest writer', () => {
       webhooks: source.webhooks,
       'x-document': source['x-document'],
     });
+    expect(manifest.pathsOverlay).toEqual({});
     expect(manifest.servers).toEqual(source.servers);
     expect(manifest.tags).toEqual(source.tags);
     expect(manifest.securitySchemes).toEqual(source.components.securitySchemes);
@@ -179,6 +180,9 @@ describe('dedicated manifest writer', () => {
     const minimal: OpenApiDocument = { swagger: '2.0', info: { title: 'Minimal', version: '1' }, paths: {} };
     const minimalManifest = build(minimal, false);
     expect(minimalManifest).not.toHaveProperty('swaggerHost');
+    expect(minimalManifest).not.toHaveProperty('servers');
+    expect(minimalManifest).not.toHaveProperty('tags');
+    expect(minimalManifest).not.toHaveProperty('securitySchemes');
     expect(() => serializeZopiaManifest(minimalManifest)).not.toThrow();
   });
 
@@ -220,6 +224,9 @@ describe('dedicated manifest writer', () => {
       ['writer version', (manifest) => { delete manifest.zopiaVersion; }],
       ['environment metadata', (manifest) => { manifest.generatedAt = new Date(0).toISOString(); }],
       ['source hash', (manifest) => { manifest.source.sha256 = 'nope'; }],
+      ['source OpenAPI version', (manifest) => { manifest.source.openapiVersion = '4.0.0'; }],
+      ['paths overlay', (manifest) => { manifest.pathsOverlay['/invalid'] = { get: {} }; }],
+      ['path-item reference flag', (manifest) => { manifest.apis[0].pathItemRef = 'yes'; }],
       ['generation options', (manifest) => { manifest.options.insertComponents = false; }],
       ['security scheme', (manifest) => { manifest.securitySchemes.oauth = 'invalid'; }],
       ['default security', (manifest) => { manifest.defaultSecurity = [{ oauth: ['read', 42] }]; }],
@@ -281,7 +288,7 @@ describe('dedicated manifest writer', () => {
     const manifest = build();
     const reconstructed = manifestToOpenApi(manifest);
 
-    expect(reconstructed.openapi).toBe('3.1.0');
+    expect(reconstructed.openapi).toBe('3.1.1');
     expect(reconstructed.info).toEqual(richOpenApi().info);
     expect(reconstructed.servers).toEqual(richOpenApi().servers);
     expect((reconstructed as any).components.schemas).toEqual(richOpenApi().components.schemas);

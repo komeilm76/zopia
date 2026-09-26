@@ -334,7 +334,7 @@ on stdout parseable.
 | R-406 | **outDir guard** — every generated path is canonicalized and verified to stay inside `outDir`; regeneration refuses symlinked path ancestors, and manifest temporary writes use exclusive creation so stale symlinks cannot redirect output. Obsolete cleanup trusts only a fully validated manifest and never recursively deletes an output root | generation + manifest boundaries |
 | R-407 | **Trusted-input contract** — engine ④ imports generated `.ts` files (executes them). This is by design (D-08) and only for trees that carry a valid zopia manifest | `loader.ts` |
 | R-408 | **No silent loss** — every lossy/unsupported conversion produces a normalized `ZopiaWarning` (D-12): `{ code, at?, message }` (shape fixed by R-144). Public wrappers return or callback each warning; engine ② and generated api-doc files mirror schema warnings as canonical `// @zopia:warn …` comments; CLI diagnostics go only to stderr | every engine + CLI |
-| R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; stale source/config/incomplete-tree state is warned and repaired, while only obsolete manifest-owned files are pruned; engine ④ output is canonical (R-401) | round-trip + staleness tests |
+| R-409 | **Idempotent regeneration** — re-running engine ③ with identical input + options produces byte-identical output; regenerating source-preserving engine ④ output does too. Fixture properties cover Swagger 2.0 and OpenAPI 3.0/3.1 across layout/component modes, while stale source/config/incomplete-tree state is warned and repaired and only obsolete manifest-owned files are pruned; engine ④ output is canonical (R-401) | round-trip + staleness tests |
 
 ## 📏 Performance
 

@@ -359,9 +359,20 @@ function finalizeDialect(
   else if (target === 'openapi-3.1') result.$schema = 'https://json-schema.org/draft/2020-12/schema';
 }
 
+function collapseRedundantLiteralIntersection(schema: Record<string, unknown>): Record<string, unknown> {
+  if (Object.keys(schema).length !== 1 || !Array.isArray(schema.allOf) || schema.allOf.length !== 2) return schema;
+  const [base, literal] = schema.allOf;
+  if (!isRecord(base) || !isRecord(literal) || Object.keys(base).length !== 1 || base.type !== literal.type || !Object.prototype.hasOwnProperty.call(literal, 'const')) return schema;
+  return { ...literal };
+}
+
 function canonicalizeSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const collapsed = collapseRedundantLiteralIntersection(schema);
+  const normalized = { ...collapsed };
+  if (isRecord(normalized.properties) && Object.keys(normalized.properties).length === 0) delete normalized.properties;
+  if (isRecord(normalized.propertyNames) && Object.keys(normalized.propertyNames).length === 1 && normalized.propertyNames.type === 'string') delete normalized.propertyNames;
   const result: Record<string, unknown> = {};
-  const entries = Object.entries(schema).sort(([left], [right]) => {
+  const entries = Object.entries(normalized).sort(([left], [right]) => {
     const leftRank = KEY_RANK.get(left) ?? Number.POSITIVE_INFINITY;
     const rightRank = KEY_RANK.get(right) ?? Number.POSITIVE_INFINITY;
     return leftRank - rightRank || (left < right ? -1 : left > right ? 1 : 0);

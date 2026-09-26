@@ -1,0 +1,17 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Path Item Reference API", "version": "1.0.0" },
+  "components": {
+    "pathItems": {
+      "SharedHealth": {
+        "get": {
+          "operationId": "sharedHealth",
+          "responses": { "200": { "description": "Healthy" } }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": { "$ref": "#/components/pathItems/SharedHealth" }
+  }
+}

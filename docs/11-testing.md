@@ -124,13 +124,15 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 ## 🔄 Round-trip property tests
 
 ```ts
-// 🧪 tests/roundtrip/property.test.ts (sketch)
-for (const fixture of loadFixtures('specs/*.json')) {
-  it(`round-trips ${fixture.name}`, async () => {
-    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zopia-rt-')); // R-111
-    await openApiToApiDocs(fixture.json, { ...DEFAULTS, outDir });
-    const back = await apiDocsToOpenApi(outDir, { version: fixture.version });
-    expect(canonicalize(back.openapi)).toEqual(canonicalize(fixture.json));
+// 🧪 tests/roundtrip/property.test.ts (implemented)
+for (const fixture of fixtures) {
+  it(`round-trips ${fixture}`, async () => {
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zopia-roundtrip-')); // R-111
+    await openApiToApiDocs(await loadFixture(fixture), { outDir });
+    // Omitting `version` preserves the source dialect, including Swagger 2.0
+    // and an exact OpenAPI patch version such as 3.0.3.
+    const back = await manifestFileToOpenApi(path.join(outDir, '.zopia-manifest.json'));
+    expect(canonicalize(back)).toEqual(canonicalize(await loadFixture(fixture)));
   });
 }
 ```
@@ -142,6 +144,13 @@ is a real engine bug. Every dialect fixture (S-01…S-06) round-trips against
 **its own original**; the canonical Admin API additionally asserts an
 **empty `overlay` on every API** — a spec-clean spec must round-trip without a
 single frozen subtree or keyword restoration.
+
+The implemented matrix also runs flat mode, emitted-but-inlined components,
+emitted component references, nested and cyclic refs, and frozen overlays. It
+asserts both same-input regeneration and reverse-output regeneration are
+byte-identical, checks source-preserving Swagger → OpenAPI selection separately,
+and verifies that supported Zod → JSON Schema → Zod pipelines converge on the
+same canonical schema. Every temporary tree is removed after its test (R-111).
 
 ## 🧰 Fixtures
 
@@ -156,7 +165,8 @@ tests/fixtures/
 │   ├── formdata-2.0.json         # 🧾 formData multipart + urlencoded
 │   ├── cookies-3.0.json          # 🍪 cookie parameters
 │   ├── unsupported-keywords.json # 🚫 D-12 matrix in one spec
-│   └── edge/                     # S-07 error fixtures (invalid JSON, bad refs, …)
+│   ├── path-item-ref-3.1.json    # 🔗 local path-item reference identity
+│   └── edge/                     # 🚧 S-07 error fixtures (invalid JSON, bad refs, …)
 └── expected/
     ├── admin-api-3.0.directory/  # 📸 golden tree (defaults)
     ├── admin-api-3.0.flat/       # 📸 golden tree (flat)

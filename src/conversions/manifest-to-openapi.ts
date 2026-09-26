@@ -281,6 +281,14 @@ function swaggerParameterToOpenApi(parameter: Record<string, any>, version: '3.0
   return { ...metadata, schema: rewriteSchemaVersion(parameter.schema ?? swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version) };
 }
 
+function swaggerPathsOverlayToOpenApi(pathsOverlay: Record<string, unknown> | undefined, version: '3.0' | '3.1'): Record<string, unknown> | undefined {
+  if (pathsOverlay === undefined) return undefined;
+  return Object.fromEntries(Object.entries(pathsOverlay).map(([path, metadata]) => {
+    if (!isRecord(metadata) || !Array.isArray(metadata.parameters)) return [path, metadata];
+    return [path, { ...metadata, parameters: metadata.parameters.map((parameter: unknown) => isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version) : parameter) }];
+  }));
+}
+
 function swaggerHeaderToOpenApi(header: unknown, version: '3.0' | '3.1'): unknown {
   if (!isRecord(header)) return header;
   const metadata = Object.fromEntries(Object.entries(header).filter(([key]) => !SWAGGER_SCHEMA_KEYS.has(key)));
@@ -327,10 +335,10 @@ function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: Zop
   const produces = Array.isArray(operation.produces) ? operation.produces : manifest.swaggerProduces ?? [];
   const requestTypes = consumes.length ? consumes : ['application/json'];
   const responseTypes = produces.length ? produces : ['application/json'];
-  const parameters = (Array.isArray(operation.parameters) ? operation.parameters : []).map((parameter: unknown) => isRecord(parameter) ? resolveParameter(parameter, manifest) : parameter).filter(isRecord);
-  const body = parameters.find((parameter) => parameter.in === 'body');
-  const form = parameters.filter((parameter) => parameter.in === 'formData');
-  const ordinary = parameters.filter((parameter) => parameter.in !== 'body' && parameter.in !== 'formData').map((parameter) => swaggerParameterToOpenApi(parameter, version));
+  const parameters = (Array.isArray(operation.parameters) ? operation.parameters : []).filter(isRecord).map((raw) => ({ raw, resolved: resolveParameter(raw, manifest) }));
+  const body = parameters.find(({ resolved }) => resolved.in === 'body')?.resolved;
+  const form = parameters.filter(({ resolved }) => resolved.in === 'formData').map(({ resolved }) => resolved);
+  const ordinary = parameters.filter(({ resolved }) => resolved.in !== 'body' && resolved.in !== 'formData').map(({ raw, resolved }) => swaggerParameterToOpenApi(typeof raw.$ref === 'string' ? raw : resolved, version));
   let requestBody: Record<string, any> | undefined;
   if (body) {
     const schema = rewriteSchemaVersion(body.schema ?? {}, 'swagger-2.0', version);
@@ -379,15 +387,20 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1
   const documentOverlay = version === '3.0' ? Object.fromEntries(Object.entries(manifest.documentOverlay ?? {}).filter(([key]) => key !== 'webhooks' && key !== 'jsonSchemaDialect')) : manifest.documentOverlay;
   if (sourceKind !== 'swagger-2.0') {
     const rewrittenComponents = manifest.componentsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.componentsOverlay, sourceKind, version) as Record<string, unknown>;
+    const dropPathItemRefs = version === '3.0' && sourceKind === 'openapi-3.1' && isRecord(rewrittenComponents?.pathItems);
     const componentsOverlay = version === '3.0' && rewrittenComponents ? Object.fromEntries(Object.entries(rewrittenComponents).filter(([key]) => key !== 'pathItems')) : rewrittenComponents;
+    const rewrittenPaths = manifest.pathsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.pathsOverlay, sourceKind, version) as Record<string, unknown>;
+    const pathsOverlay = dropPathItemRefs && rewrittenPaths ? Object.fromEntries(Object.entries(rewrittenPaths).map(([path, metadata]) => [path, isRecord(metadata) ? Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== '$ref')) : metadata])) : rewrittenPaths;
     return {
       ...manifest,
-      source: { ...manifest.source, kind: targetKind },
+      source: { ...manifest.source, kind: targetKind, openapiVersion: `${version}.0` },
       documentOverlay,
+      pathsOverlay,
       components,
       componentsOverlay,
       apis: manifest.apis.map((api) => ({
         ...api,
+        ...(dropPathItemRefs && api.pathItemRef === true ? { pathItemRef: false } : {}),
         sourceOperation: api.sourceOperation === undefined ? undefined : rewriteOperationSchemas(api.sourceOperation, sourceKind, version) as Record<string, any>,
         overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version),
       })),
@@ -408,8 +421,9 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: '3.0' | '3.1
   });
   return {
     ...manifest,
-    source: { ...manifest.source, kind: targetKind },
+    source: { ...manifest.source, kind: targetKind, openapiVersion: `${version}.0` },
     documentOverlay,
+    pathsOverlay: swaggerPathsOverlayToOpenApi(manifest.pathsOverlay, version),
     servers,
     components,
     componentsOverlay,
@@ -730,11 +744,28 @@ function resolveParameter(parameter: Record<string, any>, manifest: ZopiaManifes
   return isRecord(source) ? { ...source, ...Object.fromEntries(Object.entries(parameter).filter(([key]) => key !== '$ref')) } : parameter;
 }
 
+function parameterIdentity(parameter: unknown, manifest: ZopiaManifest): string | undefined {
+  if (!isRecord(parameter)) return undefined;
+  const resolved = resolveParameter(parameter, manifest);
+  return typeof resolved.name === 'string' && typeof resolved.in === 'string' ? `${resolved.in}\0${resolved.name}` : undefined;
+}
+
+function removeInheritedPathParameters(operation: Record<string, any>, sourceOperation: Record<string, any>, pathItem: Record<string, any> | undefined, manifest: ZopiaManifest): void {
+  if (!pathItem || !Array.isArray(pathItem.parameters) || !Array.isArray(operation.parameters)) return;
+  const inherited = new Set(pathItem.parameters.map((parameter: unknown) => parameterIdentity(parameter, manifest)).filter((identity): identity is string => identity !== undefined));
+  const declared = new Set((Array.isArray(sourceOperation.parameters) ? sourceOperation.parameters : []).map((parameter: unknown) => parameterIdentity(parameter, manifest)).filter((identity): identity is string => identity !== undefined));
+  operation.parameters = operation.parameters.filter((parameter: unknown) => {
+    const identity = parameterIdentity(parameter, manifest);
+    return identity === undefined || !inherited.has(identity) || declared.has(identity);
+  });
+  if (operation.parameters.length === 0) delete operation.parameters;
+}
+
 const SWAGGER_PARAMETER_SCHEMA_KEYS = new Set(['schema', 'content', 'type', 'format', 'items', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength', 'maxLength', 'pattern', 'enum', 'default', 'multipleOf', 'minItems', 'maxItems', 'uniqueItems']);
 
 function swaggerParameterShape(schema: unknown, previous: Record<string, any> = {}, context = 'parameter'): Record<string, unknown> {
   const shape = isRecord(schema) ? { ...schema } : {};
-  if (previous.type === 'file' && shape.type === 'string' && shape.format === 'binary') { shape.type = 'file'; delete shape.format; }
+  if (previous.type === 'file' && shape.type === 'string') { shape.type = 'file'; delete shape.format; }
   if (!['string', 'number', 'integer', 'boolean', 'array', 'file'].includes(String(shape.type)) || Object.prototype.hasOwnProperty.call(shape, '$ref')) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Swagger 2.0 ${context} must serialize to a primitive, array, or file schema`);
   return shape;
 }
@@ -779,9 +810,27 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
   return parameters;
 }
 
+function canonicalJson(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, (_key, child) => child && typeof child === 'object' && !Array.isArray(child)
+      ? Object.fromEntries(Object.entries(child).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
+      : child);
+  } catch { return undefined; }
+}
+
 function sameSchema(left: unknown, right: unknown): boolean {
-  try { return JSON.stringify(left) === JSON.stringify(right); }
-  catch { return false; }
+  const leftJson = canonicalJson(left);
+  return leftJson !== undefined && leftJson === canonicalJson(right);
+}
+
+function mediaExamples(media: Record<string, any>): Record<string, unknown> | undefined {
+  if (isRecord(media.examples)) return media.examples;
+  if (Object.prototype.hasOwnProperty.call(media, 'example')) return { default: { value: media.example } };
+  return undefined;
+}
+
+function legacyResponseExamples(examples: unknown): Record<string, unknown> | undefined {
+  return isRecord(examples) ? Object.fromEntries(Object.entries(examples).map(([contentType, value]) => [contentType, { value }])) : undefined;
 }
 
 function resolvedRequestBody(operation: Record<string, any>, manifest: ZopiaManifest): Record<string, any> {
@@ -819,7 +868,7 @@ function serializeRequestBody(operation: Record<string, any>, config: EndpointCo
       parameters.push({ ...previous, name: typeof previous.name === 'string' ? previous.name : 'body', in: 'body', required: previous.required === true, schema });
     }
     operation.parameters = parameters;
-    if (contentType) {
+    if (contentType && (Object.prototype.hasOwnProperty.call(operation, 'consumes') || contentTypeEdited)) {
       const retainedConsumes = Array.isArray(operation.consumes) ? operation.consumes.filter((value: unknown) => value !== contentType && (!contentTypeEdited || value !== baselineContentType)) : [];
       operation.consumes = [contentType, ...retainedConsumes];
     }
@@ -833,8 +882,10 @@ function serializeRequestBody(operation: Record<string, any>, config: EndpointCo
   const primaryMedia = previousType !== undefined && isRecord(previousContent[previousType]) ? previousContent[previousType] : {};
   const retainedContent = Object.fromEntries(Object.entries(previousContent).filter(([type]) => !contentTypeEdited || type !== previousType).map(([type, media]) => [type, isRecord(media) && type !== selectedType && sameSchema(media.schema, primaryMedia.schema) ? { ...media, schema } : media]));
   const previousMedia = isRecord(previousContent[selectedType]) ? previousContent[selectedType] : {};
-  const retainedMedia = Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
-  const examples = isRecord(config.examples?.request) ? { examples: config.examples.request } : {};
+  const configuredExamples = isRecord(config.examples?.request) ? config.examples.request : undefined;
+  const examplesUnchanged = sameSchema(configuredExamples, mediaExamples(previousMedia));
+  const retainedMedia = examplesUnchanged ? previousMedia : Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
+  const examples = !examplesUnchanged && configuredExamples !== undefined ? { examples: configuredExamples } : {};
   operation.requestBody = { ...previous, content: { ...retainedContent, [selectedType]: { ...retainedMedia, ...examples, schema } } };
   operation.parameters = parameters;
 }
@@ -865,7 +916,7 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
     const previous = isRecord(original[status]) ? resolveResponse(original[status], manifest) : {};
     const response: Record<string, any> = { ...previous, description: typeof previous.description === 'string' && previous.description ? previous.description : 'Generated response' };
     const configuredExamples = config.examples?.response?.[status];
-    if (isSwagger) {
+    if (isSwagger && !sameSchema(configuredExamples, legacyResponseExamples(previous.examples))) {
       if (isRecord(configuredExamples)) response.examples = Object.fromEntries(Object.entries(configuredExamples).map(([type, example]) => [type, isRecord(example) && Object.prototype.hasOwnProperty.call(example, 'value') ? example.value : example]));
       else delete response.examples;
     }
@@ -880,20 +931,21 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
       const primaryMedia = previousType !== undefined && isRecord(previousContent[previousType]) ? previousContent[previousType] : {};
       const retainedContent = Object.fromEntries(Object.entries(previousContent).filter(([type]) => !contentTypeEdited || type !== previousType || previousType === selectedType).map(([type, media]) => [type, isRecord(media) && type !== selectedType && sameSchema(media.schema, primaryMedia.schema) ? { ...media, schema } : media]));
       const previousMedia = isRecord(previousContent[selectedType]) ? previousContent[selectedType] : {};
-      const retainedMedia = Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
-      const runtimeExamples = isRecord(configuredExamples) ? { examples: configuredExamples } : {};
+      const examplesUnchanged = sameSchema(isRecord(configuredExamples) ? configuredExamples : undefined, mediaExamples(previousMedia));
+      const retainedMedia = examplesUnchanged ? previousMedia : Object.fromEntries(Object.entries(previousMedia).filter(([key]) => key !== 'example' && key !== 'examples'));
+      const runtimeExamples = !examplesUnchanged && isRecord(configuredExamples) ? { examples: configuredExamples } : {};
       response.content = { ...retainedContent, [selectedType]: { ...retainedMedia, ...runtimeExamples, schema } };
     }
     responses[status] = response;
   }
   operation.responses = responses;
-  if (isSwagger && contentType) {
+  if (isSwagger && contentType && (Object.prototype.hasOwnProperty.call(operation, 'produces') || contentTypeEdited)) {
     const retainedProduces = Array.isArray(operation.produces) ? operation.produces.filter((value: unknown) => value !== contentType && (!contentTypeEdited || value !== baselineContentType)) : [];
     operation.produces = [contentType, ...retainedProduces];
   }
 }
 
-function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: Record<string, any>, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, warnings?: ZopiaWarningCollector): { path: string; method: string; operation: Record<string, any> } {
+function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: Record<string, any>, pathItem: Record<string, any> | undefined, config: EndpointConfig, manifest: ZopiaManifest, references: Array<readonly [string, ComponentSchema]>, warnings?: ZopiaWarningCollector): { path: string; method: string; operation: Record<string, any> } {
   const method = config.method.toLowerCase();
   if (!HTTP_METHODS.has(method)) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint method: ${String(config.method)}`);
   let path: unknown;
@@ -930,6 +982,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   serializeRequestBody(operation, config, manifest, references, parameters, operationAt, warnings);
   serializeResponses(operation, config, manifest, references, operationAt, warnings);
   if (Array.isArray(operation.parameters) && operation.parameters.length === 0) delete operation.parameters;
+  removeInheritedPathParameters(operation, sourceOperation, pathItem, manifest);
   const skippedRefs = applyManifestRefs(operation, sourceOperation, api, manifest);
   operation = applyManifestSchemaOverlays(operation, api, skippedRefs);
   applyManifestResponseOverlays(operation, api);
@@ -939,6 +992,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
 function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<number, EndpointConfig>(), componentSchemas = new Map<number, Record<string, unknown>>(), componentReferences: Array<readonly [string, ComponentSchema]> = [], warnings?: ZopiaWarningCollector): Record<string, unknown> {
   if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA || !isRecord(manifest.source) || !Array.isArray(manifest.apis)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest', { at: '#' });
   if (!['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Unsupported manifest source kind: ${manifest.source.kind}`);
+  if (manifest.source.openapiVersion !== undefined && (manifest.source.kind === 'swagger-2.0' || typeof manifest.source.openapiVersion !== 'string' || !/^3\.[01](?:\.\d+)?$/.test(manifest.source.openapiVersion))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid manifest OpenAPI version: ${String(manifest.source.openapiVersion)}`);
   if (manifest.source.title !== undefined && (typeof manifest.source.title !== 'string' || !manifest.source.title.trim()) || manifest.source.version !== undefined && (typeof manifest.source.version !== 'string' || !manifest.source.version.trim())) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest source title or version');
   const title = manifest.source.title ?? 'Zopia API';
   const sourceVersion = manifest.source.version ?? '0.0.0';
@@ -946,6 +1000,7 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
   if (manifest.source.version === undefined) warnings?.add({ code: 'ZOPIA_WARN_DEFAULT_INFO', at: '#/info/version', message: 'manifest source version is missing; using 0.0.0' });
   if (manifest.infoOverlay !== undefined && !isRecord(manifest.infoOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest infoOverlay');
   if (manifest.documentOverlay !== undefined && !isRecord(manifest.documentOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest documentOverlay');
+  if (manifest.pathsOverlay !== undefined && (!isRecord(manifest.pathsOverlay) || Object.entries(manifest.pathsOverlay).some(([path, metadata]) => !path.startsWith('/') && !path.startsWith('x-') || path.startsWith('/') && (!isRecord(metadata) || Object.keys(metadata).some((key) => HTTP_METHODS.has(key)))))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest pathsOverlay');
   if (manifest.componentsOverlay !== undefined && !isRecord(manifest.componentsOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest componentsOverlay');
   if (manifest.swaggerParameters !== undefined && !isRecord(manifest.swaggerParameters)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest swaggerParameters');
   if (manifest.swaggerResponses !== undefined && !isRecord(manifest.swaggerResponses)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest swaggerResponses');
@@ -966,17 +1021,18 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
   const isSwagger = manifest.source.kind === 'swagger-2.0';
   const document: Record<string, any> = isSwagger
     ? { swagger: '2.0', info: { title, version: sourceVersion, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} }
-    : { openapi: manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0', info: { title, version: sourceVersion, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} };
+    : { openapi: manifest.source.openapiVersion ?? (manifest.source.kind === 'openapi-3.0' ? '3.0.0' : '3.1.0'), info: { title, version: sourceVersion, ...(manifest.source.description === undefined ? {} : { description: manifest.source.description }) }, paths: {} };
   const assignOverlay = (target: Record<string, unknown>, overlay: Record<string, unknown>): void => {
     for (const [key, value] of Object.entries(overlay)) Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
   };
   if (manifest.infoOverlay) assignOverlay(document.info, manifest.infoOverlay);
   if (manifest.documentOverlay) assignOverlay(document, manifest.documentOverlay);
-  if (manifest.servers?.length && !isSwagger) document.servers = manifest.servers;
-  if (manifest.servers?.length && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
-  if (isSwagger) { if (manifest.swaggerHost) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes?.length) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes?.length) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces?.length) document.produces = manifest.swaggerProduces; if (manifest.swaggerParameters) document.parameters = manifest.swaggerParameters; if (manifest.swaggerResponses) document.responses = manifest.swaggerResponses; }
-  else if (manifest.componentsOverlay && Object.keys(manifest.componentsOverlay).length) document.components = { ...manifest.componentsOverlay };
-  if (manifest.tags?.length) document.tags = manifest.tags;
+  if (manifest.pathsOverlay) for (const [path, metadata] of Object.entries(manifest.pathsOverlay)) Object.defineProperty(document.paths, path, { value: metadata, enumerable: true, configurable: true, writable: true });
+  if (manifest.servers !== undefined && !isSwagger) document.servers = manifest.servers;
+  if (manifest.servers !== undefined && isSwagger && typeof manifest.servers[0] === 'string') document.basePath = manifest.servers[0];
+  if (isSwagger) { if (manifest.swaggerHost !== undefined) document.host = manifest.swaggerHost; if (manifest.swaggerSchemes !== undefined) document.schemes = manifest.swaggerSchemes; if (manifest.swaggerConsumes !== undefined) document.consumes = manifest.swaggerConsumes; if (manifest.swaggerProduces !== undefined) document.produces = manifest.swaggerProduces; if (manifest.swaggerParameters !== undefined) document.parameters = manifest.swaggerParameters; if (manifest.swaggerResponses !== undefined) document.responses = manifest.swaggerResponses; }
+  else if (manifest.componentsOverlay !== undefined) document.components = { ...manifest.componentsOverlay };
+  if (manifest.tags !== undefined) document.tags = manifest.tags;
   if (manifest.securitySchemes !== undefined && (!isRecord(manifest.securitySchemes)
     || Object.entries(manifest.securitySchemes).some(([name, scheme]) => !name || !isRecord(scheme)))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid manifest securitySchemes');
   let securitySchemes: Record<string, unknown> = { ...(manifest.securitySchemes ?? {}) };
@@ -997,10 +1053,12 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
   for (const [index, api] of manifest.apis.entries()) {
     if (!isRecord(api) || typeof api.path !== 'string' || !api.path.startsWith('/') || api.path.includes('?') || api.path.includes('#') || typeof api.method !== 'string' || !HTTP_METHODS.has(api.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid manifest API: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
     if (api.sourceOperation !== undefined && !isRecord(api.sourceOperation)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid manifest source operation: ${api.path} ${api.method}`);
+    if (api.pathItemRef !== undefined && typeof api.pathItemRef !== 'boolean') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid manifest path-item reference flag: ${api.path} ${api.method}`);
     const sourceOperation: Record<string, any> = api.sourceOperation ? { ...api.sourceOperation } : { operationId: api.operationId, responses: { default: { description: 'Generated from manifest' } } };
     const runtime = endpointConfigs.get(index);
+    const sourcePathItem = isRecord(manifest.pathsOverlay?.[api.path]) ? manifest.pathsOverlay[api.path] as Record<string, any> : undefined;
     let reconstructed: { path: string; method: string; operation: Record<string, any> };
-    try { reconstructed = runtime ? runtimeOperation(api, sourceOperation, runtime, manifest, componentReferences, warnings) : { path: api.path, method: api.method, operation: sourceOperation }; }
+    try { reconstructed = runtime ? runtimeOperation(api, sourceOperation, sourcePathItem, runtime, manifest, componentReferences, warnings) : { path: api.path, method: api.method, operation: sourceOperation }; }
     catch (error) {
       if (error instanceof ZopiaError && error.at === undefined) {
         const message = error.message.slice(`${error.code}: `.length);
@@ -1028,6 +1086,7 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
         message: `auth is YES but the manifest has no security requirement; using ${fallback.name}`,
       });
     }
+    if (api.pathItemRef === true && reconstructed.path === api.path && reconstructed.method === api.method && sameSchema(reconstructed.operation, sourceOperation)) continue;
     const pathItem = Object.prototype.hasOwnProperty.call(document.paths, reconstructed.path) ? document.paths[reconstructed.path] : {};
     if (Object.prototype.hasOwnProperty.call(pathItem, reconstructed.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate manifest API: ${reconstructed.path} ${reconstructed.method}`);
     Object.defineProperty(document.paths, reconstructed.path, { value: { ...pathItem, [reconstructed.method]: reconstructed.operation }, enumerable: true, configurable: true, writable: true });

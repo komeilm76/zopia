@@ -1,0 +1,37 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Nested References", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "Country": {
+        "type": "object",
+        "required": ["code"],
+        "properties": { "code": { "type": "string", "pattern": "^[A-Z]{2}$" } }
+      },
+      "Address": {
+        "type": "object",
+        "required": ["country"],
+        "properties": { "country": { "$ref": "#/components/schemas/Country" } }
+      },
+      "Customer": {
+        "type": "object",
+        "required": ["address"],
+        "properties": { "address": { "$ref": "#/components/schemas/Address" } }
+      }
+    }
+  },
+  "paths": {
+    "/customers/{id}": {
+      "get": {
+        "operationId": "getCustomer",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "Customer",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Customer" } } }
+          }
+        }
+      }
+    }
+  }
+}

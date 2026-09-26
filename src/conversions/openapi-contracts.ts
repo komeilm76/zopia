@@ -25,6 +25,15 @@ function primarySwaggerMediaType(value: unknown): string | undefined {
   return types.find((type) => type.toLowerCase() === 'application/json' || type.toLowerCase().endsWith('+json')) ?? types[0];
 }
 
+const SWAGGER_SCHEMA_KEYS = new Set(['format', 'items', 'default', 'maximum', 'exclusiveMaximum', 'minimum', 'exclusiveMinimum', 'maxLength', 'minLength', 'pattern', 'maxItems', 'minItems', 'uniqueItems', 'enum', 'multipleOf']);
+function swaggerParameterSchema(parameter: Record<string, any>): Record<string, unknown> {
+  return {
+    type: parameter.type === 'file' ? 'string' : parameter.type,
+    ...(parameter.type === 'file' ? { format: 'binary' } : {}),
+    ...Object.fromEntries(Object.entries(parameter).filter(([key]) => SWAGGER_SCHEMA_KEYS.has(key))),
+  };
+}
+
 function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context: string): Record<string, any> {
   let current: any = value; const seen = new Set<string>();
   while ('$ref' in current) {
@@ -51,7 +60,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const parameterContent = parameter.schema === undefined && parameter.content !== undefined ? firstContent(parameter.content) : undefined;
     const swaggerTypes = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'file']);
     if (ir.document.swagger === '2.0' && parameter.type !== undefined && (!swaggerTypes.has(parameter.type) || (parameter.type === 'array' && !parameter.items))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger parameter type: ${parameter.name}`);
-    const swaggerSchema = ir.document.swagger === '2.0' && parameter.type ? { type: parameter.type === 'file' ? 'string' : parameter.type, ...(parameter.type === 'file' ? { format: 'binary' } : parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) } : undefined;
+    const swaggerSchema = ir.document.swagger === '2.0' && parameter.type ? swaggerParameterSchema(parameter) : undefined;
     const schema = parameter.schema ?? parameterContent?.schema ?? swaggerSchema;
     if (schema === undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Parameter requires schema or content: ${parameter.name}`);
     return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema };
@@ -69,7 +78,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
       body = { content: { [primarySwaggerMediaType(consumes) ?? 'application/json']: { schema: bodyParameter.schema } }, required: bodyParameter.required === true };
     } else if (formParameters.length) {
       const properties: Record<string, any> = {}; const required: string[] = [];
-      for (const parameter of formParameters) { const validTypes = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'file']); if (typeof parameter.name !== 'string' || !parameter.name || !validTypes.has(parameter.type) || (parameter.type === 'array' && !parameter.items)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger formData parameter: ${ir.method} ${ir.path}`); if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger formData required: ${parameter.name}`); properties[parameter.name] = { type: parameter.type === 'file' ? 'string' : parameter.type, ...(parameter.type === 'file' ? { format: 'binary' } : parameter.format === undefined ? {} : { format: parameter.format }), ...(parameter.items === undefined ? {} : { items: parameter.items }) }; if (parameter.required === true) required.push(parameter.name); }
+      for (const parameter of formParameters) { const validTypes = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'file']); if (typeof parameter.name !== 'string' || !parameter.name || !validTypes.has(parameter.type) || (parameter.type === 'array' && !parameter.items)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger formData parameter: ${ir.method} ${ir.path}`); if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger formData required: ${parameter.name}`); properties[parameter.name] = swaggerParameterSchema(parameter); if (parameter.required === true) required.push(parameter.name); }
       const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
       const contentType = consumes.find((value: unknown) => value === 'multipart/form-data' || value === 'application/x-www-form-urlencoded') ?? (formParameters.some((parameter: any) => parameter.type === 'file') ? 'multipart/form-data' : 'application/x-www-form-urlencoded');
       body = { content: { [contentType]: { schema: { type: 'object', properties, ...(required.length ? { required } : {}) } } }, required: required.length > 0 };

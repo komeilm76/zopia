@@ -74,7 +74,7 @@ describe('manifest reverse conversion', () => {
     const result = await apiDocsToOpenApi(outputDir);
     expect((result.openapi as any).openapi).toBe('3.1.0');
     expect((result.openapi as any).paths['/value'].get.responses['200'].content['application/json'].schema.type).toEqual(['string', 'null']);
-    expect((result.openapi as any).paths['/value'].get.responses['200'].content['application/json'].examples.default.value).toEqual({ schema: { type: 'file' } });
+    expect((result.openapi as any).paths['/value'].get.responses['200'].content['application/json'].example).toEqual({ schema: { type: 'file' } });
     expect(result.warnings).toEqual([]);
   });
   it('converts Swagger manifests to the selected OpenAPI output version', async () => {

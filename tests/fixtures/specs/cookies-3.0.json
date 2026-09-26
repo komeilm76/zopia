@@ -1,0 +1,28 @@
+{
+  "openapi": "3.0.2",
+  "info": { "title": "Cookie API", "version": "1.0.0" },
+  "paths": {
+    "/sessions/{sessionId}": {
+      "get": {
+        "operationId": "getSession",
+        "parameters": [
+          { "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "session", "in": "cookie", "required": true, "description": "Session cookie", "schema": { "type": "string" }, "example": "abc" },
+          { "name": "verbose", "in": "query", "required": false, "style": "form", "explode": true, "schema": { "type": "boolean", "default": false } },
+          { "name": "X-Client", "in": "header", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session",
+            "content": {
+              "application/json": {
+                "schema": { "type": "string", "nullable": true },
+                "example": "active"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

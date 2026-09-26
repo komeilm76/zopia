@@ -1,0 +1,69 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Petstore Mini",
+    "version": "1.0.0",
+    "summary": "Small 3.1 fixture"
+  },
+  "servers": [],
+  "tags": [],
+  "components": {
+    "schemas": {
+      "Pet": {
+        "type": "object",
+        "required": ["kind", "name"],
+        "properties": {
+          "kind": { "const": "pet" },
+          "name": { "type": "string" },
+          "age": { "type": ["integer", "null"], "minimum": 0, "exclusiveMaximum": 100 },
+          "traits": { "type": "array", "items": { "enum": ["calm", "playful", 3] }, "uniqueItems": true },
+          "location": {
+            "type": "array",
+            "prefixItems": [{ "type": "number" }, { "type": "number" }],
+            "minItems": 2,
+            "maxItems": 2,
+            "items": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "PetEvent": {
+        "oneOf": [
+          { "type": "object", "required": ["type", "pet"], "properties": { "type": { "const": "created" }, "pet": { "$ref": "#/components/schemas/Pet" } } },
+          { "type": "object", "required": ["type", "id"], "properties": { "type": { "const": "deleted" }, "id": { "type": "string" } } }
+        ],
+        "discriminator": { "propertyName": "type" }
+      }
+    }
+  },
+  "paths": {
+    "/pets": {
+      "post": {
+        "operationId": "createPet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Pet" },
+              "examples": { "cat": { "value": { "kind": "pet", "name": "Milo" } } }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Pet" },
+                "examples": { "cat": { "value": { "kind": "pet", "name": "Milo", "age": null } } }
+              }
+            }
+          },
+          "419": { "description": "Custom status" },
+          "default": { "description": "Unexpected error" }
+        }
+      }
+    }
+  }
+}

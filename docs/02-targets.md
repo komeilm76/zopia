@@ -31,8 +31,8 @@ Vitest suite — see [Testing → Scenario matrix](11-testing.md).
 
 | # | 🎯 Target | Spec | Status |
 | --- | --- | --- | --- |
-| T-10 | **Reversible output** — the generated tree contains everything needed to regenerate the spec (paths, methods, schemas, metadata), guaranteed by the manifest | [API docs format → manifest](07-api-docs.md) | ✅ 🚧 |
-| T-11 | **Round-trip stability** — `openapi → api docs → openapi` and `zod → JSON Schema → zod` converge: re-running the pipeline on its own output is a no-op (idempotent) | [Testing → round-trip tests](11-testing.md#-round-trip-property-tests) | ✅ 🚧 |
+| T-10 | **Reversible output** — the generated tree contains everything needed to regenerate the spec (paths, methods, schemas, metadata), guaranteed by the manifest | [API docs format → manifest](07-api-docs.md) | ✅ |
+| T-11 | **Round-trip stability** — `openapi → api docs → openapi` and `zod → JSON Schema → zod` converge: re-running the pipeline on its own output is a no-op (idempotent) | [Testing → round-trip tests](11-testing.md#-round-trip-property-tests) | ✅ |
 
 ## 🏗️ Engineering targets
 

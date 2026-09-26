@@ -1,0 +1,49 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Overlay Contract", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "UniqueValues": {
+        "type": "array",
+        "items": { "type": "object", "properties": { "id": { "type": "integer" } } },
+        "uniqueItems": true,
+        "contains": { "type": "object", "required": ["id"] },
+        "minContains": 1
+      },
+      "ConditionalRecord": {
+        "type": "object",
+        "properties": { "kind": { "type": "string" }, "value": {} },
+        "patternProperties": { "^x-": { "type": "string" } },
+        "propertyNames": { "not": { "pattern": "^private" } },
+        "minProperties": 1,
+        "maxProperties": 8,
+        "if": { "properties": { "kind": { "const": "number" } } },
+        "then": { "properties": { "value": { "type": "number" } } },
+        "else": { "properties": { "value": { "type": "string" } } }
+      },
+      "Excluded": { "not": { "type": "null" } },
+      "Intersected": {
+        "allOf": [
+          { "type": "object", "properties": { "left": { "type": "string" } }, "required": ["left"] },
+          { "type": "object", "properties": { "right": { "type": "integer" } }, "required": ["right"] }
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/records": {
+      "post": {
+        "operationId": "createRecord",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConditionalRecord" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Values",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UniqueValues" } } }
+          }
+        }
+      }
+    }
+  }
+}

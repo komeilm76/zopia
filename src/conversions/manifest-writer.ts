@@ -23,6 +23,8 @@ export type ZopiaManifestSourceKind = 'swagger-2.0' | 'openapi-3.0' | 'openapi-3
 export interface ZopiaManifestSource {
   /** Source dialect. Writers emit a `ZopiaManifestSourceKind`; readers retain forward compatibility. */
   kind: ZopiaManifestSourceKind | (string & {});
+  /** Exact source `openapi` value; absent for Swagger and legacy manifests. */
+  openapiVersion?: string;
   /** Original API title. Optional only for legacy reader fallback compatibility. */
   title?: string;
   /** Original API version. Optional only for legacy reader fallback compatibility. */
@@ -86,6 +88,8 @@ export interface ZopiaManifestApi {
   operationId?: string;
   /** Complete original operation object. */
   sourceOperation?: Record<string, unknown>;
+  /** Whether the operation was inherited exclusively through a path-item `$ref`. */
+  pathItemRef?: boolean;
   /** Source reference placements. Readers also accept legacy representations. */
   refs?: unknown;
   /** Schema and operation restorations. Readers also accept legacy representations. */
@@ -112,6 +116,8 @@ export interface ZopiaManifest {
   infoOverlay?: Record<string, unknown>;
   /** Document-level extensions and unsupported structures. */
   documentOverlay?: Record<string, unknown>;
+  /** Path-item metadata and `paths` extensions not represented by endpoint modules. */
+  pathsOverlay?: Record<string, unknown>;
   /** Non-schema OpenAPI component sections. */
   componentsOverlay?: Record<string, unknown>;
   /** Original server declarations. */
@@ -165,9 +171,10 @@ export interface GeneratedZopiaManifest extends ZopiaManifest {
   options: ZopiaManifestGenerationOptions;
   infoOverlay: Record<string, unknown>;
   documentOverlay: Record<string, unknown>;
-  servers: unknown[];
-  tags: unknown[];
-  securitySchemes: Record<string, unknown>;
+  pathsOverlay: Record<string, unknown>;
+  servers?: unknown[];
+  tags?: unknown[];
+  securitySchemes?: Record<string, unknown>;
   components: GeneratedZopiaManifestComponent[];
   apis: GeneratedZopiaManifestApi[];
 }
@@ -330,6 +337,7 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
   if (options.useComponentAsReference && !options.insertComponents) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
   const sourceHash = hashOpenApiDocument(source);
   const swagger = source.swagger === '2.0';
+  const hasOwn = (key: string): boolean => Object.prototype.hasOwnProperty.call(source, key);
   const schemas = swagger ? source.definitions ?? {} : source.components?.schemas ?? {};
   if (!isRecord(schemas)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid source schema components', { at: swagger ? '#/definitions' : '#/components/schemas' });
   const sortedPlans = [...plans].sort((left, right) => compareText(left.file, right.file));
@@ -345,6 +353,7 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     method: plan.method,
     operationId: plan.operationId,
     sourceOperation: cloneJson(plan.operation),
+    ...(isRecord(source.paths?.[plan.path]) && typeof source.paths[plan.path].$ref === 'string' && !Object.prototype.hasOwnProperty.call(source.paths[plan.path], plan.method) ? { pathItemRef: true } : {}),
     refs: sortDerivedRecords(collectRefs(plan.operation)),
     overlay: cloneJson(sortDerivedRecords([
       ...collectOperationSchemaOverlays(plan.operation, swagger),
@@ -360,6 +369,7 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     options: { insertComponents: options.insertComponents, useComponentAsReference: options.useComponentAsReference },
     source: {
       kind: swagger ? 'swagger-2.0' : typeof source.openapi === 'string' && /^3\.0/.test(source.openapi) ? 'openapi-3.0' : 'openapi-3.1',
+      ...(swagger ? {} : { openapiVersion: source.openapi }),
       title: source.info.title,
       version: source.info.version,
       ...(source.info.description === undefined ? {} : { description: cloneJson(source.info.description) }),
@@ -367,7 +377,15 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     },
     infoOverlay: cloneJson(Object.fromEntries(Object.entries(source.info).filter(([key]) => !['title', 'version', 'description'].includes(key)))),
     documentOverlay: cloneJson(Object.fromEntries(Object.entries(source).filter(([key]) => key === 'externalDocs' || key === 'webhooks' || key === 'jsonSchemaDialect' || key.startsWith('x-')))),
-    servers: cloneJson(source.servers ?? (source.basePath ? [source.basePath] : ['/'])),
+    pathsOverlay: cloneJson(Object.fromEntries(Object.entries(source.paths ?? {}).flatMap(([path, item]) => {
+      if (path.startsWith('x-')) return [[path, item]];
+      if (!isRecord(item)) return [];
+      const metadata = Object.fromEntries(Object.entries(item).filter(([key]) => !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(key)));
+      return Object.keys(metadata).length ? [[path, metadata]] : [];
+    }))),
+    ...(swagger
+      ? hasOwn('basePath') ? { servers: [cloneJson(source.basePath)] } : {}
+      : hasOwn('servers') ? { servers: cloneJson(source.servers) } : {}),
     ...(swagger ? {
       ...(source.host === undefined ? {} : { swaggerHost: cloneJson(source.host) }),
       ...(source.schemes === undefined ? {} : { swaggerSchemes: cloneJson(source.schemes) }),
@@ -376,10 +394,12 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
       ...(source.parameters === undefined ? {} : { swaggerParameters: cloneJson(source.parameters) }),
       ...(source.responses === undefined ? {} : { swaggerResponses: cloneJson(source.responses) }),
     } : {
-      componentsOverlay: cloneJson(Object.fromEntries(Object.entries(source.components ?? {}).filter(([key]) => key !== 'schemas' && key !== 'securitySchemes'))),
+      ...(hasOwn('components') ? { componentsOverlay: cloneJson(Object.fromEntries(Object.entries(source.components ?? {}).filter(([key]) => key !== 'schemas' && key !== 'securitySchemes'))) } : {}),
     }),
-    tags: cloneJson(source.tags ?? []),
-    securitySchemes: cloneJson(source.components?.securitySchemes ?? source.securityDefinitions ?? {}),
+    ...(hasOwn('tags') ? { tags: cloneJson(source.tags) } : {}),
+    ...(swagger
+      ? hasOwn('securityDefinitions') ? { securitySchemes: cloneJson(source.securityDefinitions) } : {}
+      : isRecord(source.components) && Object.prototype.hasOwnProperty.call(source.components, 'securitySchemes') ? { securitySchemes: cloneJson(source.components.securitySchemes) } : {}),
     ...(Object.prototype.hasOwnProperty.call(source, 'security') ? { defaultSecurity: cloneJson(source.security) } : {}),
     components,
     apis,
@@ -407,20 +427,21 @@ function validateSchemaOverlay(overlay: unknown, context: string): void {
 /** Validate the writer-owned manifest contract before serialization or disk output. */
 export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest is GeneratedZopiaManifest {
   if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest schema');
-  validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'infoOverlay', 'documentOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis'], 'root');
+  validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'infoOverlay', 'documentOverlay', 'pathsOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis'], 'root');
   if (manifest.zopiaVersion !== ZOPIA_VERSION) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest writer version');
   if (manifest.mode !== 'directory' && manifest.mode !== 'flat') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest mode');
   if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest generation options');
   validateKeys(manifest.options, ['insertComponents', 'useComponentAsReference'], 'options');
   if (!isRecord(manifest.source) || !['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source');
-  validateKeys(manifest.source, ['kind', 'title', 'version', 'description', 'sha256'], 'source');
+  validateKeys(manifest.source, ['kind', 'openapiVersion', 'title', 'version', 'description', 'sha256'], 'source');
+  if (manifest.source.openapiVersion !== undefined && (manifest.source.kind === 'swagger-2.0' || typeof manifest.source.openapiVersion !== 'string' || !/^3\.[01](?:\.\d+)?$/.test(manifest.source.openapiVersion))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source OpenAPI version');
   if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source title or version');
   if (manifest.source.description !== undefined && typeof manifest.source.description !== 'string') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source description');
   if (typeof manifest.source.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.source.sha256)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source hash');
-  for (const [name, value] of [['infoOverlay', manifest.infoOverlay], ['documentOverlay', manifest.documentOverlay], ['securitySchemes', manifest.securitySchemes]] as const) {
+  for (const [name, value] of [['infoOverlay', manifest.infoOverlay], ['documentOverlay', manifest.documentOverlay], ['pathsOverlay', manifest.pathsOverlay]] as const) {
     if (!isRecord(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
-  if (Object.entries(manifest.securitySchemes!).some(([name, scheme]) => !name || !isRecord(scheme))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest security scheme');
+  if (manifest.securitySchemes !== undefined && (!isRecord(manifest.securitySchemes) || Object.entries(manifest.securitySchemes).some(([name, scheme]) => !name || !isRecord(scheme)))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest security scheme');
   for (const [name, value] of [['componentsOverlay', manifest.componentsOverlay], ['swaggerParameters', manifest.swaggerParameters], ['swaggerResponses', manifest.swaggerResponses]] as const) {
     if (value !== undefined && !isRecord(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
@@ -428,9 +449,13 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   if (invalidInfoKey) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest infoOverlay key: ${invalidInfoKey}`);
   const invalidDocumentKey = Object.keys(manifest.documentOverlay!).find((key) => !['externalDocs', 'webhooks', 'jsonSchemaDialect'].includes(key) && !key.startsWith('x-'));
   if (invalidDocumentKey) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest documentOverlay key: ${invalidDocumentKey}`);
+  for (const [path, metadata] of Object.entries(manifest.pathsOverlay!)) {
+    if (path.startsWith('x-')) continue;
+    if (!path.startsWith('/') || !isRecord(metadata) || Object.keys(metadata).some((key) => ['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(key))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest pathsOverlay entry: ${path}`);
+  }
   if (manifest.componentsOverlay && ('schemas' in manifest.componentsOverlay || 'securitySchemes' in manifest.componentsOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest componentsOverlay key');
   for (const [name, value] of [['servers', manifest.servers], ['tags', manifest.tags]] as const) {
-    if (!Array.isArray(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
+    if (value !== undefined && !Array.isArray(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
   for (const [name, value] of [['swaggerSchemes', manifest.swaggerSchemes], ['swaggerConsumes', manifest.swaggerConsumes], ['swaggerProduces', manifest.swaggerProduces]] as const) {
     if (value !== undefined && (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string'))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
@@ -460,7 +485,8 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   const operations = new Set<string>();
   for (const api of manifest.apis) {
     if (!isRecord(api) || typeof api.file !== 'string' || !isPortableManifestPath(api.file) || typeof api.path !== 'string' || !api.path.startsWith('/') || typeof api.method !== 'string' || !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(api.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest API: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
-    validateKeys(api, ['file', 'path', 'method', 'operationId', 'sourceOperation', 'refs', 'overlay', 'responseOverlay', 'security'], 'API');
+    validateKeys(api, ['file', 'path', 'method', 'operationId', 'sourceOperation', 'pathItemRef', 'refs', 'overlay', 'responseOverlay', 'security'], 'API');
+    if (api.pathItemRef !== undefined && typeof api.pathItemRef !== 'boolean') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest path-item reference flag: ${api.file}`);
     if (typeof api.operationId !== 'string' || !api.operationId) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest operation ID: ${api.file}`);
     const operation = `${api.method}\0${api.path}`;
     if (operations.has(operation)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest API: ${api.method.toUpperCase()} ${api.path}`);

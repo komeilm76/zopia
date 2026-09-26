@@ -287,14 +287,15 @@ are hoisted to local consts (R-403). Cross-file imports appear **only** when
 
 | 🧾 Key | 📝 What engine ④ needs it for |
 | --- | --- |
-| `source` | 🏷️ rebuild `info`; verify the tree matches the spec it claims to come from |
-| `servers`, `tags`, `securitySchemes` | 🌍🏷️🔐 document frame that has no home in Zod (R-656/R-657) |
+| `source` | 🏷️ rebuild `info`; retain the exact source `openapi` patch string in `source.openapiVersion`; verify the tree matches the spec it claims to come from |
+| `servers`, `tags`, `securitySchemes` | 🌍🏷️🔐 document frame that has no home in Zod; presence is retained independently from value, so absent and explicitly empty collections round-trip differently (R-656/R-657) |
+| `pathsOverlay` | 🛣️ path-item metadata (`summary`, `description`, shared parameters, local `$ref`, extensions) and `paths` extensions that endpoint modules cannot own |
 | `components[].schema` | 🧱 the **full** component JSON Schema — restored verbatim into `components.schemas` (R-655/R-751) |
 | `componentsOverlay` | 🧰 non-schema OpenAPI component sections such as reusable parameters, responses, headers, examples, links, callbacks, and path items |
 | `swaggerParameters`, `swaggerResponses` | 🧰 Swagger 2.0 reusable parameter and response definitions, restored at the document root |
 | `components[].file` | 🧱 where to find the emitted component file (`null` ⇔ not emitted — `insertComponents` was `false`); when set, `manifestFileToOpenApi()` imports its Zod schema and converts it to the source dialect, so developer edits win while cross-component references remain `$ref`s |
 | `components[].overlay` | 🩹 schema-local Engine ② restorations for emitted components; applied after runtime Zod serialization, with empty-string `at` addressing the component root |
-| `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — `manifestFileToOpenApi()` imports each file and uses its runtime km-api metadata plus request/response Zod schemas; the manifest supplies unsupported overlays and exact security facts |
+| `apis[]` | 📡 **exact** file → (path, method, operationId) mapping — `manifestFileToOpenApi()` imports each file and uses its runtime km-api metadata plus request/response Zod schemas; `pathItemRef: true` marks an unchanged operation inherited only through a path-item `$ref`, preventing reverse conversion from duplicating it beside that ref; the manifest supplies unsupported overlays and exact security facts |
 | `defaultSecurity` | 🔐 the spec-level `security` requirement list, verbatim — applies to every operation unless the operation declares its own `security`; key absent ⇔ the source had no global `security` |
 | `apis[].security` | 🔐 the operation's own `security` requirement list — present only when the operation declares the key (including an explicit `[]` = "no security"); km-api's config can store only the `auth` boolean, so the actual requirement (which schemes, which scopes) lives here (R-653/R-656) |
 | `apis[].refs` | 🔗 `$ref` placement: JSON pointer (relative to the operation subtree), exact local `ref`, and schema component name when applicable (R-752/R-659); `$ref`-looking literal data inside examples/defaults/enums/consts/extensions is excluded |

@@ -95,6 +95,10 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
       warn('ZOPIA_WARN_UNIQUE_ITEMS', at, 'uniqueItems', '`uniqueItems` is enforced by a refinement and restored by an overlay');
       addOverlay({ at, set: { uniqueItems: true } });
     }
+    if (node.type === 'object' && !Object.prototype.hasOwnProperty.call(node, 'additionalProperties')) {
+      addOverlay({ at, remove: ['additionalProperties'] });
+    }
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties) && Object.keys(node.properties).length === 0) addOverlay({ at, set: { properties: {} } });
 
     for (const [name, bound] of [['exclusiveMinimum', node.exclusiveMinimum], ['exclusiveMaximum', node.exclusiveMaximum]] as const) {
       if (bound !== true) continue;

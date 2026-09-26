@@ -70,6 +70,11 @@ function generatedWarningComments(schema: unknown, name: string): string {
 }
 
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
+function stableDataJson(value: unknown): string {
+  return JSON.stringify(value, (_key, child) => child && typeof child === 'object' && !Array.isArray(child)
+    ? Object.fromEntries(Object.entries(child).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
+    : child);
+}
 
 const isMissingPath = (error: unknown): boolean => Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'ENOENT');
 function outputPathError(file: string): ZopiaError {
@@ -327,7 +332,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
     if (legacyExamples && typeof legacyExamples === 'object') responseExamples[status] = Object.fromEntries(Object.entries(legacyExamples).map(([contentType, value]) => [contentType, { value }]));
   }
   const examplesValue = { ...(Object.keys(requestExamples).length ? { request: requestExamples } : {}), ...(Object.keys(responseExamples).length ? { response: responseExamples } : {}) };
-  const examples = Object.keys(examplesValue).length ? `examples: JSON.parse(${JSON.stringify(JSON.stringify(examplesValue))}),` : '';
+  const examples = Object.keys(examplesValue).length ? `examples: JSON.parse(${JSON.stringify(stableDataJson(examplesValue))}),` : '';
   const opId = operation.operationId;
   const exportId = exportName(opId);
   const tags = ir.tags;

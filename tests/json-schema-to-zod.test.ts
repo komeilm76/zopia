@@ -558,7 +558,11 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain("z.discriminatedUnion(\"kind\"");
     expect(result.schema.safeParse({ kind: 'cat', lives: 9 }).success).toBe(true);
     expect(result.schema.safeParse({ kind: 'cat', good: true }).success).toBe(false);
-    expect(result.overlays).toEqual([{ at: '', set: { oneOf: source.oneOf, discriminator: source.discriminator }, remove: ['anyOf'] }]);
+    expect(result.overlays).toEqual([
+      { at: '', set: { oneOf: source.oneOf, discriminator: source.discriminator }, remove: ['anyOf'] },
+      { at: '/oneOf/0', remove: ['additionalProperties'] },
+      { at: '/oneOf/1', remove: ['additionalProperties'] },
+    ]);
   });
   it('preserves non-native encoding annotations and source numeric bounds in overlays', () => {
     const result = jsonSchemaToZod({

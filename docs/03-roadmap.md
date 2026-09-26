@@ -52,9 +52,15 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       boundary across engines, manifests, generated-module imports, filesystem
       operations, warnings, and CLI validation, with locations, hints, and causes
       (R-141…R-143/R-404)
+- [x] 🔁 **Round-trip contract** — fixture-backed source-dialect identity across
+      Swagger 2.0 and OpenAPI 3.0/3.1, every layout/component mode, refs/cycles,
+      lossy-keyword overlays, path-item metadata, and byte-identical regeneration;
+      supported Zod ↔ JSON Schema pipelines converge after canonicalization
+      (T-10/T-11/R-409)
 - [ ] ⌨️ CLI — `zopia generate` / `zopia reverse` ([usage](10-usage.md#-cli))
-- [ ] 🧪 Vitest suite — full scenario matrix, golden files, round-trip
-      property tests ([testing](11-testing.md))
+- [ ] 🧪 Vitest suite — remaining full scenario matrix, golden files, coverage
+      gates, and contract suites (round-trip properties are complete;
+      [testing](11-testing.md))
 - [ ] 📖 JSDoc on every public symbol (T-12)
 - [ ] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**
 
