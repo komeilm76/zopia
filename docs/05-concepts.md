@@ -151,23 +151,24 @@ normalize paths back to `{param}` form.
 > generated as standalone files, and exact endpoint component references can
 > import through the barrel. Nested component references are recursively rendered, including nested objects, arrays, compositions, nullable schemas, enums, constants, and additional-property schemas. Direct and mutual cyclic component graphs use lazy Zod references.
 
-### 📐 km-api's type surface (read from the `0.4.1` source)
+### 📐 km-api's type surface (verified against published `0.4.1`)
 
 `makeApiConfig` is a **type-level factory** — it does no runtime validation, so
-the generated tree's contract is that it **typechecks** against km-api
-≥ 0.4.1 (D-14; the golden-tree contract test enforces this, R-126):
+the generated tree's contract is that it **typechecks** against the installed
+published package (D-14; the golden-tree contract test enforces this, R-126):
 
-| 🧩 Field | 📏 Accepts (km-api 0.4.1) |
+| 🧩 Field | 📏 Published km-api 0.4.1 / zopia contract |
 | --- | --- |
 | `method` (`IMethod`) | all **8** standard methods — `get/post/put/delete/head/options/patch/trace` (each case-insensitive: `GET`, `Get`, …) |
-| `response` keys | standard status codes (number or string form), **any custom numeric code** (`419`, `499`, `512`, …) and the **`default`** key |
-| `responseContentType` / `requestContentType` | **any** MIME type (known values still autocompleted) |
+| `response` keys | standard statuses, **any custom numeric code** (`419`, `499`, `512`, …), and the OpenAPI **`default`** key; all are pinned by generated compilation |
+| `responseContentType` / `requestContentType` | km-api's declarations enumerate known MIME values, while OpenAPI media-type maps are open; zopia emits every exact string and applies a narrow type-only assertion at this package boundary, preserving the runtime value and reverse conversion |
 | `operationId` | any string — a real km-api field in 0.4.1; zopia emits it and reuses it as the export identifier (R-732) |
 
 Other fixed shapes (source-verified): `ITags` = strings **prefixed with `#`**;
-`IPath` = string starting with `/`; `auth`/`disable` = `'YES' | 'NO'`;
-`request.body` is required (any Zod schema), `params/query/headers/cookies`
-required Zod objects. The remaining km-api gaps — **per-parameter metadata**
+`IPath` = string starting with `/`; `auth`, `disable`, and the semantically
+separate `deprecated` field use `'YES' | 'NO'`; `request.body` is required (any
+Zod schema), and `params/query/headers/cookies` are required Zod objects. The
+remaining km-api gaps — **per-parameter metadata**
 (`style`, `explode`, `allowEmptyValue`, `deprecated`, `example`) and **response
 `headers`** — have no home in km-api; zopia preserves them in the manifest
 (overlay / `responseOverlay`, R-635/R-754).

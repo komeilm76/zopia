@@ -194,8 +194,8 @@ export default getUser;
 | any `security` requirement | `auth: 'YES'` (else `'NO'` — always emitted explicitly) | R-731 |
 | `request.body` | `request.body`; *no body* → `z.any()` | R-731 |
 | `request.params / query / headers / cookies` | `request.params / query / headers / cookies` — always `z.object(…)` (km-api requires all five) | R-731 |
-| `requestContentType` | `requestContentType` — emitted verbatim (km-api 0.4.1 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
-| `responseContentType` | `responseContentType` (from the first content-bearing response) — emitted verbatim (km-api 0.4.1 accepts any MIME type); doubles as the `content` key on the reverse trip | R-731 |
+| `requestContentType` | `requestContentType` — exact MIME string emitted with a type-only `IRequestContentType` boundary assertion because published km-api 0.4.1 enumerates known values while OpenAPI is open; the unchanged runtime string becomes the reverse-trip `content` key | R-731 |
+| `responseContentType` | `responseContentType` (from the first content-bearing response) — exact MIME string emitted with the corresponding narrow boundary assertion; the unchanged runtime string becomes the reverse-trip `content` key | R-731 |
 | `response.statuses[]` | `response` — `code: schema`; no-content status (204) → `z.void()` — **zopia's own marker**, deliberately not `z.object({})` (the shape km-api's README examples use for 204 — both typecheck, response values accept any Zod schema): `z.void()` is the unambiguous no-content marker, and engine ④ detects it *before* engine ① (Zod lists `z.void()` as unrepresentable, R-614) so it emits **no `content` at all**; a real `z.object({})` stays a schema. Custom codes (`419`, `499`, …) and `default` are emitted as numeric/`default` keys (km-api ≥ 0.4.1); response `headers` have no km-api home → `responseOverlay` (R-754) | R-731 |
 | `deprecated: true` | `deprecated: 'YES'` (km-api ≥ 0.4.1); omitted when false | R-731 |
 | `examples` | `examples` — km-api's `request` / `response` maps of `IExamplesMap` | R-731 |

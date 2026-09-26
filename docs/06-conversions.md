@@ -308,13 +308,16 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 >
 > 📌 **Rule R-642** — *the km-api 0.4.1 contract.* zopia **requires km-api ≥
 > 0.4.1**: `makeApiConfig` is a type-level factory (no runtime validation), so
-> the generated tree must **typecheck** against km-api 0.4.x (D-14; the
-> golden-tree contract test enforces this, R-126). km-api 0.4.1's open type
-> surface — all 8 methods (incl. `trace`), any custom numeric status code and
-> the `default` key, any MIME type, `operationId` — means **every practical
-> API fact is emitted as code**. The remaining km-api gaps (per-parameter
-> metadata, response `headers`) are preserved in the manifest (overlay /
-> `apis[].responseOverlay`, R-635/R-754).
+> the generated tree must **typecheck** against installed published km-api
+> 0.4.1 (D-14; the golden-tree contract test enforces this, R-126). All 8
+> methods (including `trace`), custom numeric and `default` response statuses,
+> arbitrary OpenAPI MIME keys, and `operationId` are emitted as code. Because
+> km-api 0.4.1's published declarations enumerate MIME values even though
+> OpenAPI allows extension strings, zopia keeps the exact runtime string behind
+> a narrow type-only assertion at that package boundary; the strict generated
+> call still checks the rest of `makeApiConfig`. The remaining km-api gaps
+> (per-parameter metadata, response `headers`) are preserved in the manifest
+> (overlay / `apis[].responseOverlay`, R-635/R-754).
 
 ### 🔗 Step 3 — refs
 

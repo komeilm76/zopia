@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 📸 Completed the golden generated-tree contract: checked in deterministic directory, flat, component-reference, and km-api type-surface trees; added deliberate `golden:update` regeneration, complete byte/path comparisons with stale-tree detection, import-boundary checks, and strict no-emit compilation against published `km-api@0.4.1`; arbitrary OpenAPI media types now preserve their exact runtime strings across km-api's enumerated declaration boundary.
 - 🔁 Completed the round-trip contract with source-dialect fixture properties for Swagger 2.0 and OpenAPI 3.0/3.1, all layout/component strategies, nested/cyclic/path-item refs, lossy-keyword overlays, exact version/frame/path metadata and example forms, Swagger form constraints, Zod ↔ JSON Schema convergence, and byte-identical regeneration; fixed every mismatch exposed by the new suite.
 - ⚠️ Completed the warnings pipeline across all four engines: warning codes are now a stable typed catalogue; diagnostics are validated, sanitized, deduplicated, deterministically sorted, and JSON-Pointer-located; nested/runtime warnings are rebased to their exact source or output nodes; reverse conversion reports runtime Zod losses, legacy info/default-security fallbacks, and OpenAPI 3.1→3.0 omissions through results and `onWarning`; canonical generated-code markers and CLI stderr output keep reverse stdout valid JSON.
 - ♻️ Completed manifest staleness handling: regeneration now compares canonical source identity, layout, component options, manifest retention, and owned-file presence; reports invalid/incomplete/drifted trees with `ZOPIA_WARN_STALE_TREE`; safely prunes only obsolete files claimed by a validated prior manifest while preserving custom files; removes old manifests when disabled; and refuses symlinked output ancestors or manifest temporary-file symlinks.
@@ -97,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚧 Planned
 - 🧩 Continue Phase 1 with component-file generation and component imports.
-- 🗂️ Add round-trip fixtures and final release validation.
+- 🗂️ Add the remaining scenario-matrix coverage and final release validation.
 - 🖥️ Added initial `zopia generate` and `zopia reverse` CLI commands, with generation mode, component-reference, component, manifest, reverse `--out`, and `--help` options; the CLI now uses the project-standard Bun runtime.
 - 🔄 Added manifest-driven OpenAPI reconstruction while preserving original operation objects, plus a file-based `manifestFileToOpenApi()` API.
 - 📖 Aligned reverse-conversion documentation with the implemented manifest-based API.

@@ -1,0 +1,103 @@
+{
+  "$schema": "zopia:manifest@1",
+  "apis": [
+    {
+      "file": "probe/{probeId}/trace/index.ts",
+      "method": "trace",
+      "operationId": "traceProbe",
+      "overlay": [],
+      "path": "/probe/{probeId}",
+      "refs": [],
+      "responseOverlay": [],
+      "sourceOperation": {
+        "deprecated": true,
+        "operationId": "traceProbe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "probeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/vnd.zopia+json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "active"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "419": {
+            "content": {
+              "application/vnd.zopia+json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Custom response status"
+          },
+          "default": {
+            "content": {
+              "application/vnd.zopia+json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Fallback response"
+          }
+        },
+        "summary": "Exercise km-api open unions",
+        "tags": [
+          "contract"
+        ]
+      }
+    }
+  ],
+  "components": [],
+  "componentsOverlay": {},
+  "defaultSecurity": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "documentOverlay": {},
+  "infoOverlay": {},
+  "mode": "directory",
+  "options": {
+    "insertComponents": false,
+    "useComponentAsReference": false
+  },
+  "pathsOverlay": {},
+  "securitySchemes": {
+    "bearerAuth": {
+      "scheme": "bearer",
+      "type": "http"
+    }
+  },
+  "source": {
+    "kind": "openapi-3.1",
+    "openapiVersion": "3.1.0",
+    "sha256": "0f2965914314c17e8fcd95c2126c8a089d7bdaf7563337d84790da78404d6e46",
+    "title": "km-api 0.4.1 Contract",
+    "version": "1.0.0"
+  },
+  "zopiaVersion": "0.0.1"
+}

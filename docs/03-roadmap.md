@@ -58,8 +58,12 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
       supported Zod ↔ JSON Schema pipelines converge after canonicalization
       (T-10/T-11/R-409)
 - [ ] ⌨️ CLI — `zopia generate` / `zopia reverse` ([usage](10-usage.md#-cli))
-- [ ] 🧪 Vitest suite — remaining full scenario matrix, golden files, coverage
-      gates, and contract suites (round-trip properties are complete;
+- [x] 📸 **Golden generated-tree contract** — deliberate reproducible updates,
+      complete byte-for-byte tree comparisons in all canonical layouts, and
+      strict compilation against installed published `km-api@0.4.1`, including
+      `trace`, custom/default statuses, and extension media types (R-112/R-126)
+- [ ] 🧪 Vitest suite — remaining full scenario matrix, coverage gates, and
+      other contract suites (round-trip properties and golden trees are complete;
       [testing](11-testing.md))
 - [ ] 📖 JSDoc on every public symbol (T-12)
 - [ ] 📜 First versioned entry in `CHANGELOG.md` → **v0.1.0**

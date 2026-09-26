@@ -166,16 +166,25 @@ tests/fixtures/
 │   ├── cookies-3.0.json          # 🍪 cookie parameters
 │   ├── unsupported-keywords.json # 🚫 D-12 matrix in one spec
 │   ├── path-item-ref-3.1.json    # 🔗 local path-item reference identity
+│   ├── km-api-contract-3.1.json  # 📐 trace/custom/default/extension type surface
 │   └── edge/                     # 🚧 S-07 error fixtures (invalid JSON, bad refs, …)
 └── expected/
     ├── admin-api-3.0.directory/  # 📸 golden tree (defaults)
     ├── admin-api-3.0.flat/       # 📸 golden tree (flat)
-    └── admin-api-3.0.components/ # 📸 golden tree (components + refs)
+    ├── admin-api-3.0.components/ # 📸 golden tree (components + refs)
+    ├── km-api-0.4.1.contract/    # 📐 generated open-value type contract
+    └── tsconfig.json             # 🔒 dedicated strict no-emit gate
 ```
 
 > 📌 **Rule R-112** — golden trees are checked in and reviewed like code.
 > Changing one requires a deliberate `bun run golden:update` run and a PR
 > showing the diff — determinism regressions are visible in review.
+>
+> The implemented updater removes and recreates only the governed output trees
+> from their checked-in JSON fixtures. The contract suite generates each variant
+> into a cleaned `os.tmpdir()` directory, compares the complete relative-path →
+> UTF-8-byte map (so extra files fail too), and verifies that `expected/` itself
+> contains no ungoverned tree.
 
 ## 📈 Coverage gates
 
@@ -198,7 +207,7 @@ tested — a warning that never fires in tests is a red flag, not a shrug.
 | R-123 | **Errors assert on `code`** (R-404), never on message text |
 | R-124 | **New rule ⇒ new test** — adding an R-… row to any doc requires the matching test in the same PR |
 | R-125 | **No skipped tests in main** — `it.skip` is allowed only with a linked issue and a removal date |
-| R-126 | **Golden trees typecheck** — the contract suite runs `tsc` over the golden `api_docs` trees against the installed `km-api@^0.4.1` npm package (D-15). `makeApiConfig` is a type-level factory, so this is the gate that proves generated code is valid km-api (D-14/R-642) |
+| R-126 | **Golden trees typecheck** — the contract suite runs dedicated strict, no-emit `tsc` over every golden `api_docs` tree against installed published `km-api@0.4.1` (D-15), without skipping declaration checks. The contract fixture pins `trace`, custom and `default` statuses, and an arbitrary extension media type. `makeApiConfig` remains the actual call-site gate rather than a source-text substitute (D-14/R-642) |
 
 ## 🔗 Next
 

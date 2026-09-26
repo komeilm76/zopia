@@ -47,6 +47,7 @@ describe('round-trip contract', () => {
     'cookies-3.0.json',
     'cycle-comment.json',
     'formdata-2.0.json',
+    'km-api-contract-3.1.json',
     'nested-refs.json',
     'path-item-ref-3.1.json',
     'petstore-mini-3.1.json',
