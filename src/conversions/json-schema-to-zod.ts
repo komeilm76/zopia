@@ -1,3 +1,4 @@
+import { asZopiaError, ZopiaError } from '../errors';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { formatZopiaWarningComment, normalizeZopiaWarnings, type ZopiaWarning, type ZopiaWarningCode } from '../warnings';
@@ -196,9 +197,18 @@ function warningKeyword(message: string): string {
 
 /** Convert a JSON Schema value, JSON text, or `.json` file into executable Zod 4 code and a runtime schema. */
 export function jsonSchemaToZod(input: JsonSchema | string, options: JsonSchemaToZodOptions = {}): JsonSchemaToZodResult {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'JSON Schema conversion options must be an object', { at: 'options', hint: 'pass an options object or omit it' });
+  const unknown = Object.keys(options).find((key) => key !== 'rootName');
+  if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown JSON Schema conversion option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
+  if (options.rootName !== undefined && typeof options.rootName !== 'string') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'rootName must be a string', { at: 'rootName', hint: 'provide a valid TypeScript identifier' });
+  try { return jsonSchemaToZodInternal(input, options); }
+  catch (error) { throw asZopiaError(error, 'ZOPIA_SCHEMA_INVALID', 'unable to convert JSON Schema', { at: '#', hint: 'fix the JSON Schema input' }); }
+}
+
+function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchemaToZodOptions): JsonSchemaToZodResult {
   const rootName = options.rootName ?? 'schema';
   const reservedNames = new Set(['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield']);
-  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(rootName) || reservedNames.has(rootName)) throw new TypeError(`Invalid rootName: ${rootName}`);
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(rootName) || reservedNames.has(rootName)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `Invalid rootName: ${rootName}`, { at: 'rootName', hint: 'use a non-reserved TypeScript identifier' });
   const warningMessages: Array<{ message: string; at: string }> = [];
   let activeWarningAt = '#';
   const pushWarning = (message: string): void => { warningMessages.push({ message, at: activeWarningAt }); };
@@ -216,8 +226,8 @@ export function jsonSchemaToZod(input: JsonSchema | string, options: JsonSchemaT
       const text = input.toLowerCase().endsWith('.json') ? readFileSync(input, 'utf8') : input;
       source = JSON.parse(text) as JsonSchema;
     }
-  } catch (error) { throw new TypeError(`Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`); }
-  if (!isSchema(source)) throw new TypeError('Invalid JSON Schema input: expected an object or boolean schema');
+  } catch (error) { throw new ZopiaError('ZOPIA_SCHEMA_INVALID', `Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`, { at: typeof input === 'string' && input.toLowerCase().endsWith('.json') ? input : '#', cause: error }); }
+  if (!isSchema(source)) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', 'Invalid JSON Schema input: expected an object or boolean schema');
   const analysis = analyzeSchema(source);
   const resolveLocalRef = (ref: string): JsonSchema | undefined => {
     if (ref !== '#' && !ref.startsWith('#/')) return undefined;

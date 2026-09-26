@@ -1,3 +1,4 @@
+import { ZopiaError } from '../errors';
 import { collectOpenApiOperations, type OpenApiOperation } from './openapi-to-api-docs';
 import { endpointFilePath, type ApiDocsMode } from './api-docs-layout';
 
@@ -5,7 +6,7 @@ export interface ApiDocsFilePlan extends OpenApiOperation { file: string; }
 
 /** Plan generated endpoint files without touching the filesystem. */
 export function planApiDocsFiles(input: Record<string, any> | string, mode: ApiDocsMode = 'directory'): ApiDocsFilePlan[] {
-  if (mode !== 'directory' && mode !== 'flat') throw new TypeError(`Unsupported API docs mode: ${mode}`);
+  if (mode !== 'directory' && mode !== 'flat') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `Unsupported API docs mode: ${mode}`);
   const operations = collectOpenApiOperations(input); const used = new Set<string>(); const names = new Map<string, string>(); const plan: ApiDocsFilePlan[] = [];
   for (const operation of operations) {
     let file: string;

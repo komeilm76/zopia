@@ -108,7 +108,7 @@ describe('manifest reverse conversion', () => {
     expect(missingError).toMatchObject({ code: 'ZOPIA_DOCS_MISSING_MANIFEST', message: expect.stringContaining('manifest file not found') });
     const malformed = join(directory, 'malformed.json');
     await writeFile(malformed, '{', 'utf8');
-    await expect(manifestFileToOpenApi(malformed)).rejects.toThrow('Invalid manifest file');
+    await expect(manifestFileToOpenApi(malformed)).rejects.toMatchObject({ code: 'ZOPIA_MANIFEST_INVALID', at: malformed, message: expect.stringContaining('Invalid manifest file') });
   });
   it('imports generated endpoint modules and uses edited runtime metadata', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -645,7 +645,7 @@ describe('manifest reverse conversion', () => {
 
     await writeFile(join(directory, 'invalid.ts'), 'export default {};\n', 'utf8');
     await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source, apis: [{ file: 'invalid.ts', path: '/x', method: 'get' }] }), 'utf8');
-    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('does not export a unique km-api config');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toMatchObject({ code: 'ZOPIA_DOCS_IMPORT_FAILED', at: 'invalid.ts', message: expect.stringContaining('does not export a unique km-api config') });
   });
   it('rejects missing, unsafe, and invalid generated component modules', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -661,7 +661,7 @@ describe('manifest reverse conversion', () => {
 
     await writeFile(join(directory, 'invalid-component.ts'), 'export default {};\n', 'utf8');
     await writeFile(manifestFile, JSON.stringify(manifest('invalid-component.ts')), 'utf8');
-    await expect(manifestFileToOpenApi(manifestFile)).rejects.toThrow('does not export a unique Zod schema');
+    await expect(manifestFileToOpenApi(manifestFile)).rejects.toMatchObject({ code: 'ZOPIA_DOCS_IMPORT_FAILED', at: 'invalid-component.ts', message: expect.stringContaining('does not export a unique Zod schema') });
   });
   it('round-trips reusable OpenAPI and Swagger component sections', async () => {
     const openApiDir = await mkdtemp(join(tmpdir(), 'zopia-'));

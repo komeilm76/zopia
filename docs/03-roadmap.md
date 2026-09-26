@@ -48,6 +48,10 @@ Everything in [Targets](02-targets.md) marked ✅ 🚧:
 - [x] 🔐 **Reverse security fallback** — manifest-authoritative requirements,
       validated metadata, collision-safe deterministic bearer synthesis,
       OpenAPI/Swagger representations, and operation-located warnings (R-656)
+- [x] 🛑 **Typed errors** — one immutable stable-code catalogue and `ZopiaError`
+      boundary across engines, manifests, generated-module imports, filesystem
+      operations, warnings, and CLI validation, with locations, hints, and causes
+      (R-141…R-143/R-404)
 - [ ] ⌨️ CLI — `zopia generate` / `zopia reverse` ([usage](10-usage.md#-cli))
 - [ ] 🧪 Vitest suite — full scenario matrix, golden files, round-trip
       property tests ([testing](11-testing.md))

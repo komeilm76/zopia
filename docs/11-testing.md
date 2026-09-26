@@ -50,6 +50,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-05 | OpenAPI 3.1 — `type: [t, "null"]`, `const`, numeric `exclusiveMinimum`, `prefixItems`, `examples` array | R-503 |
 | S-06 | Both dialects — `deprecated`, tags with descriptions, multiple servers | R-641 |
 | S-07 | Error inputs — invalid JSON, unknown version, missing `paths`, unknown/external/malformed/circular `$ref` | error model (R-404) |
+| S-08 | typed-error boundary matrix — engines ①–④, low-level helpers, warning validation, generated-module imports, filesystem writers, and CLI arguments all fail with a catalogued `ZopiaError`, actionable `hint`, discoverable `at`, and preserved `cause` | R-141…R-143/R-404 |
 
 ### 🔗 Ref-graph scenarios
 

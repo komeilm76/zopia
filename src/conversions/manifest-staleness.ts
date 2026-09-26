@@ -1,4 +1,5 @@
 import { lstat, readFile, realpath, rmdir, rm, stat } from 'node:fs/promises';
+import { asZopiaError } from '../errors';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ApiDocsMode } from './api-docs-layout';
 import {
@@ -68,7 +69,7 @@ async function hasMissingOwnedFiles(outputDir: string, ownedFiles: readonly stri
       if (!isInside(rootReal, actual) || !(await stat(actual)).isFile()) return true;
     } catch (error) {
       if (isMissing(error)) return true;
-      throw error;
+      throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: outputDir, hint: 'check output-directory permissions and symlinks' });
     }
   }
   return false;
@@ -81,7 +82,7 @@ export async function inspectZopiaManifestStaleness(outputDir: string, identity:
   try { source = await readFile(file, 'utf8'); }
   catch (error) {
     if (isMissing(error)) return { status: 'absent', reasons: [], ownedFiles: [] };
-    throw error;
+    throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: outputDir, hint: 'check output-directory permissions and symlinks' });
   }
 
   let manifest: ZopiaManifest;
@@ -139,12 +140,12 @@ async function removeOwnedFile(root: string, rootReal: string, file: string): Pr
   const parent = dirname(candidate);
   let parentReal: string;
   try { parentReal = await realpath(parent); }
-  catch (error) { if (isMissing(error)) return false; throw error; }
+  catch (error) { if (isMissing(error)) return false; throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: root, hint: 'check output-directory permissions and symlinks' }); }
   if (!isInside(rootReal, parentReal) && parentReal !== rootReal) return false;
 
   let metadata;
   try { metadata = await lstat(candidate); }
-  catch (error) { if (isMissing(error)) return false; throw error; }
+  catch (error) { if (isMissing(error)) return false; throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: root, hint: 'check output-directory permissions and symlinks' }); }
   if (metadata.isDirectory()) return false;
   await rm(candidate, { force: true });
 
@@ -152,10 +153,10 @@ async function removeOwnedFile(root: string, rootReal: string, file: string): Pr
   while (directory !== root && isInside(root, directory)) {
     let directoryMetadata;
     try { directoryMetadata = await lstat(directory); }
-    catch (error) { if (isMissing(error)) break; throw error; }
+    catch (error) { if (isMissing(error)) break; throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: root, hint: 'check output-directory permissions and symlinks' }); }
     if (!directoryMetadata.isDirectory() || directoryMetadata.isSymbolicLink()) break;
     try { await rmdir(directory); }
-    catch (error) { if (isMissing(error) || isNotEmpty(error)) break; throw error; }
+    catch (error) { if (isMissing(error) || isNotEmpty(error)) break; throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: root, hint: 'check output-directory permissions and symlinks' }); }
     directory = dirname(directory);
   }
   return true;
@@ -167,7 +168,7 @@ export async function removeObsoleteManifestFiles(outputDir: string, previousOwn
   const root = resolve(outputDir);
   let rootReal: string;
   try { rootReal = await realpath(root); }
-  catch (error) { if (isMissing(error)) return []; throw error; }
+  catch (error) { if (isMissing(error)) return []; throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect or update the generated tree', { at: root, hint: 'check output-directory permissions and symlinks' }); }
   const retained = new Set(nextOwnedFiles);
   const removed: string[] = [];
   for (const file of [...new Set(previousOwnedFiles)].sort(compareText)) {

@@ -269,7 +269,11 @@ describe('dedicated manifest writer', () => {
     await writeFile(outside, 'protected\n', 'utf8');
     await symlink(outside, join(outputDir, `${ZOPIA_MANIFEST_FILE}.tmp`));
 
-    await expect(writeZopiaManifest(outputDir, build())).rejects.toMatchObject({ code: 'EEXIST' });
+    await expect(writeZopiaManifest(outputDir, build())).rejects.toMatchObject({
+      code: 'ZOPIA_FS_WRITE_FAILED',
+      at: join(outputDir, ZOPIA_MANIFEST_FILE),
+      cause: { code: 'EEXIST' },
+    });
     expect(await readFile(outside, 'utf8')).toBe('protected\n');
   });
 

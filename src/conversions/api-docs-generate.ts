@@ -1,6 +1,6 @@
 import { lstat, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ZopiaError } from '../errors';
+import { asZopiaError, ZopiaError } from '../errors';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { extractOperationContracts } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
@@ -92,10 +92,11 @@ async function writeGeneratedFile(root: string, file: string, content: string, p
       if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw outputPathError(file);
     } catch (error) {
       if (isMissingPath(error)) break;
-      throw error;
+      throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect generated output path', { at: file, hint: 'check output-directory permissions and symlinks' });
     }
   }
-  await mkdir(parent, { recursive: true });
+  try { await mkdir(parent, { recursive: true }); }
+  catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to create generated output directory', { at: file, hint: 'check output-directory permissions' }); }
   try {
     const metadata = await lstat(absolutePath);
     if (metadata.isDirectory()) throw outputPathError(file);
@@ -104,9 +105,10 @@ async function writeGeneratedFile(root: string, file: string, content: string, p
       await rm(absolutePath, { force: true });
     }
   } catch (error) {
-    if (!isMissingPath(error)) throw error;
+    if (!isMissingPath(error)) throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect generated output file', { at: file, hint: 'check output-directory permissions and file types' });
   }
-  await writeFile(absolutePath, content, 'utf8');
+  try { await writeFile(absolutePath, content, 'utf8'); }
+  catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write generated output file', { at: file, hint: 'check output-directory permissions and available disk space' }); }
   return absolutePath;
 }
 
@@ -250,7 +252,7 @@ function renderComponent(name: string, schema: unknown, source: OpenApiDocument)
 }
 function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMode = 'directory', useComponents = false): string {
   const ir = buildOpenApiOperationIR(source).find((candidate) => candidate.operationId === operation.operationId && candidate.path === operation.path && candidate.method.toLowerCase() === operation.method);
-  if (!ir) throw new TypeError(`Unable to build operation IR: ${operation.operationId}`);
+  if (!ir) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unable to build operation IR: ${operation.operationId}`);
   const contracts = extractOperationContracts(ir);
   const componentRefs = useComponents ? collectComponentRefs({ operation: operation.operation, parameters: ir.parameters }) : new Set<string>();
   const componentSchema = (schema: unknown, fallback: string) => {
@@ -337,9 +339,25 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
 
 /** Generate the planned endpoint files on disk. Existing generated files are overwritten. */
 export async function generateApiDocsFiles(input: OpenApiDocument | string, options: GenerateApiDocsOptions): Promise<GeneratedApiDocsFile[]> {
-  if (!options || typeof options.outputDir !== 'string' || !options.outputDir) throw new TypeError('outputDir is required');
-  const source = typeof input === 'string' ? JSON.parse(input) : input;
-  if (options.useComponentAsReference && !options.insertComponents) throw new TypeError('useComponentAsReference requires insertComponents');
+  try { return await generateApiDocsFilesInternal(input, options); }
+  catch (error) {
+    if (error instanceof ZopiaError && (error.code === 'ZOPIA_SCHEMA_INVALID' || error.code === 'ZOPIA_MANIFEST_INVALID')) {
+      const message = error.message.slice(`${error.code}: `.length);
+      throw new ZopiaError('ZOPIA_SPEC_INVALID', message, { at: error.at ?? '#', cause: error });
+    }
+    throw asZopiaError(error, 'ZOPIA_SPEC_INVALID', 'unable to generate api-docs files', { at: '#', hint: 'check the source document and generation options' });
+  }
+}
+
+async function generateApiDocsFilesInternal(input: OpenApiDocument | string, options: GenerateApiDocsOptions): Promise<GeneratedApiDocsFile[]> {
+  if (!options || typeof options !== 'object' || Array.isArray(options) || typeof options.outputDir !== 'string' || !options.outputDir || options.outputDir.includes('\0')) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'outputDir is required', { at: 'outputDir', hint: 'provide a generated-tree output directory' });
+  const unknown = Object.keys(options).find((key) => !['outputDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest'].includes(key));
+  if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown generation option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
+  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest'] as const) if (options[key] !== undefined && typeof options[key] !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `${key} must be a boolean`, { at: key });
+  let source: OpenApiDocument;
+  try { source = typeof input === 'string' ? JSON.parse(input) as OpenApiDocument : input; }
+  catch (error) { throw asZopiaError(error, 'ZOPIA_SPEC_INVALID_JSON', 'invalid OpenAPI JSON text', { at: '#', hint: 'fix the JSON syntax' }); }
+  if (options.useComponentAsReference && !options.insertComponents) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
   const mode = options.mode ?? 'directory';
   const insertComponents = options.insertComponents === true;
   const useComponentAsReference = options.useComponentAsReference === true;
@@ -367,11 +385,11 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
     for (const name of names) {
       const componentExport = `${exportName(name)}Schema`;
       const previous = componentExports.get(componentExport);
-      if (previous) throw new TypeError(`Component export name collision: ${previous} and ${name}`);
+      if (previous) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component export name collision: ${previous} and ${name}`);
       componentExports.set(componentExport, name);
     }
     const renderedComponents = names.map((name) => {
-      if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || name.includes('\0')) throw new TypeError(`Unsafe component name: ${name}`);
+      if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || name.includes('\0')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsafe component name: ${name}`);
       return { name, content: renderComponent(name, schemas[name], source) };
     });
     for (const { name, content } of renderedComponents) {

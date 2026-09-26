@@ -252,35 +252,39 @@ response: { 401: error, 404: error }
 
 ## 🛑 Error model
 
-All errors extend one base class — **no raw `Error`, no thrown strings**
-(standards → Errors):
+All errors crossing a zopia boundary extend one base class — **no raw `Error`, no thrown strings** (standards → Errors). `ZOPIA_ERROR_CODES` is the immutable runtime catalogue and the source of the `ZopiaErrorCode` union; `isZopiaError()` narrows unknown failures and `asZopiaError()` preserves an existing typed error or attaches a lower-level failure as `cause`.
 
 ```ts
 export class ZopiaError extends Error {
   /** 🆔 Stable machine-readable code, e.g. 'ZOPIA_REF_NOT_FOUND'. */
   readonly code: ZopiaErrorCode;
-  /** 📍 JSON-pointer or file location where the problem was found, if any. */
+  /** 📍 JSON-pointer, option name, or file location, when discoverable. */
   readonly at?: string;
-  /** 💡 Actionable, human-readable suggestion. */
-  readonly hint?: string;
+  /** 💡 Actionable, human-readable suggestion (always populated). */
+  readonly hint: string;
+  /** 🔗 Original parser, import, or filesystem failure, when translated. */
+  readonly cause?: unknown;
 }
 ```
 
 | 🆔 Code | 📍 Where | 💥 When | 💡 Hint pattern |
 | --- | --- | --- | --- |
-| `ZOPIA_CONFIG_INVALID` | options validation | e.g. `useComponentAsReference: true` without `insertComponents: true` | "enable `insertComponents` first" |
-| `ZOPIA_SPEC_INVALID_JSON` | engine ③ entry | input is unreadable or is not valid JSON | "fix the syntax at …" |
-| `ZOPIA_SPEC_INVALID` | engine ③ validation | the parsed document violates the supported Swagger/OpenAPI shape | "fix the invalid Swagger/OpenAPI document" |
-| `ZOPIA_SPEC_UNSUPPORTED_VERSION` | `detect()` | neither `swagger: "2.0"` nor `openapi: "3.x"` | "supported: swagger 2.0, openapi 3.0/3.1" |
-| `ZOPIA_SPEC_MISSING_PATHS` | normalizers | document has no `paths` | — |
-| `ZOPIA_SPEC_PATH_REF` | normalizers | reserved for unsupported path-item reference cases | "path-item references must be valid local references" |
-| `ZOPIA_REF_NOT_FOUND` | `refs()` | `$ref` points to nothing | "check #/components/schemas/…" |
-| `ZOPIA_REF_EXTERNAL` | `refs()` | `$ref` points to another file (Phase 1) | "multi-file refs land in Phase 2" |
-| `ZOPIA_DOCS_MISSING_MANIFEST` | engine ④ | no `.zopia-manifest.json` in docs dir | "generate first, or pass …" |
-| `ZOPIA_DOCS_MANIFEST_MISMATCH` | engine ④ | manifest `apis` entry file missing/renamed | "restore the generated file" |
-| `ZOPIA_DOCS_IMPORT_FAILED` | engine ④ | imported `index.ts` fails to load or has no `makeApiConfig` export | "the file was hand-broken?" |
-| `ZOPIA_FS_OUTSIDE_OUTDIR` | `fs/guard.ts` | a computed write path escapes `outDir` | never happens by construction — defense in depth |
-| `ZOPIA_FS_WRITE_FAILED` | engine ③ public writer | the output directory cannot be inspected or written | "provide a writable output directory" |
+| `ZOPIA_CONFIG_INVALID` | public options / CLI | an argument, option, or option combination is invalid | "correct the invalid option or argument" |
+| `ZOPIA_DOCS_IMPORT_FAILED` | engine ④ | generated modules cannot load, export one expected value, or serialize edited runtime schemas | "fix or regenerate the affected generated module" |
+| `ZOPIA_DOCS_MANIFEST_MISMATCH` | engine ④ preflight | a manifest-owned endpoint/component file is missing, renamed, or not a regular file | "regenerate the tree or restore its generated files" |
+| `ZOPIA_DOCS_MISSING_MANIFEST` | engine ④ entry | no `.zopia-manifest.json` exists at the selected path | "generate api docs first or pass the manifest path" |
+| `ZOPIA_FS_OUTSIDE_OUTDIR` | generation guard | a generated path escapes `outDir` or traverses an unsafe ancestor | "keep generated paths inside the output directory" |
+| `ZOPIA_FS_WRITE_FAILED` | writers / CLI | output inspection, directory creation, cleanup, or writing fails | "check the output path, permissions, and available disk space" |
+| `ZOPIA_MANIFEST_INVALID` | manifest writer/reader | manifest JSON or metadata violates `zopia:manifest@1` | "regenerate the manifest or fix its invalid metadata" |
+| `ZOPIA_REF_EXTERNAL` | reference validation | `$ref` points to another file (Phase 1) | "replace it with a local reference" |
+| `ZOPIA_REF_NOT_FOUND` | reference validation | a local `$ref` is malformed, circular where unsupported, or unresolved | "check that the local JSON Pointer target exists" |
+| `ZOPIA_SCHEMA_INVALID` | engines ①/② | the Zod or JSON Schema input cannot be converted | "provide a valid Zod or JSON Schema value" |
+| `ZOPIA_SPEC_INVALID` | OpenAPI validation | the parsed document violates the supported Swagger/OpenAPI shape | "fix the invalid Swagger/OpenAPI document" |
+| `ZOPIA_SPEC_INVALID_JSON` | JSON entry points | source text is unreadable or not valid JSON | "provide readable, valid JSON" |
+| `ZOPIA_SPEC_MISSING_PATHS` | normalizers | the document has no object-valued `paths` | "add a paths object" |
+| `ZOPIA_SPEC_PATH_REF` | operation collection | a path-item reference is invalid or circular | "use a valid local path-item reference" |
+| `ZOPIA_SPEC_UNSUPPORTED_VERSION` | normalization | neither Swagger 2.0 nor OpenAPI 3.0/3.1 is selected | "use Swagger 2.0, OpenAPI 3.0, or OpenAPI 3.1" |
+| `ZOPIA_WARNING_INVALID` | warnings pipeline | a warning iterable/code/location/message is malformed | "provide a valid warning code, location, and message" |
 
 > 📌 **Rule R-404** — every error is thrown as a `ZopiaError` with a stable
 > code, a location (`at`) when discoverable, and a `hint`. Tests assert on

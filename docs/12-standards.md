@@ -69,9 +69,9 @@ export function openApiToApiDocs(
 
 | # | Rule |
 | --- | --- |
-| R-141 | one base class `ZopiaError` (`code`, `at?`, `hint?`) — full table in [Architecture → Error model](04-architecture.md#-error-model) |
+| R-141 | one base class `ZopiaError` (`code`, `at?`, actionable `hint`, preserved `cause?`) at every public/CLI boundary; `ZOPIA_ERROR_CODES` is the immutable runtime catalogue and TypeScript-union source — full table in [Architecture → Error model](04-architecture.md#-error-model) |
 | R-142 | codes are stable strings, UPPER_SNAKE, prefixed `ZOPIA_`; adding a code is a **MINOR** change |
-| R-143 | `hint` is always an *action* ("enable `insertComponents` first"), never a lecture |
+| R-143 | `hint` is always an *action* ("enable `insertComponents` first"), never a lecture; translated parser/import/filesystem failures retain the original value in `cause` |
 | R-144 | warnings (not errors) for lossy-but-recoverable conversions (D-12) — shape: `{ code: ZopiaWarningCode, at?: string, message: string }`; codes come from the stable `ZOPIA_WARNING_CODES` catalogue, `at` is an escaped JSON Pointer when discoverable, and public emission is sanitized, deduplicated, deterministic, and callback/result consistent |
 
 ## 🛡️ Safety

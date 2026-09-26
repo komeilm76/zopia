@@ -1,4 +1,11 @@
-export { ZopiaError, type ZopiaErrorCode } from './errors';
+export {
+  ZopiaError,
+  ZOPIA_ERROR_CODES,
+  asZopiaError,
+  isZopiaError,
+  type ZopiaErrorCode,
+  type ZopiaErrorOptions,
+} from './errors';
 export { ZOPIA_WARNING_CODES, type ZopiaWarning, type ZopiaWarningCode } from './warnings';
 export {
   zodToJsonSchema,

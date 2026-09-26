@@ -98,7 +98,7 @@ async function readInput(input: string | Record<string, unknown>): Promise<OpenA
   }
   try {
     const parsed = JSON.parse(text) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new TypeError('expected a JSON object');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a JSON object');
     return parsed as OpenApiDocument;
   } catch (error) {
     throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `invalid JSON: ${error instanceof Error ? error.message : String(error)}`, { at: typeof input === 'string' && text !== input ? input : undefined, hint: 'fix the JSON syntax', cause: error });
@@ -108,6 +108,7 @@ async function readInput(input: string | Record<string, unknown>): Promise<OpenA
 function normalizePublic(document: OpenApiDocument): OpenApiDocument {
   try { return normalizeOpenApiDocument(document).document; }
   catch (error) {
+    if (error instanceof ZopiaError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('Unsupported OpenAPI document version')) {
       throw new ZopiaError('ZOPIA_SPEC_UNSUPPORTED_VERSION', message, { at: '#', hint: 'supported: Swagger 2.0, OpenAPI 3.0, and OpenAPI 3.1' });
@@ -193,8 +194,8 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
     collector.addRebased(result.warnings, at);
   };
   const addMultiContentWarning = (content: unknown, at: string): void => {
-    if (!content || typeof content !== 'object' || Array.isArray(content)) throw new TypeError(`Invalid content at ${at}: expected an object`);
-    for (const [mediaType, media] of Object.entries(content)) if (!mediaType || !media || typeof media !== 'object' || Array.isArray(media)) throw new TypeError(`Invalid media type content at ${at}/${escapePointer(mediaType)}`);
+    if (!content || typeof content !== 'object' || Array.isArray(content)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid content at ${at}: expected an object`);
+    for (const [mediaType, media] of Object.entries(content)) if (!mediaType || !media || typeof media !== 'object' || Array.isArray(media)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid media type content at ${at}/${escapePointer(mediaType)}`);
     const mediaTypes = Object.keys(content);
     if (mediaTypes.length > 1) push({ code: 'ZOPIA_WARN_MULTI_CONTENT', at, message: `using ${primaryContent(content)?.[0]} as the generated primary media type; all ${mediaTypes.length} entries remain in the manifest` });
   };
@@ -204,9 +205,9 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
   });
   if (document.webhooks !== undefined) push({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks are preserved in the manifest but are not emitted as endpoint files' });
 
-  if (document.swagger !== '2.0' && document.components !== undefined && (!document.components || typeof document.components !== 'object' || Array.isArray(document.components))) throw new TypeError('Invalid OpenAPI components: expected an object');
+  if (document.swagger !== '2.0' && document.components !== undefined && (!document.components || typeof document.components !== 'object' || Array.isArray(document.components))) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI components: expected an object');
   const schemas = document.swagger === '2.0' ? document.definitions : document.components?.schemas;
-  if (schemas !== undefined && (!schemas || typeof schemas !== 'object' || Array.isArray(schemas))) throw new TypeError('Invalid schema components: expected an object');
+  if (schemas !== undefined && (!schemas || typeof schemas !== 'object' || Array.isArray(schemas))) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid schema components: expected an object');
   if (schemas && typeof schemas === 'object' && !Array.isArray(schemas)) for (const [name, schema] of Object.entries(schemas)) {
     addSchemaWarnings(schema, `${document.swagger === '2.0' ? '#/definitions' : '#/components/schemas'}/${escapePointer(name)}`);
   }
@@ -264,8 +265,8 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
 }
 
 function mapGenerationError(error: unknown): ZopiaError {
-  if (error instanceof ZopiaError) return error;
-  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof ZopiaError && error.code !== 'ZOPIA_SCHEMA_INVALID' && error.code !== 'ZOPIA_MANIFEST_INVALID') return error;
+  const message = error instanceof ZopiaError ? error.message.slice(`${error.code}: `.length) : error instanceof Error ? error.message : String(error);
   if (message.includes('path-item $ref') || message.includes('path item $ref')) return new ZopiaError('ZOPIA_SPEC_PATH_REF', message, { hint: 'path-item references must be valid local references', cause: error });
   return new ZopiaError('ZOPIA_SPEC_INVALID', message, { hint: 'fix the invalid Swagger/OpenAPI document', cause: error });
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { asZopiaError, ZopiaError } from '../errors';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 
 /** Output dialect supported by the Zod-to-JSON-Schema converter. */
@@ -119,17 +120,38 @@ const SCHEMA_VALUE_KEYS = new Set([
 ]);
 const SCHEMA_ARRAY_KEYS = new Set(['prefixItems', 'allOf', 'anyOf', 'oneOf']);
 
+function validateConversionOptions(options: InternalZodToJsonSchemaOptions, internal: boolean): void {
+  if (!isRecord(options)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Zod conversion options must be an object', { at: 'options', hint: 'pass an options object or omit it' });
+  const unknown = Object.keys(options).find((key) => !['target', '$schema', 'io', 'onWarning'].includes(key));
+  if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown Zod conversion option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
+  const targets = internal ? ['draft-4', 'draft-07', 'draft-2020-12', 'openapi-3.0', 'openapi-3.1'] : ['draft-07', 'draft-2020-12', 'openapi-3.0', 'openapi-3.1'];
+  if (options.target !== undefined && (typeof options.target !== 'string' || !targets.includes(options.target))) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported Zod conversion target: ${String(options.target)}`, { at: 'target', hint: `use ${targets.join(', ')}` });
+  if (options.$schema !== undefined && typeof options.$schema !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', '$schema must be a boolean', { at: '$schema' });
+  if (options.io !== undefined && options.io !== 'input' && options.io !== 'output') throw new ZopiaError('ZOPIA_CONFIG_INVALID', "io must be 'input' or 'output'", { at: 'io' });
+  if (options.onWarning !== undefined && typeof options.onWarning !== 'function') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'onWarning must be a function', { at: 'onWarning' });
+}
+
+function isZodSchema(value: unknown): value is z.ZodType {
+  return isRecord(value) && isRecord(value._zod) && typeof value._zod.run === 'function';
+}
+
 /** Convert a Zod 4 schema to canonical JSON Schema or an OpenAPI Schema Object. */
 export function zodToJsonSchema(
   schema: z.ZodType,
   options: ZodToJsonSchemaOptions = {},
 ): Record<string, unknown> {
-  const target = options.target ?? 'openapi-3.1';
-  const warnings: ZopiaWarning[] = [];
-  const result = convert(schema, target, options, warnings);
-  const collector = new ZopiaWarningCollector(); collector.addAll(warnings);
-  for (const warning of collector.toArray()) options.onWarning?.(warning);
-  return result;
+  validateConversionOptions(options, false);
+  if (!isZodSchema(schema)) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', 'expected a Zod 4 schema', { at: '#', hint: 'pass a Zod schema instance' });
+  try {
+    const target = options.target ?? 'openapi-3.1';
+    const warnings: ZopiaWarning[] = [];
+    const result = convert(schema, target, options, warnings);
+    const collector = new ZopiaWarningCollector(); collector.addAll(warnings);
+    for (const warning of collector.toArray()) options.onWarning?.(warning);
+    return result;
+  } catch (error) {
+    throw asZopiaError(error, 'ZOPIA_SCHEMA_INVALID', 'unable to convert Zod schema', { at: '#', hint: 'check the Zod schema and conversion options' });
+  }
 }
 
 /** Convert a named set of Zod schemas while preserving references between them. */
@@ -138,33 +160,43 @@ export function zodSchemasToJsonSchema(
   options: InternalZodToJsonSchemaOptions = {},
   uri: (name: string) => string = (name) => name,
 ): Record<string, Record<string, unknown>> {
-  const target = options.target ?? 'openapi-3.1';
-  const zodTarget = zodTargetFor(target);
-  const entries = [...schemas];
-  const registry = z.registry<{ id?: string }>();
-  for (const [name, schema] of entries) registry.add(schema, { id: name });
+  validateConversionOptions(options, true);
+  if (typeof uri !== 'function') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'schema URI mapper must be a function', { at: 'uri' });
+  try {
+    const target = options.target ?? 'openapi-3.1';
+    const zodTarget = zodTargetFor(target);
+    const entries = [...schemas];
+    for (const [name, schema] of entries) {
+      if (typeof name !== 'string' || !name) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', 'named Zod schemas require non-empty names', { at: 'schemas' });
+      if (!isZodSchema(schema)) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', `invalid named Zod schema: ${name}`, { at: name, hint: 'pass Zod 4 schema instances' });
+    }
+    const registry = z.registry<{ id?: string }>();
+    for (const [name, schema] of entries) registry.add(schema, { id: name });
 
-  const warnings: ZopiaWarning[] = [];
-  const unrepresentable = new WeakSet<object>();
-  const owners = indexNamedSchemaOwners(entries);
-  const converted = z.toJSONSchema(registry, {
-    target: zodTarget,
-    io: options.io ?? 'output',
-    uri,
-    metadata: metadataWithoutIds(),
-    unrepresentable: warningHandler(warnings, unrepresentable, owners),
-    override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
-  }).schemas as Record<string, Record<string, unknown>>;
+    const warnings: ZopiaWarning[] = [];
+    const unrepresentable = new WeakSet<object>();
+    const owners = indexNamedSchemaOwners(entries);
+    const converted = z.toJSONSchema(registry, {
+      target: zodTarget,
+      io: options.io ?? 'output',
+      uri,
+      metadata: metadataWithoutIds(),
+      unrepresentable: warningHandler(warnings, unrepresentable, owners),
+      override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
+    }).schemas as Record<string, Record<string, unknown>>;
 
-  const result: Record<string, Record<string, unknown>> = {};
-  for (const [name, schema] of Object.entries(converted)) {
-    finalizeDialect(schema, target, options.$schema);
-    delete schema.$id;
-    define(result, name, canonicalizeSchema(schema));
+    const result: Record<string, Record<string, unknown>> = {};
+    for (const [name, schema] of Object.entries(converted)) {
+      finalizeDialect(schema, target, options.$schema);
+      delete schema.$id;
+      define(result, name, canonicalizeSchema(schema));
+    }
+    const collector = new ZopiaWarningCollector(); collector.addAll(warnings);
+    for (const warning of collector.toArray()) options.onWarning?.(warning);
+    return result;
+  } catch (error) {
+    throw asZopiaError(error, 'ZOPIA_SCHEMA_INVALID', 'unable to convert named Zod schemas', { at: 'schemas', hint: 'check schema names, values, and references' });
   }
-  const collector = new ZopiaWarningCollector(); collector.addAll(warnings);
-  for (const warning of collector.toArray()) options.onWarning?.(warning);
-  return result;
 }
 
 function convert(

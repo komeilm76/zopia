@@ -1,3 +1,4 @@
+import { asZopiaError, ZopiaError } from '../errors';
 import { createHash } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -187,9 +188,9 @@ const pointerToken = (value: string): string => value.replace(/~/g, '~0').replac
 
 function stableJson(value: unknown, stack = new Set<object>()): string {
   if (Array.isArray(value)) {
-    if (stack.has(value)) throw new TypeError('Cannot serialize a circular JSON value');
+    if (stack.has(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Cannot serialize a circular JSON value');
     const keys = Object.keys(value);
-    if (keys.length !== value.length || keys.some((key, index) => key !== String(index))) throw new TypeError('Cannot serialize a non-JSON array');
+    if (keys.length !== value.length || keys.some((key, index) => key !== String(index))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Cannot serialize a non-JSON array');
     stack.add(value);
     const output = `[${value.map((item) => stableJson(item, stack)).join(',')}]`;
     stack.delete(value);
@@ -197,37 +198,37 @@ function stableJson(value: unknown, stack = new Set<object>()): string {
   }
   if (value && typeof value === 'object') {
     const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null || Object.getOwnPropertySymbols(value).length > 0) throw new TypeError('Cannot serialize a non-JSON object');
-    if (stack.has(value)) throw new TypeError('Cannot serialize a circular JSON value');
+    if (prototype !== Object.prototype && prototype !== null || Object.getOwnPropertySymbols(value).length > 0) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Cannot serialize a non-JSON object');
+    if (stack.has(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Cannot serialize a circular JSON value');
     stack.add(value);
     const object = value as Record<string, unknown>;
     const output = `{${Object.keys(object).sort(compareText).map((key) => `${JSON.stringify(key)}:${stableJson(object[key], stack)}`).join(',')}}`;
     stack.delete(value);
     return output;
   }
-  if (typeof value === 'number' && !Number.isFinite(value)) throw new TypeError(`Cannot serialize a non-JSON number: ${String(value)}`);
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Cannot serialize a non-JSON number: ${String(value)}`);
   const output = JSON.stringify(value);
-  if (output === undefined) throw new TypeError(`Cannot serialize a non-JSON value: ${String(value)}`);
+  if (output === undefined) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Cannot serialize a non-JSON value: ${String(value)}`);
   return output;
 }
 
 function canonicalValue(value: unknown, stack = new Set<object>()): unknown {
   if (Array.isArray(value)) {
-    if (stack.has(value)) throw new TypeError('Cannot serialize a circular JSON value');
+    if (stack.has(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Cannot serialize a circular JSON value');
     stack.add(value);
     const output = value.map((item) => canonicalValue(item, stack));
     stack.delete(value);
     return output;
   }
   if (value && typeof value === 'object') {
-    if (stack.has(value)) throw new TypeError('Cannot serialize a circular JSON value');
+    if (stack.has(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Cannot serialize a circular JSON value');
     stack.add(value);
     const output: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>).sort(compareText)) Object.defineProperty(output, key, { value: canonicalValue((value as Record<string, unknown>)[key], stack), enumerable: true, configurable: true, writable: true });
     stack.delete(value);
     return output;
   }
-  if (JSON.stringify(value) === undefined) throw new TypeError(`Cannot serialize a non-JSON value: ${String(value)}`);
+  if (JSON.stringify(value) === undefined) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Cannot serialize a non-JSON value: ${String(value)}`);
   return value;
 }
 
@@ -301,13 +302,13 @@ function isPortableManifestPath(file: string): boolean {
 }
 
 function validatePointer(value: string, context: string): void {
-  if (value !== '' && !value.startsWith('/')) throw new TypeError(`Invalid ${context} pointer: ${value}`);
-  if (/~(?![01])/.test(value)) throw new TypeError(`Invalid ${context} pointer escape: ${value}`);
+  if (value !== '' && !value.startsWith('/')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid ${context} pointer: ${value}`);
+  if (/~(?![01])/.test(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid ${context} pointer escape: ${value}`);
 }
 
 function validateKeys(value: object, allowed: readonly string[], context: string): void {
   const invalid = Object.keys(value).find((key) => !allowed.includes(key));
-  if (invalid !== undefined) throw new TypeError(`Invalid zopia manifest ${context} key: ${invalid}`);
+  if (invalid !== undefined) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${context} key: ${invalid}`);
 }
 
 /** Compute the canonical SHA-256 identity used for manifest staleness checks. */
@@ -315,21 +316,22 @@ export function hashOpenApiDocument(document: OpenApiDocument): string {
   try {
     return createHash('sha256').update(stableJson(document)).digest('hex');
   } catch (error) {
-    if (error instanceof TypeError && error.message.includes('circular JSON value')) throw new TypeError('Cannot hash a circular OpenAPI document');
-    if (error instanceof TypeError && error.message.includes('non-JSON')) throw new TypeError('Cannot hash an unsupported OpenAPI value');
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('circular JSON value')) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'cannot hash a circular OpenAPI document', { at: '#', hint: 'use JSON references instead of object cycles', cause: error });
+    if (message.includes('non-JSON')) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'cannot hash an unsupported OpenAPI value', { at: '#', hint: 'replace functions, symbols, and non-finite numbers with JSON values', cause: error });
+    throw asZopiaError(error, 'ZOPIA_SPEC_INVALID', 'unable to hash OpenAPI document', { at: '#', hint: 'provide a JSON-compatible document' });
   }
 }
 
 /** Build a detached, deterministic manifest snapshot without touching the filesystem. */
 export function createZopiaManifest(source: OpenApiDocument, plans: readonly ApiDocsFilePlan[], options: CreateZopiaManifestOptions): GeneratedZopiaManifest {
-  if (!isRecord(source) || !isRecord(source.info)) throw new TypeError('Invalid manifest source document');
-  if (!['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean') throw new TypeError('Invalid manifest generation options');
-  if (options.useComponentAsReference && !options.insertComponents) throw new TypeError('useComponentAsReference requires insertComponents');
+  if (!isRecord(source) || !isRecord(source.info)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid manifest source document', { at: '#', hint: 'provide a normalized Swagger/OpenAPI document' });
+  if (!isRecord(options) || !['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Invalid manifest generation options', { at: 'options' });
+  if (options.useComponentAsReference && !options.insertComponents) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
   const sourceHash = hashOpenApiDocument(source);
   const swagger = source.swagger === '2.0';
   const schemas = swagger ? source.definitions ?? {} : source.components?.schemas ?? {};
-  if (!isRecord(schemas)) throw new TypeError('Invalid source schema components');
+  if (!isRecord(schemas)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid source schema components', { at: swagger ? '#/definitions' : '#/components/schemas' });
   const sortedPlans = [...plans].sort((left, right) => compareText(left.file, right.file));
   const components: GeneratedZopiaManifestComponent[] = Object.entries(schemas).sort(([left], [right]) => compareText(left, right)).map(([name, schema]) => ({
     name,
@@ -389,99 +391,99 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
 function validateSecurityRequirements(value: unknown, context: string): void {
   if (!Array.isArray(value) || value.some((alternative) => !isRecord(alternative)
     || Object.entries(alternative).some(([name, scopes]) => !name || !Array.isArray(scopes) || scopes.some((scope) => typeof scope !== 'string')))) {
-    throw new TypeError(`Invalid zopia manifest ${context}`);
+    throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${context}`);
   }
 }
 
 function validateSchemaOverlay(overlay: unknown, context: string): void {
-  if (!isRecord(overlay) || typeof overlay.at !== 'string') throw new TypeError(`Invalid zopia manifest ${context}`);
+  if (!isRecord(overlay) || typeof overlay.at !== 'string') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${context}`);
   validateKeys(overlay, ['at', 'set', 'remove', 'node'], context);
   validatePointer(overlay.at, context);
-  if (overlay.set !== undefined && !isRecord(overlay.set)) throw new TypeError(`Invalid zopia manifest ${context} set`);
-  if (overlay.remove !== undefined && (!Array.isArray(overlay.remove) || overlay.remove.some((key: unknown) => typeof key !== 'string'))) throw new TypeError(`Invalid zopia manifest ${context} remove`);
-  if (!Object.prototype.hasOwnProperty.call(overlay, 'node') && overlay.set === undefined && overlay.remove === undefined) throw new TypeError(`Empty zopia manifest ${context}`);
+  if (overlay.set !== undefined && !isRecord(overlay.set)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${context} set`);
+  if (overlay.remove !== undefined && (!Array.isArray(overlay.remove) || overlay.remove.some((key: unknown) => typeof key !== 'string'))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${context} remove`);
+  if (!Object.prototype.hasOwnProperty.call(overlay, 'node') && overlay.set === undefined && overlay.remove === undefined) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Empty zopia manifest ${context}`);
 }
 
 /** Validate the writer-owned manifest contract before serialization or disk output. */
 export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest is GeneratedZopiaManifest {
-  if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA) throw new TypeError('Invalid zopia manifest schema');
+  if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest schema');
   validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'infoOverlay', 'documentOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis'], 'root');
-  if (manifest.zopiaVersion !== ZOPIA_VERSION) throw new TypeError('Invalid zopia manifest writer version');
-  if (manifest.mode !== 'directory' && manifest.mode !== 'flat') throw new TypeError('Invalid zopia manifest mode');
-  if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents) throw new TypeError('Invalid zopia manifest generation options');
+  if (manifest.zopiaVersion !== ZOPIA_VERSION) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest writer version');
+  if (manifest.mode !== 'directory' && manifest.mode !== 'flat') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest mode');
+  if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest generation options');
   validateKeys(manifest.options, ['insertComponents', 'useComponentAsReference'], 'options');
-  if (!isRecord(manifest.source) || !['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new TypeError('Invalid zopia manifest source');
+  if (!isRecord(manifest.source) || !['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source');
   validateKeys(manifest.source, ['kind', 'title', 'version', 'description', 'sha256'], 'source');
-  if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new TypeError('Invalid zopia manifest source title or version');
-  if (manifest.source.description !== undefined && typeof manifest.source.description !== 'string') throw new TypeError('Invalid zopia manifest source description');
-  if (typeof manifest.source.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.source.sha256)) throw new TypeError('Invalid zopia manifest source hash');
+  if (typeof manifest.source.title !== 'string' || !manifest.source.title.trim() || typeof manifest.source.version !== 'string' || !manifest.source.version.trim()) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source title or version');
+  if (manifest.source.description !== undefined && typeof manifest.source.description !== 'string') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source description');
+  if (typeof manifest.source.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.source.sha256)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source hash');
   for (const [name, value] of [['infoOverlay', manifest.infoOverlay], ['documentOverlay', manifest.documentOverlay], ['securitySchemes', manifest.securitySchemes]] as const) {
-    if (!isRecord(value)) throw new TypeError(`Invalid zopia manifest ${name}`);
+    if (!isRecord(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
-  if (Object.entries(manifest.securitySchemes!).some(([name, scheme]) => !name || !isRecord(scheme))) throw new TypeError('Invalid zopia manifest security scheme');
+  if (Object.entries(manifest.securitySchemes!).some(([name, scheme]) => !name || !isRecord(scheme))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest security scheme');
   for (const [name, value] of [['componentsOverlay', manifest.componentsOverlay], ['swaggerParameters', manifest.swaggerParameters], ['swaggerResponses', manifest.swaggerResponses]] as const) {
-    if (value !== undefined && !isRecord(value)) throw new TypeError(`Invalid zopia manifest ${name}`);
+    if (value !== undefined && !isRecord(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
   const invalidInfoKey = Object.keys(manifest.infoOverlay!).find((key) => ['title', 'version', 'description'].includes(key));
-  if (invalidInfoKey) throw new TypeError(`Invalid zopia manifest infoOverlay key: ${invalidInfoKey}`);
+  if (invalidInfoKey) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest infoOverlay key: ${invalidInfoKey}`);
   const invalidDocumentKey = Object.keys(manifest.documentOverlay!).find((key) => !['externalDocs', 'webhooks', 'jsonSchemaDialect'].includes(key) && !key.startsWith('x-'));
-  if (invalidDocumentKey) throw new TypeError(`Invalid zopia manifest documentOverlay key: ${invalidDocumentKey}`);
-  if (manifest.componentsOverlay && ('schemas' in manifest.componentsOverlay || 'securitySchemes' in manifest.componentsOverlay)) throw new TypeError('Invalid zopia manifest componentsOverlay key');
+  if (invalidDocumentKey) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest documentOverlay key: ${invalidDocumentKey}`);
+  if (manifest.componentsOverlay && ('schemas' in manifest.componentsOverlay || 'securitySchemes' in manifest.componentsOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest componentsOverlay key');
   for (const [name, value] of [['servers', manifest.servers], ['tags', manifest.tags]] as const) {
-    if (!Array.isArray(value)) throw new TypeError(`Invalid zopia manifest ${name}`);
+    if (!Array.isArray(value)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
   for (const [name, value] of [['swaggerSchemes', manifest.swaggerSchemes], ['swaggerConsumes', manifest.swaggerConsumes], ['swaggerProduces', manifest.swaggerProduces]] as const) {
-    if (value !== undefined && (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string'))) throw new TypeError(`Invalid zopia manifest ${name}`);
+    if (value !== undefined && (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string'))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ${name}`);
   }
-  if (manifest.swaggerHost !== undefined && typeof manifest.swaggerHost !== 'string') throw new TypeError('Invalid zopia manifest swaggerHost');
+  if (manifest.swaggerHost !== undefined && typeof manifest.swaggerHost !== 'string') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest swaggerHost');
   if (manifest.defaultSecurity !== undefined) validateSecurityRequirements(manifest.defaultSecurity, 'default security');
-  if (!Array.isArray(manifest.apis)) throw new TypeError('Invalid zopia manifest APIs');
-  if (!Array.isArray(manifest.components)) throw new TypeError('Invalid zopia manifest components');
+  if (!Array.isArray(manifest.apis)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest APIs');
+  if (!Array.isArray(manifest.components)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest components');
 
   const componentNames = new Set<string>();
   const files = new Set<string>();
   for (const component of manifest.components) {
-    if (!isRecord(component) || typeof component.name !== 'string' || !component.name || componentNames.has(component.name)) throw new TypeError(`Invalid or duplicate zopia manifest component: ${String((component as any)?.name)}`);
+    if (!isRecord(component) || typeof component.name !== 'string' || !component.name || componentNames.has(component.name)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${String((component as any)?.name)}`);
     validateKeys(component, ['name', 'file', 'schema', 'overlay'], 'component');
     componentNames.add(component.name);
-    if (!Object.prototype.hasOwnProperty.call(component, 'schema')) throw new TypeError(`Missing zopia manifest component schema: ${component.name}`);
+    if (!Object.prototype.hasOwnProperty.call(component, 'schema')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Missing zopia manifest component schema: ${component.name}`);
     const expectedFile = manifest.options.insertComponents ? `components/${component.name}/index.ts` : null;
-    if ((manifest.options.insertComponents && component.name.includes('/')) || component.file !== expectedFile || (component.file !== null && !isPortableManifestPath(component.file))) throw new TypeError(`Invalid zopia manifest component file: ${String(component.file)}`);
+    if ((manifest.options.insertComponents && component.name.includes('/')) || component.file !== expectedFile || (component.file !== null && !isPortableManifestPath(component.file))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest component file: ${String(component.file)}`);
     if (component.file !== null) {
-      if (files.has(component.file)) throw new TypeError(`Duplicate zopia manifest file: ${component.file}`);
+      if (files.has(component.file)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${component.file}`);
       files.add(component.file);
     }
-    if (!Array.isArray(component.overlay)) throw new TypeError(`Invalid zopia manifest component overlay: ${component.name}`);
+    if (!Array.isArray(component.overlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest component overlay: ${component.name}`);
     for (const overlay of component.overlay) validateSchemaOverlay(overlay, `component overlay: ${component.name}`);
   }
 
   const operations = new Set<string>();
   for (const api of manifest.apis) {
-    if (!isRecord(api) || typeof api.file !== 'string' || !isPortableManifestPath(api.file) || typeof api.path !== 'string' || !api.path.startsWith('/') || typeof api.method !== 'string' || !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(api.method)) throw new TypeError(`Invalid zopia manifest API: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
+    if (!isRecord(api) || typeof api.file !== 'string' || !isPortableManifestPath(api.file) || typeof api.path !== 'string' || !api.path.startsWith('/') || typeof api.method !== 'string' || !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(api.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest API: ${String((api as any)?.path)} ${String((api as any)?.method)}`);
     validateKeys(api, ['file', 'path', 'method', 'operationId', 'sourceOperation', 'refs', 'overlay', 'responseOverlay', 'security'], 'API');
-    if (typeof api.operationId !== 'string' || !api.operationId) throw new TypeError(`Invalid zopia manifest operation ID: ${api.file}`);
+    if (typeof api.operationId !== 'string' || !api.operationId) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest operation ID: ${api.file}`);
     const operation = `${api.method}\0${api.path}`;
-    if (operations.has(operation)) throw new TypeError(`Duplicate zopia manifest API: ${api.method.toUpperCase()} ${api.path}`);
+    if (operations.has(operation)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest API: ${api.method.toUpperCase()} ${api.path}`);
     operations.add(operation);
-    if (files.has(api.file)) throw new TypeError(`Duplicate zopia manifest file: ${api.file}`);
+    if (files.has(api.file)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${api.file}`);
     files.add(api.file);
-    if (!isRecord(api.sourceOperation) || !Array.isArray(api.refs) || !Array.isArray(api.overlay) || !Array.isArray(api.responseOverlay)) throw new TypeError(`Invalid zopia manifest API metadata: ${api.file}`);
+    if (!isRecord(api.sourceOperation) || !Array.isArray(api.refs) || !Array.isArray(api.overlay) || !Array.isArray(api.responseOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest API metadata: ${api.file}`);
     if (Object.prototype.hasOwnProperty.call(api, 'security')) validateSecurityRequirements(api.security, `API security: ${api.file}`);
     for (const ref of api.refs) {
-      if (!isRecord(ref) || typeof ref.at !== 'string' || typeof ref.ref !== 'string' || ref.component !== undefined && typeof ref.component !== 'string') throw new TypeError(`Invalid zopia manifest ref: ${api.file}`);
+      if (!isRecord(ref) || typeof ref.at !== 'string' || typeof ref.ref !== 'string' || ref.component !== undefined && typeof ref.component !== 'string') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ref: ${api.file}`);
       validateKeys(ref, ['at', 'ref', 'component'], 'ref');
       validatePointer(ref.at, 'ref');
-      if (ref.ref !== '#' && !ref.ref.startsWith('#/')) throw new TypeError(`Invalid zopia manifest ref target: ${ref.ref}`);
+      if (ref.ref !== '#' && !ref.ref.startsWith('#/')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ref target: ${ref.ref}`);
     }
     for (const overlay of api.overlay) {
-      if (!isRecord(overlay)) throw new TypeError(`Invalid zopia manifest overlay: ${api.file}`);
+      if (!isRecord(overlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest overlay: ${api.file}`);
       if ('key' in overlay) {
-        if (typeof overlay.key !== 'string' || !['callbacks', 'servers', 'externalDocs', 'links'].includes(overlay.key) || !Object.prototype.hasOwnProperty.call(overlay, 'value')) throw new TypeError(`Invalid zopia manifest operation overlay: ${String(overlay.key)}`);
+        if (typeof overlay.key !== 'string' || !['callbacks', 'servers', 'externalDocs', 'links'].includes(overlay.key) || !Object.prototype.hasOwnProperty.call(overlay, 'value')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest operation overlay: ${String(overlay.key)}`);
         validateKeys(overlay, ['key', 'value'], 'operation overlay');
       } else validateSchemaOverlay(overlay, `schema overlay: ${api.file}`);
     }
     for (const overlay of api.responseOverlay) {
-      if (!isRecord(overlay) || typeof overlay.status !== 'string' || !overlay.status || !Object.prototype.hasOwnProperty.call(overlay, 'headers')) throw new TypeError(`Invalid zopia manifest response overlay: ${api.file}`);
+      if (!isRecord(overlay) || typeof overlay.status !== 'string' || !overlay.status || !Object.prototype.hasOwnProperty.call(overlay, 'headers')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest response overlay: ${api.file}`);
       validateKeys(overlay, ['status', 'headers'], 'response overlay');
     }
   }
@@ -495,20 +497,20 @@ export function serializeZopiaManifest(manifest: ZopiaManifest): string {
 
 /** Atomically write a validated manifest and return its absolute path. */
 export async function writeZopiaManifest(outputDir: string, manifest: ZopiaManifest): Promise<string> {
-  if (typeof outputDir !== 'string' || outputDir.trim() === '' || outputDir.includes('\0')) throw new TypeError('Invalid manifest output directory');
+  if (typeof outputDir !== 'string' || outputDir.trim() === '' || outputDir.includes('\0')) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'invalid manifest output directory', { at: 'outputDir', hint: 'provide a non-empty output-directory path' });
   const root = resolve(outputDir);
   const file = join(root, ZOPIA_MANIFEST_FILE);
   const temporary = `${file}.tmp`;
   const content = serializeZopiaManifest(manifest);
-  await mkdir(root, { recursive: true });
   let temporaryWritten = false;
   try {
+    await mkdir(root, { recursive: true });
     await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' });
     temporaryWritten = true;
     await rename(temporary, file);
   } catch (error) {
     if (temporaryWritten) await rm(temporary, { force: true }).catch(() => undefined);
-    throw error;
+    throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write zopia manifest', { at: file, hint: 'check output-directory permissions and temporary-file conflicts' });
   }
   return file;
 }

@@ -159,16 +159,17 @@ stderr, hint included) · `2` internal error (should never happen — report it)
 ## 🧯 Error handling
 
 ```ts
-import { openApiToApiDocs, ZopiaError } from 'zopia';
+import { openApiToApiDocs, isZopiaError } from 'zopia';
 
 try {
   // Exact component references import through components/index.ts
   await openApiToApiDocs('swagger.json', { insertComponents: true, useComponentAsReference: true });
 } catch (e) {
-  if (e instanceof ZopiaError) {
-    console.error(e.code); // 🆔 'ZOPIA_CONFIG_INVALID'
-    console.error(e.hint); // 💡 'enable `insertComponents` first'
-    console.error(e.at);   // 📍 where it was found, if applicable
+  if (isZopiaError(e)) {
+    console.error(e.code);  // 🆔 'ZOPIA_CONFIG_INVALID'
+    console.error(e.hint);  // 💡 'enable `insertComponents` first'
+    console.error(e.at);    // 📍 JSON Pointer, option, or file, when discoverable
+    console.error(e.cause); // 🔗 original parser/import/filesystem failure, when wrapped
   }
 }
 ```

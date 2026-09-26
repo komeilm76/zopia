@@ -1,3 +1,4 @@
+import { ZopiaError } from '../errors';
 import { collectOpenApiOperations, type OpenApiOperation } from './openapi-to-api-docs';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 
@@ -18,13 +19,13 @@ export interface OpenApiOperationIR {
 
 function security(value: unknown, context: string): unknown[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || !value.every((item) => item && typeof item === 'object' && !Array.isArray(item) && Object.entries(item).every(([name, scopes]) => name.length > 0 && Array.isArray(scopes) && scopes.every((scope) => typeof scope === 'string')))) throw new TypeError(`Invalid security requirements: ${context}`);
+  if (!Array.isArray(value) || !value.every((item) => item && typeof item === 'object' && !Array.isArray(item) && Object.entries(item).every(([name, scopes]) => name.length > 0 && Array.isArray(scopes) && scopes.every((scope) => typeof scope === 'string')))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid security requirements: ${context}`);
   return value;
 }
 
 function tags(value: unknown): string[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || !value.every((tag) => typeof tag === 'string')) throw new TypeError('Invalid operation tags: expected an array of strings');
+  if (!Array.isArray(value) || !value.every((tag) => typeof tag === 'string')) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid operation tags: expected an array of strings');
   return value.map((tag) => tag.startsWith('#') ? tag : `#${tag}`);
 }
 
@@ -33,9 +34,9 @@ export function buildOpenApiOperationIR(input: OpenApiDocument | string): OpenAp
   const { document } = normalizeOpenApiDocument(input);
   return collectOpenApiOperations(document).map((entry) => {
     const operation = entry.operation;
-    if (operation.summary !== undefined && typeof operation.summary !== 'string') throw new TypeError(`Invalid summary: ${entry.method.toUpperCase()} ${entry.path}`);
-    if (operation.description !== undefined && typeof operation.description !== 'string') throw new TypeError(`Invalid description: ${entry.method.toUpperCase()} ${entry.path}`);
-    if (operation.deprecated !== undefined && typeof operation.deprecated !== 'boolean') throw new TypeError(`Invalid deprecated flag: ${entry.method.toUpperCase()} ${entry.path}`);
+    if (operation.summary !== undefined && typeof operation.summary !== 'string') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid summary: ${entry.method.toUpperCase()} ${entry.path}`);
+    if (operation.description !== undefined && typeof operation.description !== 'string') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid description: ${entry.method.toUpperCase()} ${entry.path}`);
+    if (operation.deprecated !== undefined && typeof operation.deprecated !== 'boolean') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid deprecated flag: ${entry.method.toUpperCase()} ${entry.path}`);
     return {
       path: entry.path,
       method: entry.method.toUpperCase() as Uppercase<OpenApiOperation['method']>,
