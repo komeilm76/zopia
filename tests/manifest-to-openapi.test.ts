@@ -21,9 +21,13 @@ describe('manifest reverse conversion', () => {
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '__proto__', method: 'get' }] })).toThrow('Invalid manifest API');
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get' }, { path: '/users', method: 'get' }] })).toThrow('Duplicate manifest API');
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [
-      { path: '/users', method: 'get', sourceOperation: { operationId: 'duplicate', responses: {} } },
-      { path: '/groups', method: 'get', sourceOperation: { operationId: 'duplicate', responses: {} } },
+      { path: '/users', method: 'get', sourceOperation: { operationId: 'duplicate', responses: { '200': { description: 'ok' } } } },
+      { path: '/groups', method: 'get', sourceOperation: { operationId: 'duplicate', responses: { '200': { description: 'ok' } } } },
     ] })).toThrow('Duplicate reconstructed operationId: duplicate');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users/{id}', method: 'get', sourceOperation: { responses: { '200': { description: 'ok' } } } }] })).toThrow('Manifest operation path parameter is not defined: id');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get', sourceOperation: { responses: { '999': { description: 'bad' } } } }] })).toThrow('Invalid reconstructed responses');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get', sourceOperation: { responses: { '200': { description: 1 } } } }] })).toThrow('Invalid reconstructed responses');
+    expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'post', sourceOperation: { requestBody: {}, responses: { '200': { description: 'ok' } } } }] })).toThrow('Invalid reconstructed OpenAPI document');
     expect(() => manifestToOpenApi({ $schema: 'zopia:manifest@1', source, apis: [{ path: '/users', method: 'get', sourceOperation: [] as any }] })).toThrow('Invalid manifest source operation');
   });
   it('prevents overlays from replacing canonical manifest fields', () => {

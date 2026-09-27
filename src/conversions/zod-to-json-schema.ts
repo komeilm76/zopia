@@ -139,6 +139,7 @@ interface SanitizedSchemas {
   schemas: z.ZodType[];
   originals: WeakMap<object, z.core.$ZodType>;
   invalidDefaults: WeakSet<object>;
+  invalidMetadata: WeakSet<object>;
 }
 
 function isJsonValue(value: unknown, active = new Set<object>()): boolean {
@@ -159,22 +160,27 @@ function sanitizeUnsupportedDefaults(roots: z.ZodType[]): SanitizedSchemas {
   const schemas = new WeakMap<object, z.ZodType>();
   const originals = new WeakMap<object, z.core.$ZodType>();
   const invalidDefaults = new WeakSet<object>();
+  const invalidMetadata = new WeakSet<object>();
+
+  const replace = (schema: z.ZodType, category: WeakSet<object>): z.ZodType => {
+    const replacement = z.custom();
+    schemas.set(schema, replacement);
+    originals.set(replacement, schema);
+    category.add(replacement);
+    return replacement;
+  };
 
   const sanitize = (schema: z.ZodType): z.ZodType => {
     const cached = schemas.get(schema);
     if (cached) return cached;
+    const metadata = z.globalRegistry.get(schema);
+    if (metadata && Object.entries(metadata).some(([key, value]) => key !== 'id' && !isJsonValue(value))) return replace(schema, invalidMetadata);
     const definition = schema._zod.def as unknown as Record<string, unknown>;
     let defaultValue: unknown;
     if (definition.type === 'default') {
       try { defaultValue = definition.defaultValue; }
       catch { defaultValue = Symbol('invalid default'); }
-      if (!isJsonValue(defaultValue)) {
-        const replacement = z.custom();
-        schemas.set(schema, replacement);
-        originals.set(replacement, schema);
-        invalidDefaults.add(replacement);
-        return replacement;
-      }
+      if (!isJsonValue(defaultValue)) return replace(schema, invalidDefaults);
     }
 
     let changed = definition.type === 'default';
@@ -219,7 +225,7 @@ function sanitizeUnsupportedDefaults(roots: z.ZodType[]): SanitizedSchemas {
     return converted;
   };
 
-  return { schemas: roots.map(sanitize), originals, invalidDefaults };
+  return { schemas: roots.map(sanitize), originals, invalidDefaults, invalidMetadata };
 }
 
 /**
@@ -285,7 +291,7 @@ export function zodSchemasToJsonSchema(
       io: options.io ?? 'output',
       uri,
       metadata: metadataWithoutIds(sanitized.originals),
-      unrepresentable: warningHandler(warnings, unrepresentable, owners, sanitized.invalidDefaults),
+      unrepresentable: warningHandler(warnings, unrepresentable, owners, sanitized.invalidDefaults, sanitized.invalidMetadata),
       override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
     }).schemas as Record<string, Record<string, unknown>>;
 
@@ -315,7 +321,7 @@ function convert(
     target: zodTargetFor(target),
     io: options.io ?? 'output',
     metadata: metadataWithoutIds(sanitized.originals),
-    unrepresentable: warningHandler(warnings, unrepresentable, undefined, sanitized.invalidDefaults),
+    unrepresentable: warningHandler(warnings, unrepresentable, undefined, sanitized.invalidDefaults, sanitized.invalidMetadata),
     override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
   }) as Record<string, unknown>;
   finalizeDialect(result, target, options.$schema);
@@ -326,10 +332,12 @@ function zodTargetFor(target: InternalZodJsonSchemaTarget): 'draft-4' | 'draft-0
   return target === 'openapi-3.1' ? 'draft-2020-12' : target;
 }
 
-function warningHandler(warnings: ZopiaWarning[], unrepresentable: WeakSet<object>, owners?: WeakMap<object, Set<string>>, invalidDefaults?: WeakSet<object>) {
+function warningHandler(warnings: ZopiaWarning[], unrepresentable: WeakSet<object>, owners?: WeakMap<object, Set<string>>, invalidDefaults?: WeakSet<object>, invalidMetadata?: WeakSet<object>) {
   return ({ zodSchema, path, message: sourceMessage }: { zodSchema: z.core.$ZodType; path: (string | number)[]; message: string }): 'any' => {
     unrepresentable.add(zodSchema);
-    const message = invalidDefaults?.has(zodSchema) ? 'Default value cannot be represented in JSON Schema' : sourceMessage;
+    const message = invalidDefaults?.has(zodSchema)
+      ? 'Default value cannot be represented in JSON Schema'
+      : invalidMetadata?.has(zodSchema) ? 'Metadata cannot be represented in JSON Schema' : sourceMessage;
     const names = owners?.get(zodSchema);
     if (names?.size) for (const name of names) warnings.push({
       code: 'ZOPIA_WARN_UNREPRESENTABLE',

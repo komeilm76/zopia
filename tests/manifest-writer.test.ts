@@ -44,6 +44,7 @@ function richOpenApi(): OpenApiDocument {
         get: {
           operationId: 'getThing',
           security: [],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           servers: [{ url: 'https://edge.example.test' }],
           externalDocs: { url: 'https://example.test/get-thing' },
           callbacks: { changed: { '{$request.body#/callbackUrl}': { post: { responses: { '204': { description: 'ok' } } } } } },

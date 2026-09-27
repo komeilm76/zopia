@@ -1,11 +1,12 @@
-import { asZopiaError, ZopiaError } from '../errors';
+import { asZopiaError, ZopiaError, type ZopiaErrorCode } from '../errors';
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
-import { isValidResponseStatus } from './openapi-contracts';
+import { extractOperationContracts, isValidResponseStatus } from './openapi-contracts';
+import { buildOpenApiOperationIR } from './openapi-ir';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { ZOPIA_MANIFEST_FILE, ZOPIA_MANIFEST_SCHEMA, type ZopiaManifest } from './manifest-writer';
 import { ensureFallbackSecurityScheme, normalizeSecurityRequirements } from './reverse-security';
@@ -841,17 +842,17 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
   return parameters;
 }
 
-function validateRuntimePathParameters(path: string, parameters: Record<string, any>[]): void {
+function validateReconstructedPathParameters(path: string, parameters: Record<string, any>[], code: ZopiaErrorCode, subject: string): void {
   const placeholders = new Set([...path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]));
   const pathParameters = new Map(parameters
     .filter((parameter) => parameter.in === 'path' && typeof parameter.name === 'string')
     .map((parameter) => [parameter.name, parameter]));
   const missing = [...placeholders].find((name) => !pathParameters.has(name));
-  if (missing) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Generated endpoint path parameter is not defined: ${missing}`);
+  if (missing) throw new ZopiaError(code, `${subject} path parameter is not defined: ${missing}`);
   const unrelated = [...pathParameters.keys()].find((name) => !placeholders.has(name));
-  if (unrelated) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Generated endpoint path parameter is not present in the template: ${unrelated}`);
+  if (unrelated) throw new ZopiaError(code, `${subject} path parameter is not present in the template: ${unrelated}`);
   const optional = [...pathParameters.values()].find((parameter) => parameter.required !== true);
-  if (optional) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Generated endpoint path parameter must be required: ${optional.name}`);
+  if (optional) throw new ZopiaError(code, `${subject} path parameter must be required: ${optional.name}`);
 }
 
 function canonicalJson(value: unknown): string | undefined {
@@ -1023,7 +1024,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   for (const field of ['requestContentType', 'responseContentType'] as const) if (config[field] !== undefined && (typeof config[field] !== 'string' || !config[field])) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint ${field}: ${String(config[field])}`);
   const operationAt = `#/paths/${pointerToken(path)}/${method}`;
   const parameters = serializeParameters(operation, config, manifest, references, operationAt, warnings);
-  validateRuntimePathParameters(path, parameters);
+  validateReconstructedPathParameters(path, parameters, 'ZOPIA_DOCS_IMPORT_FAILED', 'Generated endpoint');
   serializeRequestBody(operation, config, manifest, references, parameters, operationAt, warnings);
   serializeResponses(operation, config, manifest, references, operationAt, warnings);
   if (Array.isArray(operation.parameters) && operation.parameters.length === 0) delete operation.parameters;
@@ -1112,6 +1113,20 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
       }
       throw asZopiaError(error, 'ZOPIA_DOCS_IMPORT_FAILED', 'unable to reconstruct generated endpoint', { at: api.file ?? `#/apis/${index}` });
     }
+    if (!runtime && api.pathItemRef !== true) {
+      const pathParameters = sourcePathItem?.parameters;
+      const operationParameters = reconstructed.operation.parameters;
+      if ((pathParameters !== undefined && !Array.isArray(pathParameters)) || (operationParameters !== undefined && !Array.isArray(operationParameters))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid reconstructed parameters: ${api.path} ${api.method}`);
+      const rawParameters = [...(Array.isArray(pathParameters) ? pathParameters : []), ...(Array.isArray(operationParameters) ? operationParameters : [])];
+      if (!rawParameters.every(isRecord)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid reconstructed parameters: ${api.path} ${api.method}`);
+      validateReconstructedPathParameters(reconstructed.path, rawParameters.map((parameter) => resolveParameter(parameter, manifest)), 'ZOPIA_MANIFEST_INVALID', 'Manifest operation');
+      const responses = reconstructed.operation.responses;
+      if (!isRecord(responses) || Object.keys(responses).length === 0 || Object.entries(responses).some(([status, response]) => {
+        if (!isValidResponseStatus(status, isSwagger) || !isRecord(response)) return true;
+        const resolved = resolveResponse(response, manifest);
+        return typeof resolved.description !== 'string' || !resolved.description.trim();
+      })) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid reconstructed responses: ${api.path} ${api.method}`);
+    }
     const operationId = reconstructed.operation.operationId;
     if (operationId !== undefined && (typeof operationId !== 'string' || !operationId.trim())) {
       throw new ZopiaError(runtime ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID', `Invalid reconstructed operationId: ${String(operationId)}`, { at: runtime ? api.file : `#/apis/${index}/sourceOperation/operationId` });
@@ -1147,6 +1162,13 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
       throw new ZopiaError(runtime ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID', `${runtime ? 'Duplicate reconstructed endpoint' : 'Duplicate manifest API'}: ${reconstructed.path} ${reconstructed.method}`, { at: runtime ? api.file : `#/apis/${index}` });
     }
     Object.defineProperty(document.paths, reconstructed.path, { value: { ...pathItem, [reconstructed.method]: reconstructed.operation }, enumerable: true, configurable: true, writable: true });
+  }
+  try {
+    for (const operation of buildOpenApiOperationIR(document)) extractOperationContracts(operation);
+  } catch (error) {
+    const code = endpointConfigs.size ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID';
+    const detail = error instanceof Error ? error.message.replace(/^ZOPIA_[A-Z_]+: /, '') : String(error);
+    throw new ZopiaError(code, `Invalid reconstructed OpenAPI document: ${detail}`, { cause: error });
   }
   return document;
 }

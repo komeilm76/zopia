@@ -143,6 +143,23 @@ describe('zodToJsonSchema', () => {
     })]);
   });
 
+  it('reports non-JSON metadata instead of silently normalizing or dropping it', () => {
+    const warnings: ZopiaWarning[] = [];
+    const schema = z.object({ value: z.string().meta({ default: Number.NaN }) }).meta({ title: 'Metadata' });
+    expect(zodToJsonSchema(schema, { $schema: false, onWarning: (warning) => warnings.push(warning) })).toEqual({
+      type: 'object',
+      properties: { value: {} },
+      required: ['value'],
+      additionalProperties: false,
+      title: 'Metadata',
+    });
+    expect(warnings).toEqual([{
+      code: 'ZOPIA_WARN_UNREPRESENTABLE',
+      at: '#/properties/value',
+      message: 'Metadata cannot be represented in JSON Schema',
+    }]);
+  });
+
   it('localizes invalid JSON defaults without losing surrounding schema metadata', () => {
     const warnings: ZopiaWarning[] = [];
     const schema = z.object({

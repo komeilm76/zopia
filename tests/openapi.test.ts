@@ -22,5 +22,7 @@ describe('normalizeOpenApiDocument', () => {
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users/{id': {} } })).toThrow('malformed path template');
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users?active=true': {} } })).toThrow('path must not contain a query or fragment');
     expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users#top': {} } })).toThrow('path must not contain a query or fragment');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), paths: { '/users': { gett: {} } } })).toThrow('unsupported path-item field: gett');
+    expect(() => normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/users': { servers: [] } } })).toThrow('unsupported path-item field: servers');
   });
 });

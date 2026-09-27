@@ -19,6 +19,7 @@ export interface NormalizedOpenApiDocument {
 }
 
 const pointerToken = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1');
+const PATH_ITEM_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
 
 /**
  * Parse and validate the supported OpenAPI/Swagger document envelope.
@@ -45,6 +46,9 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
     if (path.includes('?') || path.includes('#')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: path must not contain a query or fragment: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: 'move query values into parameter objects and remove URL fragments' });
     if (/[{}]/.test(path) && !/^\/([^{}]|\{[A-Za-z0-9._-]+\})*$/.test(path)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: malformed path template: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: 'use balanced {parameter} path segments' });
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: path item must be an object: ${path}`, { at: `#/paths/${pointerToken(path)}`, hint: 'provide a Path Item object' });
+    const allowedPathItemFields = new Set(['$ref', 'parameters', ...PATH_ITEM_METHODS, ...(version === '2.0' ? [] : ['summary', 'description', 'servers'])]);
+    const unsupportedField = Object.keys(item).find((key) => !allowedPathItemFields.has(key) && !key.startsWith('x-'));
+    if (unsupportedField) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: unsupported path-item field: ${unsupportedField}`, { at: `#/paths/${pointerToken(path)}/${pointerToken(unsupportedField)}`, hint: 'use a supported HTTP method or an x- extension' });
   }
   return { document, version, title: document.info.title, versionString: document.info.version };
 }

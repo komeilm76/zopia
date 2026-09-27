@@ -235,10 +235,6 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
   const isSchema = (value: unknown): value is JsonSchema => typeof value === 'boolean' || (value !== null && typeof value === 'object' && !Array.isArray(value));
   const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
   const isNonNegativeInteger = (value: unknown): value is number => isFiniteNumber(value) && Number.isInteger(value) && value >= 0;
-  const canonicalJson = (value: unknown): string | undefined => {
-    try { return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item); }
-    catch { return undefined; }
-  };
   const jsonLiteral = (value: unknown): string | undefined => {
     const active = new Set<object>();
     const visit = (item: unknown): boolean => {
@@ -259,6 +255,13 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     try { return JSON.stringify(value); }
     catch { return undefined; }
   };
+  const canonicalJson = (value: unknown): string | undefined => {
+    const literal = jsonLiteral(value);
+    if (literal === undefined) return undefined;
+    const normalized = JSON.parse(literal);
+    return JSON.stringify(normalized, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+  };
+  const generatedCanonicalJson = `(value) => { if (value && typeof value === 'object' && typeof value.toJSON === 'function') return undefined; try { return JSON.stringify(value, (_key, item) => { if (item === null || typeof item === 'string' || typeof item === 'boolean') return item; if (typeof item === 'number') { if (!Number.isFinite(item)) throw new Error('non-JSON number'); return item; } if (!item || typeof item !== 'object' || Object.getOwnPropertySymbols(item).length || (!Array.isArray(item) && ![Object.prototype, null].includes(Object.getPrototypeOf(item)))) throw new Error('non-JSON value'); const children = Array.isArray(item) ? item : Object.values(item); if (children.some((child) => child && typeof child === 'object' && typeof child.toJSON === 'function')) throw new Error('non-JSON toJSON'); if (Array.isArray(item)) { if (Object.keys(item).length !== item.length || !item.every((_child, index) => Object.prototype.hasOwnProperty.call(item, index))) throw new Error('non-JSON array'); return item; } return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))); }); } catch { return undefined; } }`;
   let source: JsonSchema;
   try {
     if (typeof input !== 'string') source = input;
@@ -313,7 +316,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       const converted = convert(withoutNullable, resolving, at);
       return node.nullable ? { schema: converted.schema.nullable(), code: `${converted.code}.nullable()` } : converted;
     }
-    if (node.default !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(node, 'default')) {
       const withoutDefault = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'default')) as JsonSchema;
       const converted = convert(withoutDefault, resolving, at);
       const literal = jsonLiteral(node.default);
@@ -370,11 +373,16 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     const literalSchema = (value: unknown, keyword: 'enum' | 'const'): { schema: z.ZodType; code: string } | undefined => {
       if (value === null || typeof value === 'string' || typeof value === 'boolean' || isFiniteNumber(value)) return { schema: z.literal(value as any), code: `z.literal(${JSON.stringify(value)})` };
       if (value && typeof value === 'object') {
-        const canonical = canonicalJson(value);
-        if (canonical !== undefined) return {
-          schema: z.any().refine((candidate) => canonicalJson(candidate) === canonical).meta({ [keyword]: value }),
-          code: `z.any().refine((value) => { try { return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item) === ${JSON.stringify(canonical)}; } catch { return false; } }).meta({ ${keyword}: ${JSON.stringify(value)} })`,
-        };
+        const literal = jsonLiteral(value);
+        if (literal !== undefined) {
+          const normalized = JSON.parse(literal);
+          const canonical = canonicalJson(normalized)!;
+          const metadata = keyword === 'enum' ? [normalized] : normalized;
+          return {
+            schema: z.any().refine((candidate) => canonicalJson(candidate) === canonical).meta({ [keyword]: metadata }),
+            code: `z.any().refine((value) => (${generatedCanonicalJson})(value) === ${JSON.stringify(canonical)}).meta({ ${keyword}: ${JSON.stringify(metadata)} })`,
+          };
+        }
       }
       pushWarning(`Invalid ${keyword} value: expected a JSON value`);
       return undefined;
@@ -424,7 +432,21 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       let combined: { schema: z.ZodType; code: string };
       if (node.enum.length === 0) combined = { schema: z.never(), code: 'z.never()' };
       else if (node.enum.every((value: unknown) => typeof value === 'string')) combined = { schema: z.enum(node.enum as [string, ...string[]]), code: `z.enum(${JSON.stringify(node.enum)})` };
-      else {
+      else if (node.enum.some((value: unknown) => value !== null && typeof value === 'object')) {
+        const values = node.enum.flatMap((value: unknown) => {
+          const literal = jsonLiteral(value);
+          if (literal === undefined) { pushWarning('Invalid enum value: expected a JSON value'); return []; }
+          return [JSON.parse(literal)];
+        });
+        if (values.length === 0) combined = { schema: z.never(), code: 'z.never()' };
+        else {
+          const canonicals = values.map((value: unknown) => canonicalJson(value)!);
+          combined = {
+            schema: z.any().refine((candidate) => { const canonical = canonicalJson(candidate); return canonical !== undefined && canonicals.includes(canonical); }).meta({ enum: values }),
+            code: `z.any().refine((value) => { const canonical = (${generatedCanonicalJson})(value); return canonical !== undefined && ${JSON.stringify(canonicals)}.includes(canonical); }).meta({ enum: ${JSON.stringify(values)} })`,
+          };
+        }
+      } else {
         const literals = node.enum.map((value: unknown) => literalSchema(value, 'enum')).filter((item: { schema: z.ZodType; code: string } | undefined): item is { schema: z.ZodType; code: string } => item !== undefined);
         combined = literals.length === 0
           ? { schema: z.never(), code: 'z.never()' }
@@ -779,9 +801,18 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       const converted = convertCore(node, resolving, at);
       if (typeof node === 'boolean') return converted;
       const metadata: Record<string, unknown> = {};
-      for (const key of ['title', 'description', 'examples', 'readOnly', 'writeOnly', 'deprecated', 'discriminator', 'xml', 'externalDocs'] as const) if (Object.prototype.hasOwnProperty.call(node, key) && node[key] !== undefined) metadata[key] = node[key];
-      for (const [key, value] of Object.entries(node)) if (key.startsWith('x-') && value !== undefined) metadata[key] = value;
-      if (!Object.prototype.hasOwnProperty.call(metadata, 'examples') && Object.prototype.hasOwnProperty.call(node, 'example') && node.example !== undefined) metadata.examples = [node.example];
+      const addMetadata = (key: string, value: unknown): void => {
+        const literal = jsonLiteral(value);
+        if (literal === undefined) { pushWarning(`Invalid ${key}: expected a JSON value`); return; }
+        metadata[key] = JSON.parse(literal);
+      };
+      for (const key of ['title', 'description', 'examples', 'readOnly', 'writeOnly', 'deprecated', 'discriminator', 'xml', 'externalDocs'] as const) if (Object.prototype.hasOwnProperty.call(node, key)) addMetadata(key, node[key]);
+      for (const [key, value] of Object.entries(node)) if (key.startsWith('x-')) addMetadata(key, value);
+      if (!Object.prototype.hasOwnProperty.call(node, 'examples') && Object.prototype.hasOwnProperty.call(node, 'example')) {
+        const literal = jsonLiteral(node.example);
+        if (literal === undefined) pushWarning('Invalid example: expected a JSON value');
+        else metadata.examples = [JSON.parse(literal)];
+      }
       if (Object.keys(metadata).length === 0) return converted;
       return { schema: converted.schema.meta(metadata), code: `${converted.code}.meta(${JSON.stringify(metadata)})` };
     } finally { activeWarningAt = previousWarningAt; }

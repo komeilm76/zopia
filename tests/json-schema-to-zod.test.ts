@@ -271,9 +271,20 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);\n');
   });
   it('supports structured enum and const values by JSON equality', () => {
-    const objectEnum = jsonSchemaToZod({ enum: [{ nested: { a: 1, b: 2 } }] });
+    const sourceEnum = { enum: [{ nested: { a: 1, b: 2 } }, [1, 2], 'active'] };
+    const objectEnum = jsonSchemaToZod(sourceEnum);
     expect(objectEnum.schema.safeParse({ nested: { b: 2, a: 1 } }).success).toBe(true);
+    expect(objectEnum.schema.safeParse([1, 2]).success).toBe(true);
+    expect(objectEnum.schema.safeParse('active').success).toBe(true);
     expect(objectEnum.schema.safeParse({ nested: { a: 2, b: 1 } }).success).toBe(false);
+    expect(objectEnum.schema.safeParse({ nested: { a: 1, b: 2 }, ignored: undefined }).success).toBe(false);
+    expect(zodToJsonSchema(objectEnum.schema, { $schema: false })).toEqual(sourceEnum);
+    const generatedEnum = new Function('z', `${objectEnum.code}\nreturn schema;`)(z);
+    expect(generatedEnum.safeParse({ nested: { b: 2, a: 1 } }).success).toBe(true);
+    expect(generatedEnum.safeParse({ nested: { a: 1, b: 2 }, ignored: undefined }).success).toBe(false);
+    const disguised = { toJSON: () => ({ nested: { a: 1, b: 2 } }) };
+    expect(objectEnum.schema.safeParse(disguised).success).toBe(false);
+    expect(generatedEnum.safeParse(disguised).success).toBe(false);
     const arrayConst = jsonSchemaToZod({ const: [1, 2] });
     expect(arrayConst.schema.safeParse([1, 2]).success).toBe(true);
     expect(arrayConst.schema.safeParse([2, 1]).success).toBe(false);
@@ -326,6 +337,10 @@ describe('jsonSchemaToZod', () => {
     expect(invalidDefault.schema.safeParse(undefined).success).toBe(false);
     expect(invalidDefault.code).not.toContain('.default(');
     expect(invalidDefault.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#', message: 'Invalid default: expected a JSON value' })]);
+    expect(jsonSchemaToZod({ type: 'string', default: undefined }).warnings).toEqual([expect.objectContaining({ message: 'Invalid default: expected a JSON value' })]);
+    expect(jsonSchemaToZod({ const: { score: Number.NaN } }).warnings).toEqual([expect.objectContaining({ message: 'Invalid const value: expected a JSON value' })]);
+    expect(jsonSchemaToZod({ enum: [{ score: undefined }] }).warnings).toEqual([expect.objectContaining({ message: 'Invalid enum value: expected a JSON value' })]);
+    expect(jsonSchemaToZod({ type: 'string', 'x-runtime': () => 'nope' }).warnings).toEqual([expect.objectContaining({ message: 'Invalid x-runtime: expected a JSON value' })]);
 
     const annotated = jsonSchemaToZod({ type: 'string', readOnly: true, writeOnly: false, deprecated: true, xml: { name: 'value' }, 'x-scope': 'internal' });
     expect(annotated.code).toContain('.meta({"readOnly":true,"writeOnly":false,"deprecated":true,"xml":{"name":"value"},"x-scope":"internal"})');
