@@ -112,7 +112,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_FROZEN_SUBTREE' })]);
     expect(jsonSchemaToZod({ type: 'object', propertyNames: [] }).warnings.map((warning) => warning.message)).toContain('Invalid propertyNames: expected a schema');
   });
-  it('supports not schemas and validates malformed definitions', () => {
+  it('supports not schemas and validates malformed exclusions', () => {
     const result = jsonSchemaToZod({ type: 'string', not: { enum: ['blocked'] } });
     expect(result.schema.safeParse('allowed').success).toBe(true);
     expect(result.schema.safeParse('blocked').success).toBe(false);
@@ -122,6 +122,23 @@ describe('jsonSchemaToZod', () => {
     expect(falseNot.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_NOT' })]);
     expect(jsonSchemaToZod({ type: 'string', not: null }).warnings.map((warning) => warning.message)).toContain('Invalid not: expected a schema');
     expect(jsonSchemaToZod({ type: 'string', not: 0 }).warnings.map((warning) => warning.message)).toContain('Invalid not: expected a schema');
+  });
+  it('reports malformed nested schema nodes without throwing on null', () => {
+    const result = jsonSchemaToZod({ type: 'object', properties: { missing: null, numeric: 1, list: [] } });
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#/properties/list', message: 'Schema node is not an object' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#/properties/missing', message: 'Schema node is not an object' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#/properties/numeric', message: 'Schema node is not an object' }),
+    ]);
+    expect(result.schema.safeParse({ missing: 'anything', numeric: false, list: {} }).success).toBe(true);
+  });
+  it('reports malformed definition containers and entries at exact pointers', () => {
+    expect(jsonSchemaToZod({ $defs: [] }).warnings).toEqual([
+      expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#/$defs', message: 'Invalid $defs: expected an object of schemas' }),
+    ]);
+    expect(jsonSchemaToZod({ definitions: { Good: true, Bad: null } }).warnings).toEqual([
+      expect.objectContaining({ code: 'ZOPIA_WARN_INVALID_SCHEMA', at: '#/definitions/Bad', message: 'Invalid definitions entry Bad: expected a schema' }),
+    ]);
   });
   it('reports invalid property name patterns without throwing', () => {
     const result = jsonSchemaToZod({ type: 'object', propertyNames: { pattern: '[' } });
@@ -500,6 +517,18 @@ describe('jsonSchemaToZod', () => {
     expect(nullable.schema.safeParse([null, null]).success).toBe(false);
     const tuple = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }], uniqueItems: true });
     expect(tuple.schema.safeParse(['x', 1]).success).toBe(true);
+  });
+  it('rejects non-JSON uniqueItems candidates without throwing in runtime or generated schemas', () => {
+    const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: true });
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+    const cycle: Record<string, unknown> = {}; cycle.self = cycle;
+
+    for (const value of [[1n], [{ toJSON: () => 'coerced' }], [cycle], [{ valid: true, ignored: undefined }]]) {
+      expect(() => result.schema.safeParse(value)).not.toThrow();
+      expect(() => generated.safeParse(value)).not.toThrow();
+      expect(result.schema.safeParse(value).success).toBe(false);
+      expect(generated.safeParse(value).success).toBe(false);
+    }
   });
   it('enforces required keys even without property declarations', () => {
     const result = jsonSchemaToZod({ type: 'object', required: ['id'] });

@@ -10,6 +10,14 @@ describe('normalizeOpenApiDocument', () => {
   it('accepts Swagger 2.0', () => {
     expect(normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'Demo', version: '1' }, paths: {} }).version).toBe('2.0');
   });
+  it('rejects ambiguous and dialect-incompatible root fields instead of dropping them', () => {
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), swagger: '2.0' })).toThrow('swagger and openapi version fields are mutually exclusive');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), definitions: {} })).toThrow('unsupported root field: definitions');
+    expect(() => normalizeOpenApiDocument({ ...base('3.0.3'), webhooks: {} })).toThrow('unsupported root field: webhooks');
+    expect(() => normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'x', version: '1' }, components: {}, paths: {} })).toThrow('unsupported root field: components');
+    expect(() => normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: 'application/json', paths: {} })).toThrow('Invalid Swagger consumes: #');
+    expect(normalizeOpenApiDocument({ ...base('3.1.0'), 'x-root': { retained: true } }).version).toBe('3.1');
+  });
   it('accepts JSON text and rejects malformed or incomplete input', () => {
     expect(normalizeOpenApiDocument(JSON.stringify(base('3.0.0'))).title).toBe('Demo');
     expect(() => normalizeOpenApiDocument('{bad')).toThrow('Invalid OpenAPI document');

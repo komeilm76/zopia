@@ -166,7 +166,7 @@ and boolean inputs stay entirely in memory.
 | `{ "contentEncoding": "base64" \| "base64url" \| "hex" }` | corresponding native/pattern string check; overlay restores the exact encoding keyword. Other encodings and `contentMediaType` retain base validation, warn, and are preserved by overlays | R-634, R-635 |
 | `{ "multipleOf": n }` | `.multipleOf(n)` | R-628 |
 | `{ "minItems": n }` / `{ "maxItems": n }` | homogeneous array `.min(n)` / `.max(n)`; tuple length refinements (with leading tuple positions required by `minItems`) | R-628 |
-| `{ "uniqueItems": true }` | exact JSON-value equality refinement + **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + overlay `set: { "uniqueItems": true }` (Zod cannot serialize the refinement keyword, so reverse restores it verbatim) | D-12 |
+| `{ "uniqueItems": true }` | exact JSON-value equality refinement + **warning** `ZOPIA_WARN_UNIQUE_ITEMS` + overlay `set: { "uniqueItems": true }` (Zod cannot serialize the refinement keyword, so reverse restores it verbatim); cyclic, coercible, BigInt, and other non-JSON runtime candidates fail validation rather than throwing | D-12 |
 | `{ "default": v }` | `⟦…⟧.default(v)` around the complete schema (including local references). Defaults, enum/const values, and annotation/extension payloads must be JSON values; invalid programmatic values are ignored with `ZOPIA_WARN_INVALID_SCHEMA` so runtime/code behavior cannot diverge | R-629 |
 | `{ "required": [...] }` | keys listed are non-optional | R-623 |
 | `{ "additionalProperties": false }` | `z.object({…}).strict()` | R-630 |
@@ -185,7 +185,7 @@ and boolean inputs stay entirely in memory.
 | `{ "title": t }` / `{ "description": d }` / `{ "example": v }` / `{ "examples": […] }` | a single `.meta({ title?, description?, examples? })` call on the schema (only the fields present) — verified copied verbatim back by ① (R-612), plus a JSDoc comment for human readers. `example` (single) is normalized to `examples: [v]` | R-633 |
 | `{ "readOnly": … }` / `{ "writeOnly": … }` / `{ "deprecated": … }` / XML, discriminator, external-doc, and `x-…` annotations | copied into `.meta(…)` and retained by Engine ①, including when they are siblings of a local reference | R-633 |
 | `{ "$ref": "#/…/schemas/X" }` | engine ② resolves local definitions (including percent-encoded URI-fragment segments) through its `$defs` closure and intersects sibling constraints; engine ③ default mode embeds needed component definitions, reference mode imports direct `XSchema` targets, and nested component pointers are embedded rather than misclassified as component names | R-402/R-403/R-634 |
-| `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order | R-634 |
+| `{ "$defs": { … } }` / `{ "definitions": { … } }` | file-local consts, in definition order; malformed containers and entries emit exact-pointer `ZOPIA_WARN_INVALID_SCHEMA` warnings instead of disappearing | R-634 |
 | `{ "if": I, "then": T, "else": E }` | base schema plus a refinement that validates `T` when `I` succeeds and `E` otherwise; boolean branches and exact keyword-only applicability are supported, while malformed/detached branches warn | R-632 |
 | `{ "patternProperties": … }` / `{ "propertyNames": … }` / `{ "minProperties": n }` / `{ "maxProperties": n }` / `{ "contains": … }` | runtime refinements apply each matching pattern/property/count/containment constraint; `additionalProperties` applies only to keys unmatched by declared properties and patterns; warning + overlay `node` restores the original unsupported structure | D-12 |
 
@@ -261,7 +261,7 @@ Pipeline (see [Architecture → The pipeline](04-architecture.md#-the-pipeline))
 | `openapi === '3.1.x'` | `openapi-3.1` |
 | anything else | 🛑 `ZOPIA_SPEC_UNSUPPORTED_VERSION` |
 
-Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INVALID_JSON`. Path Item keys must be supported lowercase HTTP methods, dialect-appropriate fixed fields, or `x-…` extensions; typos and unsupported fields fail instead of disappearing from the generated tree.
+Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INVALID_JSON`. `swagger` and `openapi` are mutually exclusive, and root keys must belong to the selected dialect or be `x-…` extensions. Path Item keys must be supported lowercase HTTP methods, dialect-appropriate fixed fields, or `x-…` extensions; typos and unsupported fields fail instead of disappearing from the generated tree.
 
 ### 🔧 Step 2 — normalize (the dialect tables)
 
@@ -272,10 +272,10 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | `definitions` | `components` (R-503: 2020-12-flavoured) |
 | `host` + `schemes[0]` + `basePath` | `servers: [ "<scheme>://<host><basePath>" ]` (or `[basePath]` / `['/']` without host) |
 | parameter `in: body` | `request.body` = its `schema`; `requestContentType` from operation `consumes` (else global). Multiple body parameters and OpenAPI 3-style operation `requestBody` are rejected |
-| parameters `in: formData` | `request.body` = object of the formData params (`required` flags kept); valid primitive/array values plus `type: file` are supported, while `type: object` is rejected; `requestContentType` = `multipart/form-data` if in `consumes`, else `application/x-www-form-urlencoded` |
-| parameters `in: query/header/path` | `request.query/headers/params` — Swagger primitive/array params (`type`, `format`, `enum`, …) become their `schema`; OpenAPI 3-style `schema`/`content`, plus `object` and `file` outside their legal body/form locations, are rejected; `type: integer, format: int32/int64` → `{ "type": "integer" }` (`int64` → + warning `ZOPIA_WARN_INT64`) |
-| operation/global `consumes` | `requestContentType` (first JSON-ish type wins; else first) |
-| operation/global `produces` | `responseContentType`; each response's single `schema` → `response.statuses[].schema` under that media type. OpenAPI 3-style response `content` and response-level `produces` are rejected. Swagger response keys are exact `100`–`599` statuses or `default` (OpenAPI `4XX`-style ranges are rejected) |
+| parameters `in: formData` | `request.body` = object of the formData params (`required` flags kept); valid primitive/array values plus top-level `type: file` are supported, while `type: object` and arrays with illegal or incomplete nested Items Objects are rejected; `requestContentType` = `multipart/form-data` if in `consumes`, else `application/x-www-form-urlencoded` |
+| parameters `in: query/header/path` | `request.query/headers/params` — Swagger primitive/array params (`type`, `format`, `enum`, …) become their `schema`; every nested array Items Object must declare a legal primitive/array type. OpenAPI 3-style `schema`/`content`, plus `object` and `file` outside their legal body/form locations, are rejected; `type: integer, format: int32/int64` → `{ "type": "integer" }` (`int64` → + warning `ZOPIA_WARN_INT64`) |
+| operation/global `consumes` | must be an array of non-empty strings; `requestContentType` uses the first JSON-ish type (else first) |
+| operation/global `produces` | must be an array of non-empty strings; `responseContentType` uses the first JSON-ish type (else first), and each response's single `schema` → `response.statuses[].schema` under that media type. OpenAPI 3-style response `content` and response-level `produces` are rejected. Swagger response keys are exact `100`–`599` statuses or `default` (OpenAPI `4XX`-style ranges are rejected) |
 | response `examples` (media-type → single value, the legacy shape) | wrapped as one `default`-named example under the primary media type |
 | `securityDefinitions` (basic/apiKey/oauth2) | `securitySchemes` (OpenAPI 3 shapes) |
 | `security` (op or global) | op-level `security` / global `defaultSecurity` (verbatim requirement lists) + `auth: 'YES'` where a requirement applies (explicit `security: []` ⇒ `auth: 'NO'`) |

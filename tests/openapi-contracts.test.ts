@@ -11,6 +11,13 @@ describe('OpenAPI operation contracts', () => {
     expect(() => extractOperationContracts(file)).toThrow('Invalid Swagger parameter type: upload');
     const [object] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'filter', type: 'object' }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(object)).toThrow('Invalid Swagger parameter type: filter');
+    const [objectItems] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'filters', type: 'array', items: { type: 'object' } }], responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(objectItems)).toThrow('Invalid Swagger parameter type: filters');
+    const [missingNestedItems] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'matrix', type: 'array', items: { type: 'array' } }], responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(missingNestedItems)).toThrow('Invalid Swagger parameter type: matrix');
+    const circularItems: any = { type: 'array' }; circularItems.items = circularItems;
+    const [circular] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'loop', type: 'array', items: circularItems }], responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(circular)).toThrow('Invalid Swagger parameter type: loop');
     const [cookie] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'cookie', name: 'session', type: 'string' }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(cookie)).toThrow('Invalid parameter: GET /x');
     const [schemaShaped] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'limit', schema: { type: 'integer' } }], responses: { '200': { description: 'ok' } } } } } });
@@ -25,6 +32,8 @@ describe('OpenAPI operation contracts', () => {
     expect(() => extractOperationContracts(invalid)).toThrow('Invalid Swagger formData required');
     const [object] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/upload': { post: { parameters: [{ in: 'formData', name: 'metadata', type: 'object' }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(object)).toThrow('Invalid Swagger formData parameter');
+    const [fileItems] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/upload': { post: { parameters: [{ in: 'formData', name: 'files', type: 'array', items: { type: 'file' } }], responses: { '200': { description: 'ok' } } } } } });
+    expect(() => extractOperationContracts(fileItems)).toThrow('Invalid Swagger formData parameter');
   });
   it('extracts Swagger body parameters', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], paths: { '/x': { parameters: [{ in: 'body', name: 'payload', required: true, schema: { type: 'object' } }], post: { responses: { '200': { description: 'ok' } } } } } });
@@ -56,6 +65,15 @@ describe('OpenAPI operation contracts', () => {
     const contracts = extractOperationContracts(ir);
     expect(contracts.requestBody?.contentType).toBe('application/vnd.example+json');
     expect(contracts.responses[0].contentType).toBe('application/json');
+  });
+  it('rejects malformed Swagger media-type lists instead of using fallbacks', () => {
+    const operation = (operationFields: Record<string, unknown> = {}, documentFields: Record<string, unknown> = {}) => buildOpenApiOperationIR({
+      swagger: '2.0', info: { title: 'x', version: '1' }, ...documentFields,
+      paths: { '/x': { get: { ...operationFields, responses: { '200': { description: 'ok' } } } } },
+    })[0];
+    expect(() => extractOperationContracts(operation({ consumes: 'application/json' }))).toThrow('Invalid Swagger consumes: GET /x');
+    expect(() => extractOperationContracts(operation({ produces: [''] }))).toThrow('Invalid Swagger produces: GET /x');
+    expect(() => extractOperationContracts(operation({}, { consumes: [42] }))).toThrow('Invalid Swagger consumes: #');
   });
   it('requires path parameters to match every path-template placeholder', () => {
     const operation = (path: string, parameters: unknown[]) => buildOpenApiOperationIR({

@@ -272,6 +272,19 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
   } catch (error) { throw new ZopiaError('ZOPIA_SCHEMA_INVALID', `Invalid JSON Schema input: ${error instanceof Error ? error.message : String(error)}`, { at: typeof input === 'string' && input.toLowerCase().endsWith('.json') ? input : '#', cause: error }); }
   if (!isSchema(source)) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', 'Invalid JSON Schema input: expected an object or boolean schema');
   const analysis = analyzeSchema(source);
+  if (typeof source === 'object') for (const keyword of ['$defs', 'definitions'] as const) {
+    if (!Object.prototype.hasOwnProperty.call(source, keyword)) continue;
+    const definitions = source[keyword];
+    const at = pointer('#', keyword);
+    if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) {
+      warningMessages.push({ at, message: `Invalid ${keyword}: expected an object of schemas` });
+      continue;
+    }
+    for (const [name, definition] of Object.entries(definitions)) if (!isSchema(definition)) warningMessages.push({
+      at: pointer(at, name),
+      message: `Invalid ${keyword} entry ${name}: expected a schema`,
+    });
+  }
   const resolveLocalRef = (ref: string): JsonSchema | undefined => {
     if (ref !== '#' && !ref.startsWith('#/')) return undefined;
     if (ref === '#') return source;
@@ -643,7 +656,14 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     }
     if (node.uniqueItems !== undefined && node.type === 'array' && typeof node.uniqueItems !== 'boolean') pushWarning('Invalid uniqueItems: expected a boolean');
     if (node.uniqueItems === true && node.type === 'array') {
-      result = { schema: result.schema.refine((items: any) => new Set(items.map((item: any) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value)).values()).size === items.length), code: `${result.code}.superRefine((items, ctx) => { if (new Set(items.map((item) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value))).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique' }); })` };
+      result = {
+        schema: result.schema.refine((value: unknown) => {
+          const items = value as unknown[];
+          const canonicals = items.map((item) => canonicalJson(item));
+          return canonicals.every((canonical) => canonical !== undefined) && new Set(canonicals).size === items.length;
+        }),
+        code: `${result.code}.superRefine((items, ctx) => { const canonicals = items.map((item) => (${generatedCanonicalJson})(item)); if (canonicals.some((canonical) => canonical === undefined) || new Set(canonicals).size !== items.length) ctx.addIssue({ code: 'custom', message: 'Array items must be unique JSON values' }); })`,
+      };
     }
     const applyConstraint = (name: string, value: unknown, valid: boolean, expected: string, apply: (schema: any, constraint: any) => any, method: string): void => {
       if (value === undefined) return;
@@ -799,7 +819,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     activeWarningAt = at;
     try {
       const converted = convertCore(node, resolving, at);
-      if (typeof node === 'boolean') return converted;
+      if (typeof node === 'boolean' || !node || typeof node !== 'object' || Array.isArray(node)) return converted;
       const metadata: Record<string, unknown> = {};
       const addMetadata = (key: string, value: unknown): void => {
         const literal = jsonLiteral(value);

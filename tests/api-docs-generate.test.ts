@@ -291,7 +291,7 @@ describe('API docs endpoint generation', () => {
   });
   it('rejects circular input before writing a manifest', async () => {
     const outputDir = await temporaryDirectory('zopia-');
-    const input: any = { openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {} }; input.self = input;
+    const input: any = { openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: {} }; input['x-self'] = input;
     await expect(generateApiDocsFiles(input, { outputDir })).rejects.toThrow('circular OpenAPI document');
   });
   it('supports flat generation without a manifest', async () => {

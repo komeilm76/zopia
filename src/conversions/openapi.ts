@@ -33,11 +33,23 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
   try { document = (typeof input === 'string' ? JSON.parse(input) : input) as OpenApiDocument; }
   catch (error) { throw asZopiaError(error, 'ZOPIA_SPEC_INVALID_JSON', 'Invalid OpenAPI document', { at: '#', hint: 'fix the JSON syntax' }); }
   if (!document || typeof document !== 'object' || Array.isArray(document)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI document: expected an object', { at: '#' });
+  const hasSwaggerVersion = Object.prototype.hasOwnProperty.call(document, 'swagger');
+  const hasOpenApiVersion = Object.prototype.hasOwnProperty.call(document, 'openapi');
+  if (hasSwaggerVersion && hasOpenApiVersion) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI document: swagger and openapi version fields are mutually exclusive', { at: '#', hint: 'keep exactly one dialect version field' });
   let version: OpenApiVersion;
   if (document.swagger === '2.0') version = '2.0';
   else if (typeof document.openapi === 'string' && /^3\.0(?:\.\d+)?$/.test(document.openapi)) version = '3.0';
   else if (typeof document.openapi === 'string' && /^3\.1(?:\.\d+)?$/.test(document.openapi)) version = '3.1';
   else throw new ZopiaError('ZOPIA_SPEC_UNSUPPORTED_VERSION', 'Unsupported OpenAPI document version; expected Swagger 2.0 or OpenAPI 3.0/3.1', { at: '#', hint: 'use Swagger 2.0, OpenAPI 3.0, or OpenAPI 3.1' });
+  const allowedRootFields = new Set(version === '2.0'
+    ? ['swagger', 'info', 'host', 'basePath', 'schemes', 'consumes', 'produces', 'paths', 'definitions', 'parameters', 'responses', 'securityDefinitions', 'security', 'tags', 'externalDocs']
+    : ['openapi', 'info', 'servers', 'paths', 'components', 'security', 'tags', 'externalDocs', ...(version === '3.1' ? ['jsonSchemaDialect', 'webhooks'] : [])]);
+  const unsupportedRootField = Object.keys(document).find((key) => !allowedRootFields.has(key) && !key.startsWith('x-'));
+  if (unsupportedRootField) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI document: unsupported root field: ${unsupportedRootField}`, { at: `#/${pointerToken(unsupportedRootField)}`, hint: 'use a field supported by the selected dialect or an x- extension' });
+  if (version === '2.0') for (const field of ['consumes', 'produces'] as const) {
+    const value = document[field];
+    if (value !== undefined && (!Array.isArray(value) || !value.every((item) => typeof item === 'string' && item.length > 0))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger ${field}: #`, { at: `#/${field}`, hint: `provide ${field} as an array of non-empty media-type strings` });
+  }
   if (!document.info || typeof document.info !== 'object' || typeof document.info.title !== 'string' || document.info.title.trim() === '' || typeof document.info.version !== 'string' || document.info.version.trim() === '') throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI document: info.title and info.version are required', { at: '#/info', hint: 'provide non-empty info.title and info.version strings' });
   if (!document.paths || typeof document.paths !== 'object' || Array.isArray(document.paths)) throw new ZopiaError('ZOPIA_SPEC_MISSING_PATHS', 'invalid OpenAPI document: paths must be an object', { at: '#/paths', hint: 'add a paths object to the API document' });
   for (const [path, item] of Object.entries(document.paths)) {
