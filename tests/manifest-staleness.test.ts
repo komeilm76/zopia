@@ -1,8 +1,10 @@
+import { useTemporaryDirectories } from './test-temporary-directories';
 import { describe, expect, it } from 'vitest';
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openApiToApiDocs } from '../src';
+
+const temporaryDirectory = useTemporaryDirectories();
 
 const operation = (description = 'ok') => ({ get: { responses: { '200': { description } } } });
 const document = (paths: Record<string, unknown>, components?: Record<string, unknown>) => ({
@@ -22,7 +24,7 @@ async function exists(path: string): Promise<boolean> {
 
 describe('manifest staleness', () => {
   it('warns for changed source and prunes only obsolete manifest-owned files', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     await openApiToApiDocs(document({ '/before': operation(), '/obsolete': operation() }), { outDir });
     const custom = join(outDir, 'before', 'get', 'custom.ts');
     await writeFile(custom, 'export const keep = true;\n', 'utf8');
@@ -41,7 +43,7 @@ describe('manifest staleness', () => {
   });
 
   it('detects and repairs missing manifest-owned generated files', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     const source = document({ '/repair': operation() });
     const endpoint = join(outDir, 'repair', 'get', 'index.ts');
     await openApiToApiDocs(source, { outDir });
@@ -57,8 +59,8 @@ describe('manifest staleness', () => {
   });
 
   it('refuses stale-tree symlink ancestors instead of writing outside outDir', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
-    const outside = await mkdtemp(join(tmpdir(), 'zopia-outside-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
+    const outside = await temporaryDirectory('zopia-outside-');
     const source = document({ '/safe': operation() });
     await openApiToApiDocs(source, { outDir });
     await rm(join(outDir, 'safe', 'get'), { recursive: true });
@@ -72,7 +74,7 @@ describe('manifest staleness', () => {
   });
 
   it('detects layout and component-option drift while removing obsolete artifacts', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     const source = document(
       { '/users/{id}': { ...operation(), parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }] } },
       { User: { type: 'object', properties: { id: { type: 'string' } } } },
@@ -96,7 +98,7 @@ describe('manifest staleness', () => {
   });
 
   it('removes an old manifest when manifest output is disabled', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     const source = document({ '/health': operation() });
     await openApiToApiDocs(source, { outDir });
 
@@ -112,7 +114,7 @@ describe('manifest staleness', () => {
   });
 
   it('reports an invalid existing manifest without deleting files of unknown ownership', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     const unknown = join(outDir, 'unknown', 'index.ts');
     await mkdir(join(outDir, 'unknown'), { recursive: true });
     await writeFile(unknown, 'export const userOwned = true;\n', 'utf8');
@@ -129,7 +131,7 @@ describe('manifest staleness', () => {
   });
 
   it('removes an invalid manifest when manifest output is disabled without pruning unknown files', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     const unknown = join(outDir, 'unknown.ts');
     await writeFile(unknown, 'export const keep = true;\n', 'utf8');
     await writeFile(join(outDir, '.zopia-manifest.json'), '{ broken', 'utf8');
@@ -144,7 +146,7 @@ describe('manifest staleness', () => {
   });
 
   it('does not report staleness for canonically equivalent source key ordering', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
+    const outDir = await temporaryDirectory('zopia-stale-');
     const first = document({ '/same': operation() }, { Value: { type: 'string', minLength: 1 } });
     const reordered = {
       paths: first.paths,

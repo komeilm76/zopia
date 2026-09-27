@@ -41,8 +41,10 @@ same gate so local and publish-time validation cannot drift.
 | **Contract** | `tests/contract/**/*.test.ts` | public API/JSDoc, error and manifest contracts, golden output, npm artifact, release metadata, and documentation status |
 
 > 📌 **Rule R-111** — *no test touches the network*; *no test writes outside
-> a per-test temp directory* (`fs.mkdtemp` under `os.tmpdir()`, cleaned in
-> `afterEach`); *no test depends on wall-clock or locale*.
+> a per-test temp directory*. Every test-created directory goes through the
+> shared `useTemporaryDirectories()` helper (`fs.mkdtemp` under `os.tmpdir()`),
+> which removes all owned trees in `afterEach`; a hygiene contract rejects direct
+> temp-directory factories in test files. *No test depends on wall-clock or locale*.
 
 ## 🧾 The scenario matrix
 

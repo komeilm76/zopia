@@ -1,22 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { openApiToApiDocs } from '../../src';
 import { GOLDEN_CASES } from '../golden-cases';
+import { useTemporaryDirectories } from '../test-temporary-directories';
 
 const repositoryRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const fixtureRoot = join(repositoryRoot, 'tests', 'fixtures', 'specs');
 const expectedRoot = join(repositoryRoot, 'tests', 'fixtures', 'expected');
-const temporaryDirectories: string[] = [];
-
-async function temporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'zopia-golden-'));
-  temporaryDirectories.push(directory);
-  return directory;
-}
+const temporaryDirectory = useTemporaryDirectories('zopia-golden-');
 
 async function treeSnapshot(root: string, directory = root): Promise<Record<string, string>> {
   const snapshot: Record<string, string> = {};
@@ -27,10 +21,6 @@ async function treeSnapshot(root: string, directory = root): Promise<Record<stri
   }
   return Object.fromEntries(Object.entries(snapshot).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
 }
-
-afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
-});
 
 describe('golden generated-tree contract', () => {
   it('R-112: the expected root contains exactly the governed trees', async () => {

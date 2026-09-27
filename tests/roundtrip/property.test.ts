@@ -1,18 +1,12 @@
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { jsonSchemaToZod, manifestFileToOpenApi, openApiToApiDocs, zodToJsonSchema, type ZopiaGenerateOptions } from '../../src';
+import { useTemporaryDirectories } from '../test-temporary-directories';
 
 const fixtureDirectory = join(import.meta.dirname, '..', 'fixtures', 'specs');
-const temporaryDirectories: string[] = [];
-
-async function temporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'zopia-roundtrip-'));
-  temporaryDirectories.push(directory);
-  return directory;
-}
+const temporaryDirectory = useTemporaryDirectories('zopia-roundtrip-');
 
 async function readFixture(name: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(join(fixtureDirectory, name), 'utf8')) as Record<string, unknown>;
@@ -35,10 +29,6 @@ async function treeSnapshot(root: string, directory = root): Promise<Record<stri
   }
   return Object.fromEntries(Object.entries(snapshot).sort(([left], [right]) => left.localeCompare(right)));
 }
-
-afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
-});
 
 describe('round-trip contract', () => {
   const fixtures = [

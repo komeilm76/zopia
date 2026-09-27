@@ -1,6 +1,6 @@
+import { useTemporaryDirectories } from './test-temporary-directories';
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apiDocsToOpenApi, generateApiDocsFiles, jsonSchemaToZod, manifestToOpenApi, ZOPIA_WARNING_CODES, type ZopiaWarning } from '../src';
 import {
@@ -10,6 +10,8 @@ import {
   rebaseZopiaWarning,
   ZopiaWarningCollector,
 } from '../src/warnings';
+
+const temporaryDirectory = useTemporaryDirectories();
 
 describe('warnings pipeline', () => {
   it('validates, sanitizes, deduplicates, and sorts structured warnings deterministically', () => {
@@ -79,7 +81,7 @@ describe('warnings pipeline', () => {
   });
 
   it('collects reverse runtime-schema and default-security warnings with exact output pointers', async () => {
-    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-warnings-'));
+    const outputDir = await temporaryDirectory('zopia-warnings-');
     await generateApiDocsFiles({
       openapi: '3.1.0',
       info: { title: 'Warnings', version: '1' },
@@ -101,7 +103,7 @@ describe('warnings pipeline', () => {
   });
 
   it('rebases edited component serialization losses to component output pointers', async () => {
-    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-warnings-'));
+    const outputDir = await temporaryDirectory('zopia-warnings-');
     await generateApiDocsFiles({
       openapi: '3.1.0',
       info: { title: 'Components', version: '1' },
@@ -120,7 +122,7 @@ describe('warnings pipeline', () => {
   });
 
   it('warns when legacy manifests require info fallbacks', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'zopia-warnings-'));
+    const directory = await temporaryDirectory('zopia-warnings-');
     const manifestFile = join(directory, '.zopia-manifest.json');
     await writeFile(manifestFile, JSON.stringify({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1' }, apis: [] }), 'utf8');
 

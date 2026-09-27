@@ -1,8 +1,10 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { useTemporaryDirectories } from './test-temporary-directories';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openApiToApiDocs, ZopiaError } from '../src';
+
+const temporaryDirectory = useTemporaryDirectories();
 
 const minimal = (paths: Record<string, unknown> = {}) => ({
   openapi: '3.1.0',
@@ -12,7 +14,7 @@ const minimal = (paths: Record<string, unknown> = {}) => ({
 
 describe('openApiToApiDocs public API', () => {
   it('generates from an object and returns the sorted public result shape', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const outDir = await temporaryDirectory('zopia-public-');
     const result = await openApiToApiDocs({
       ...minimal({
         '/z': { get: { responses: { '200': { description: 'ok' } } } },
@@ -36,7 +38,7 @@ describe('openApiToApiDocs public API', () => {
   });
 
   it('reads a JSON file and supports disabling the manifest', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const directory = await temporaryDirectory('zopia-public-');
     const input = join(directory, 'openapi.json');
     const outDir = join(directory, 'generated');
     await writeFile(input, JSON.stringify(minimal({ '/health': { get: { responses: { '200': { description: 'ok' } } } } })), 'utf8');
@@ -47,7 +49,7 @@ describe('openApiToApiDocs public API', () => {
   });
 
   it('classifies endpoint files under a components path as endpoints', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const outDir = await temporaryDirectory('zopia-public-');
     const result = await openApiToApiDocs({
       ...minimal({ '/components/users': { get: { responses: { '200': { description: 'ok' } } } } }),
       components: { schemas: { User: { type: 'string' } } },
@@ -58,11 +60,11 @@ describe('openApiToApiDocs public API', () => {
 
     const withoutComponents = await openApiToApiDocs(minimal({
       '/components': { get: { responses: { '200': { description: 'ok' } } } },
-    }), { outDir: await mkdtemp(join(tmpdir(), 'zopia-public-')), manifest: false });
+    }), { outDir: await temporaryDirectory('zopia-public-'), manifest: false });
     expect(withoutComponents.files).toEqual([{ path: 'components/get/index.ts', kind: 'endpoint' }]);
   });
   it('uses application/json as the primary content regardless of document order', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const outDir = await temporaryDirectory('zopia-public-');
     const result = await openApiToApiDocs(minimal({
       '/media': { post: {
         requestBody: { content: {
@@ -87,7 +89,7 @@ describe('openApiToApiDocs public API', () => {
   });
 
   it('collects structured document and schema warnings with source pointers', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const outDir = await temporaryDirectory('zopia-public-');
     const result = await openApiToApiDocs({
       ...minimal({
         '/items': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'string', format: 'vendor-id' } } } } } } },
@@ -104,7 +106,7 @@ describe('openApiToApiDocs public API', () => {
   });
 
   it('does not interpret references inside literal example values', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const outDir = await temporaryDirectory('zopia-public-');
     const result = await openApiToApiDocs(minimal({
       '/example': { get: { responses: { '200': { description: 'ok', content: {
         'application/json': {
@@ -118,7 +120,7 @@ describe('openApiToApiDocs public API', () => {
   });
 
   it('reports changed input against an existing generated tree', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const outDir = await temporaryDirectory('zopia-public-');
     await openApiToApiDocs(minimal({ '/before': { get: { responses: { '200': { description: 'ok' } } } } }), { outDir });
     const same = await openApiToApiDocs(minimal({ '/before': { get: { responses: { '200': { description: 'ok' } } } } }), { outDir });
     expect(same.warnings.some((warning) => warning.code === 'ZOPIA_WARN_STALE_TREE')).toBe(false);
@@ -128,7 +130,7 @@ describe('openApiToApiDocs public API', () => {
   });
 
   it('uses typed stable errors for input, configuration, and references', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'zopia-public-'));
+    const directory = await temporaryDirectory('zopia-public-');
     const malformed = join(directory, 'bad.json');
     await writeFile(malformed, '{', 'utf8');
 

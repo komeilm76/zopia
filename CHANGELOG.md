@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🔄 Changed
+- 🧹 Completed the R-111 test-isolation contract: every test-created temporary tree now uses one shared after-each cleanup helper, including failure and symlink fixtures, and a contract test prevents direct unmanaged temporary-directory creation from returning.
 - 🧪 Completed the remaining T-13 scenario-matrix regressions for method-named/deep parameterized paths, all documented format and upper-bound mappings, Zod `fromJSONSchema` behavior parity, and deterministic output from both schema engines.
 - 📚 Synchronized current documentation with the completed Phase 1 implementation: status labels, actual source/test layout and pipeline boundaries, generated golden examples, facade/component-reuse behavior, dependency wording, and safety/performance claims now match the repository; added a contract test for documentation links, completion state, concrete paths, and canonical output drift.
 

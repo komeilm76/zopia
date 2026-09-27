@@ -1,9 +1,11 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { useTemporaryDirectories } from './test-temporary-directories';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { jsonSchemaToZod, zodToJsonSchema } from '../src';
+
+const temporaryDirectory = useTemporaryDirectories();
 
 describe('jsonSchemaToZod', () => {
   it('reports malformed type arrays without throwing', () => {
@@ -766,7 +768,7 @@ describe('jsonSchemaToZod', () => {
     expect(source).toEqual(original);
   });
   it('reads JSON Schema from a .json file path', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'zopia-schema-'));
+    const directory = await temporaryDirectory('zopia-schema-');
     const file = join(directory, 'user.json');
     await writeFile(file, JSON.stringify({ type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }), 'utf8');
     const result = jsonSchemaToZod(file, { rootName: 'user' });

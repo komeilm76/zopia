@@ -1,6 +1,6 @@
+import { useTemporaryDirectories } from './test-temporary-directories';
 import { describe, expect, it } from 'vitest';
-import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { planApiDocsFiles } from '../src/conversions/api-docs-plan';
 import { manifestToOpenApi } from '../src/conversions/manifest-to-openapi';
@@ -17,6 +17,8 @@ import {
   type ZopiaManifest,
 } from '../src/conversions/manifest-writer';
 import type { OpenApiDocument } from '../src/conversions/openapi';
+
+const temporaryDirectory = useTemporaryDirectories();
 
 function richOpenApi(): OpenApiDocument {
   return {
@@ -211,8 +213,8 @@ describe('dedicated manifest writer', () => {
     const sparse: unknown[] = []; sparse.length = 1;
     expect(() => hashOpenApiDocument({ ...first, invalid: sparse })).toThrow('unsupported OpenAPI value');
 
-    const firstDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-'));
-    const secondDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-'));
+    const firstDir = await temporaryDirectory('zopia-manifest-');
+    const secondDir = await temporaryDirectory('zopia-manifest-');
     await writeZopiaManifest(firstDir, firstManifest);
     await writeZopiaManifest(secondDir, secondManifest);
     expect(await readFile(join(firstDir, ZOPIA_MANIFEST_FILE), 'utf8')).toBe(await readFile(join(secondDir, ZOPIA_MANIFEST_FILE), 'utf8'));
@@ -252,7 +254,7 @@ describe('dedicated manifest writer', () => {
   });
 
   it('writes through a sibling temporary file, preserves an existing manifest on validation failure, and cleans up after rename failure', async () => {
-    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-'));
+    const outputDir = await temporaryDirectory('zopia-manifest-');
     const manifest = build();
     const path = await writeZopiaManifest(outputDir, manifest);
     const original = await readFile(path, 'utf8');
@@ -265,15 +267,15 @@ describe('dedicated manifest writer', () => {
     expect(await readFile(path, 'utf8')).toBe(original);
     expect(await readdir(outputDir)).toEqual([ZOPIA_MANIFEST_FILE]);
 
-    const blockedDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-'));
+    const blockedDir = await temporaryDirectory('zopia-manifest-');
     await mkdir(join(blockedDir, ZOPIA_MANIFEST_FILE));
     await expect(writeZopiaManifest(blockedDir, manifest)).rejects.toThrow();
     expect(await readdir(blockedDir)).toEqual([ZOPIA_MANIFEST_FILE]);
   });
 
   it('does not follow a pre-existing manifest temporary-file symlink', async () => {
-    const outputDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-'));
-    const outsideDir = await mkdtemp(join(tmpdir(), 'zopia-manifest-outside-'));
+    const outputDir = await temporaryDirectory('zopia-manifest-');
+    const outsideDir = await temporaryDirectory('zopia-manifest-outside-');
     const outside = join(outsideDir, 'protected.txt');
     await writeFile(outside, 'protected\n', 'utf8');
     await symlink(outside, join(outputDir, `${ZOPIA_MANIFEST_FILE}.tmp`));

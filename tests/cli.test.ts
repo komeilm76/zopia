@@ -1,16 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runCli, runCliEntrypoint, type ZopiaCliOutput } from '../src/cli-command';
+import { useTemporaryDirectories } from './test-temporary-directories';
 
-const temporaryDirectories: string[] = [];
-
-async function temporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'zopia-cli-'));
-  temporaryDirectories.push(directory);
-  return directory;
-}
+const temporaryDirectory = useTemporaryDirectories('zopia-cli-');
 
 const originalArgv = process.argv;
 const originalExitCode = process.exitCode;
@@ -19,7 +13,6 @@ afterEach(async () => {
   process.argv = originalArgv;
   process.exitCode = originalExitCode;
   vi.restoreAllMocks();
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 function captureOutput(): { output: ZopiaCliOutput; stdout: string[]; stderr: string[] } {
