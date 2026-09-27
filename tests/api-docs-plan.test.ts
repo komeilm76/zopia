@@ -34,5 +34,37 @@ describe('API docs file planning', () => {
     expect(planApiDocsFiles(caseCollisions).map((item) => item.file)).toEqual(['Users/get/index.ts', 'users-2/get/index.ts']);
     expect(planApiDocsFiles(caseCollisions, 'flat').map((item) => item.file)).toEqual(['Users/get/index.ts', 'users-2/get/index.ts']);
   });
+  it('S-24: preserves a literal path segment whose name is an HTTP method', () => {
+    const methodSegment = {
+      openapi: '3.1.0',
+      info: { title: 'x', version: '1' },
+      paths: { '/users/get': { get: { operationId: 'getUsersGet', responses: { '200': { description: 'ok' } } } } },
+    };
+
+    expect(planApiDocsFiles(methodSegment)).toEqual([
+      expect.objectContaining({ path: '/users/get', method: 'get', file: 'users/get/get/index.ts' }),
+    ]);
+  });
+  it('S-25: preserves every segment and parameter in deeply nested paths', () => {
+    const path = '/organizations/{organizationId}/projects/{projectId}/builds/{buildId}';
+    const parameters = [
+      { name: 'organizationId', in: 'path', required: true, schema: { type: 'string' } },
+      { name: 'projectId', in: 'path', required: true, schema: { type: 'string' } },
+      { name: 'buildId', in: 'path', required: true, schema: { type: 'string' } },
+    ];
+    const deeplyNested = {
+      openapi: '3.1.0',
+      info: { title: 'x', version: '1' },
+      paths: { [path]: { post: { operationId: 'createBuild', parameters, responses: { '201': { description: 'created' } } } } },
+    };
+
+    const [plan] = planApiDocsFiles(deeplyNested);
+    expect(plan).toMatchObject({
+      path,
+      method: 'post',
+      file: 'organizations/{organizationId}/projects/{projectId}/builds/{buildId}/post/index.ts',
+    });
+    expect(plan.parameters.map((parameter) => parameter.name)).toEqual(['organizationId', 'projectId', 'buildId']);
+  });
   it('validates mode even when there are no operations', () => expect(() => planApiDocsFiles({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: {} }, 'bad' as any)).toThrow('Unsupported API docs mode'));
 });

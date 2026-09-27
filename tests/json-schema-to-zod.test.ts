@@ -197,6 +197,31 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'integer', multipleOf: 0 });
     expect(result.warnings.map((warning) => warning.message)).toContain('Invalid multipleOf: expected a positive number');
   });
+  it.each([
+    [{ type: 'number', maximum: 5 }, 5, 5.1, '.max(5)'],
+    [{ type: 'number', exclusiveMinimum: 1 }, 1.1, 1, '.gt(1)'],
+    [{ type: 'number', exclusiveMaximum: 5 }, 4.9, 5, '.lt(5)'],
+    [{ type: 'string', maxLength: 3 }, 'abc', 'abcd', '.max(3)'],
+    [{ type: 'array', items: { type: 'string' }, maxItems: 2 }, ['a', 'b'], ['a', 'b', 'c'], '.max(2)'],
+  ] as const)('S-42: enforces upper and exclusive constraint %#', (source, valid, invalid, codeFragment) => {
+    const result = jsonSchemaToZod(source as any);
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.schema.safeParse(valid).success).toBe(true);
+    expect(result.schema.safeParse(invalid).success).toBe(false);
+    expect(generated.safeParse(valid).success).toBe(true);
+    expect(generated.safeParse(invalid).success).toBe(false);
+    expect(result.code).toContain(codeFragment);
+    expect(result.warnings).toEqual([]);
+  });
+  it('S-42: enforces the legacy boolean exclusive maximum with a restoration overlay', () => {
+    const result = jsonSchemaToZod({ type: 'integer', maximum: 5, exclusiveMaximum: true });
+
+    expect(result.schema.safeParse(4).success).toBe(true);
+    expect(result.schema.safeParse(5).success).toBe(false);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND', at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', set: { exclusiveMaximum: true, maximum: 5 } }]);
+  });
   it('supports unevaluated property restrictions', () => {
     const strict = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'string' } }, unevaluatedProperties: false });
     expect(strict.schema.safeParse({ id: 'x', extra: true }).success).toBe(false);
@@ -220,19 +245,46 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(['x', 'bad']).success).toBe(false);
     expect(result.code).toContain('.rest(z.number())');
   });
-  it('supports hostname and IP address formats', () => {
-    expect(jsonSchemaToZod({ type: 'string', format: 'hostname' }).schema.safeParse('api.example.com').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'hostname' }).schema.safeParse('bad..host').success).toBe(false);
-    expect(jsonSchemaToZod({ type: 'string', format: 'ipv4' }).schema.safeParse('192.168.1.1').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'ipv6' }).schema.safeParse('2001:db8::1').success).toBe(true);
+  it.each([
+    ['email', 'user@example.com', 'not-an-email'],
+    ['uuid', '550e8400-e29b-41d4-a716-446655440000', 'not-a-uuid'],
+    ['hostname', 'api.example.com', 'bad..host'],
+    ['ipv4', '192.168.1.1', '2001:db8::1'],
+    ['ipv6', '2001:db8::1', '192.168.1.1'],
+    ['date-time', '2024-01-02T03:04:05Z', '2024-01-02'],
+    ['date', '2024-01-02', '2024-02-30'],
+    ['duration', 'P3Y6M4DT12H30M5S', 'three years'],
+    ['uri', 'https://example.test/items/1', 'not a uri'],
+  ])('S-41: enforces and round-trips the exact %s format', (format, valid, invalid) => {
+    const source = { type: 'string', format };
+    const result = jsonSchemaToZod(source);
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.schema.safeParse(valid).success).toBe(true);
+    expect(result.schema.safeParse(invalid).success).toBe(false);
+    expect(generated.safeParse(valid).success).toBe(true);
+    expect(generated.safeParse(invalid).success).toBe(false);
+    expect(result.warnings).toEqual([]);
+    expect(result.overlays).toEqual([]);
+    expect(zodToJsonSchema(result.schema, { $schema: false })).toEqual(source);
   });
-  it('supports base64, base64url, and emoji formats', () => {
-    expect(jsonSchemaToZod({ type: 'string', format: 'base64' }).schema.safeParse('SGVsbG8=').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'byte' }).schema.safeParse('SGVsbG8=').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'base64url' }).schema.safeParse('SGVsbG8').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'emoji' }).schema.safeParse('😀').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'time' }).schema.safeParse('12:30:00').success).toBe(true);
-    expect(jsonSchemaToZod({ type: 'string', format: 'duration' }).schema.safeParse('P3Y6M4DT12H30M5S').success).toBe(true);
+  it.each([
+    ['url', 'https://example.test/items/1', 'not a url', { at: '', set: { format: 'url' } }],
+    ['time', '12:30:00', '25:00:00', { at: '', set: { format: 'time' }, remove: ['pattern'] }],
+    ['byte', 'SGVsbG8=', '***', { at: '', set: { format: 'byte' }, remove: ['pattern', 'contentEncoding'] }],
+    ['base64', 'SGVsbG8=', '***', { at: '', set: { format: 'base64' }, remove: ['pattern', 'contentEncoding'] }],
+    ['base64url', 'SGVsbG8', '***', { at: '', set: { format: 'base64url' }, remove: ['pattern', 'contentEncoding'] }],
+    ['emoji', '😀', 'plain', { at: '', set: { format: 'emoji' }, remove: ['pattern'] }],
+  ] as const)('S-41: enforces the %s format and records its exact overlay', (format, valid, invalid, overlay) => {
+    const result = jsonSchemaToZod({ type: 'string', format });
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.schema.safeParse(valid).success).toBe(true);
+    expect(result.schema.safeParse(invalid).success).toBe(false);
+    expect(generated.safeParse(valid).success).toBe(true);
+    expect(generated.safeParse(invalid).success).toBe(false);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#' })]);
+    expect(result.overlays).toEqual([overlay]);
   });
   it('supports base64 content encoding', () => {
     const result = jsonSchemaToZod({ type: 'string', contentEncoding: 'base64' });
@@ -253,18 +305,41 @@ describe('jsonSchemaToZod', () => {
     const result = jsonSchemaToZod({ type: 'number', contentEncoding: 'base64' });
     expect(result.warnings.map((warning) => warning.message)).toContain('Invalid contentEncoding: expected a string schema');
   });
-  it('supports OpenAPI integer formats', () => {
-    const result = jsonSchemaToZod({ type: 'number', format: 'int64' });
-    expect(result.schema.safeParse(12.5).success).toBe(false);
-    expect(result.schema.safeParse(12).success).toBe(true);
-    expect(result.code).toContain('.int()');
+  it.each([
+    ['int32', 2147483647, 2147483648, 'ZOPIA_WARN_CUSTOM_FORMAT'],
+    ['int64', 12, 12.5, 'ZOPIA_WARN_INT64'],
+    ['uint32', 4294967295, 4294967296, 'ZOPIA_WARN_CUSTOM_FORMAT'],
+    ['uint64', 12, -1, 'ZOPIA_WARN_CUSTOM_FORMAT'],
+  ] as const)('S-41: enforces numeric format %s and preserves it with an overlay', (format, valid, invalid, warningCode) => {
+    const result = jsonSchemaToZod({ type: 'integer', format });
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.schema.safeParse(valid).success).toBe(true);
+    expect(result.schema.safeParse(invalid).success).toBe(false);
+    expect(generated.safeParse(valid).success).toBe(true);
+    expect(generated.safeParse(invalid).success).toBe(false);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: warningCode, at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', set: { format }, remove: ['minimum', 'maximum'] }]);
   });
-  it('supports unsigned integer formats', () => {
-    const result = jsonSchemaToZod({ type: 'number', format: 'uint32' });
-    expect(result.schema.safeParse(12).success).toBe(true);
-    expect(result.schema.safeParse(-1).success).toBe(false);
-    expect(result.code).toContain('.nonnegative().max(4294967295)');
-    expect(jsonSchemaToZod({ type: 'integer', format: 'int32' }).schema.safeParse(2147483648).success).toBe(false);
+  it.each([
+    ['string', 'password', 'secret', 42],
+    ['string', 'binary', '0101', false],
+    ['number', 'float', 1.5, '1.5'],
+    ['number', 'double', 1.5, '1.5'],
+    ['string', 'uri-reference', '../items', 1],
+    ['string', 'regex', '^x$', 1],
+    ['number', 'decimal', 1.25, '1.25'],
+    ['string', 'json-pointer', '/items/0', 1],
+  ] as const)('S-41: retains base %s validation for unsupported format %s', (type, format, valid, invalid) => {
+    const result = jsonSchemaToZod({ type, format });
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.schema.safeParse(valid).success).toBe(true);
+    expect(result.schema.safeParse(invalid).success).toBe(false);
+    expect(generated.safeParse(valid).success).toBe(true);
+    expect(generated.safeParse(invalid).success).toBe(false);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#' })]);
+    expect(result.overlays).toEqual([{ at: '', set: { format } }]);
   });
   it('emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
@@ -641,6 +716,54 @@ describe('jsonSchemaToZod', () => {
     expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_REF $ref —');
     expect(result.code).toContain('z.any()');
     expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_REF', at: '#' })]);
+  });
+  it('S-49: matches z.fromJSONSchema behavior on the supported fixture set', () => {
+    const fixtures: Array<{ schema: Record<string, unknown>; values: unknown[] }> = [
+      { schema: { type: 'string', minLength: 2, maxLength: 4, pattern: '^a' }, values: ['', 'a', 'ab', 'abcd', 'abcde', 1] },
+      { schema: { type: 'number', minimum: 1, maximum: 3, multipleOf: 0.5 }, values: [0, 1, 1.5, 3, 3.5, '2'] },
+      { schema: { type: 'array', items: { type: 'integer' }, minItems: 1, maxItems: 2 }, values: [[], [1], [1, 2], [1, 2, 3], [1.5], ['1']] },
+      { schema: { type: 'object', properties: { id: { type: 'string' }, count: { type: 'integer' } }, required: ['id'], additionalProperties: false }, values: [{}, { id: 'x' }, { id: 'x', count: 1 }, { id: 'x', count: 1.2 }, { id: 'x', extra: true }] },
+      { schema: { enum: ['a', 'b', 2] }, values: ['a', 'b', 2, 'c', 3] },
+      { schema: { anyOf: [{ type: 'string', minLength: 2 }, { type: 'number', minimum: 2 }] }, values: ['a', 'ab', 1, 2, false] },
+      { schema: { $defs: { Id: { type: 'string', pattern: '^[a-z]+$' } }, $ref: '#/$defs/Id' }, values: ['valid', 'NOT-VALID', 1] },
+      { schema: { type: ['string', 'null'], minLength: 2 }, values: [null, 'a', 'ab', 2] },
+    ];
+
+    for (const { schema, values } of fixtures) {
+      const result = jsonSchemaToZod(schema);
+      const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+      const reference = z.fromJSONSchema(schema as any);
+      for (const value of values) {
+        const expected = reference.safeParse(value).success;
+        expect(result.schema.safeParse(value).success, `${JSON.stringify(schema)} runtime: ${JSON.stringify(value)}`).toBe(expected);
+        expect(generated.safeParse(value).success, `${JSON.stringify(schema)} generated: ${JSON.stringify(value)}`).toBe(expected);
+      }
+    }
+  });
+  it('S-50: produces deterministic Engine ② code, warnings, overlays, and runtime serialization', () => {
+    const source = {
+      $defs: { Name: { type: 'string', minLength: 2 } },
+      type: 'object',
+      properties: {
+        name: { $ref: '#/$defs/Name' },
+        website: { type: 'string', format: 'url' },
+        count: { type: 'integer', maximum: 10 },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    };
+    const original = structuredClone(source);
+
+    const first = jsonSchemaToZod(source, { rootName: 'record' });
+    const second = jsonSchemaToZod(structuredClone(source), { rootName: 'record' });
+
+    expect({ code: second.code, warnings: second.warnings, overlays: second.overlays }).toEqual({
+      code: first.code,
+      warnings: first.warnings,
+      overlays: first.overlays,
+    });
+    expect(zodToJsonSchema(second.schema, { $schema: false })).toEqual(zodToJsonSchema(first.schema, { $schema: false }));
+    expect(source).toEqual(original);
   });
   it('reads JSON Schema from a .json file path', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'zopia-schema-'));

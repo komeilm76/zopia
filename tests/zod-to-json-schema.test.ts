@@ -258,7 +258,11 @@ describe('zodToJsonSchema', () => {
       'type',
       'format',
     ]);
-    expect(JSON.stringify(zodToJsonSchema(z.uuid()))).toBe(JSON.stringify(zodToJsonSchema(z.uuid())));
+  });
+
+  it('S-50: produces deterministic Engine ① JSON Schema output', () => {
+    const schema = z.object({ id: z.uuid(), values: z.array(z.number().int()) }).strict();
+    expect(JSON.stringify(zodToJsonSchema(schema))).toBe(JSON.stringify(zodToJsonSchema(schema)));
   });
 
   it.each([

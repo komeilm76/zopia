@@ -15,9 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🔄 Changed
+- 🧪 Completed the remaining T-13 scenario-matrix regressions for method-named/deep parameterized paths, all documented format and upper-bound mappings, Zod `fromJSONSchema` behavior parity, and deterministic output from both schema engines.
 - 📚 Synchronized current documentation with the completed Phase 1 implementation: status labels, actual source/test layout and pipeline boundaries, generated golden examples, facade/component-reuse behavior, dependency wording, and safety/performance claims now match the repository; added a contract test for documentation links, completion state, concrete paths, and canonical output drift.
 
 ### 🐛 Fixed
+- 🐛 Engine ② now emits native `z.ipv4()` and `z.ipv6()` schemas instead of silently falling back to unrestricted strings after calling the removed Zod string `.ip()` method.
 - 🐛 Engine ① now localizes non-JSON Zod defaults and metadata as unrepresentable schema sites with exact warning pointers instead of silently normalizing non-finite values, dropping functions, or throwing for symbols and other unsupported values.
 - 🐛 Engine ② now applies `nullable` and `default` to the complete local-reference schema, rejects non-JSON defaults, constants, enum members, and annotations with structured warnings, preserves structured enums by JSON equality, and retains OpenAPI access/deprecation/XML plus vendor-extension annotations in generated Zod metadata.
 - 🐛 Reverse conversion now rejects malformed edited endpoint path templates, path-parameter/template mismatches, dialect-invalid response statuses/descriptions, duplicate reconstructed operation IDs, edited path/method collisions, and invalid in-memory manifest operations instead of returning invalid OpenAPI documents; runtime collisions are classified as generated-module failures.
