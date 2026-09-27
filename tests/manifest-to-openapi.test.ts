@@ -122,6 +122,7 @@ describe('manifest reverse conversion', () => {
     const edited = generated
       .replace('method: "GET"', 'method: "POST"')
       .replace('pathShape: "/users"', 'pathShape: "/members/:memberId"')
+      .replace('params: z.object({  })', 'params: z.object({ ["memberId"]: z.string() })')
       .replace('operationId: "listUsers"', 'operationId: "listMembers"')
       .replace('summary: "Original summary"', 'summary: "Edited summary"')
       .replace('description: "Original description"', 'description: "Edited description"')
@@ -138,10 +139,34 @@ describe('manifest reverse conversion', () => {
     expect(operation.tags).toEqual(['members', 'public']);
     expect(operation.deprecated).toBe(false);
     expect(operation.security).toEqual([]);
+    expect(operation.parameters).toContainEqual({ name: 'memberId', in: 'path', required: true, schema: { type: 'string' } });
     expect(operation.responses['200'].content['application/json'].schema).toEqual({ type: 'string' });
+
+    await writeFile(endpointFile, edited.replace('params: z.object({ ["memberId"]: z.string() })', 'params: z.object({  })'), 'utf8');
+    await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Generated endpoint path parameter is not defined: memberId');
+
+    await writeFile(endpointFile, edited.replace('pathShape: "/members/:memberId"', 'pathShape: "/members"'), 'utf8');
+    await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Generated endpoint path parameter is not present in the template: memberId');
 
     await writeFile(endpointFile, edited.replace('pathShape: "/members/:memberId"', 'pathShape: "/members/{broken"'), 'utf8');
     await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Invalid generated endpoint path: /members/{broken');
+  });
+  it('validates edited response statuses against the output dialect', async () => {
+    const cases = [
+      { document: { openapi: '3.1.0', info: { title: 'Status', version: '1' }, paths: { '/x': { get: { responses: { '200': { description: 'ok' } } } } } }, status: '999' },
+      { document: { swagger: '2.0', info: { title: 'Status', version: '1' }, paths: { '/x': { get: { responses: { '200': { description: 'ok' } } } } } }, status: '4XX' },
+    ];
+    for (const { document, status } of cases) {
+      const outputDir = await mkdtemp(join(tmpdir(), 'zopia-status-'));
+      await generateApiDocsFiles(document, { outputDir });
+      const endpointFile = join(outputDir, 'x', 'get', 'index.ts');
+      const replacement = status === '4XX' ? 'response: { ["4XX"]:' : `response: { ${status}:`;
+      await writeFile(endpointFile, (await readFile(endpointFile, 'utf8')).replace('response: { 200:', replacement), 'utf8');
+      await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toMatchObject({
+        code: 'ZOPIA_DOCS_IMPORT_FAILED',
+        message: expect.stringContaining(`Invalid generated endpoint response status: ${status}`),
+      });
+    }
   });
   it('classifies edited runtime endpoint collisions as generated-module failures', async () => {
     const outputDir = await mkdtemp(join(tmpdir(), 'zopia-'));
@@ -365,14 +390,13 @@ describe('manifest reverse conversion', () => {
 
     const withoutContent = edited
       .replace('body: z.object({ ["name"]: z.string(), ["age"]: z.number().int().min(18), ["role"]: z.string().default("user") }).passthrough()', 'body: z.any()')
-      .replace('params: z.object({ ["id"]: z.uuid() })', 'params: z.object({})')
       .replace('query: z.object({ ["limit"]: z.number().int().min(1) })', 'query: z.object({})')
       .replace('201: z.object({ ["id"]: z.uuid(), ["active"]: z.boolean(), ["version"]: z.string().default("1") }).passthrough()', '201: z.void()');
     await writeFile(endpointFile, withoutContent, 'utf8');
     const rereversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
     const stripped = rereversed.paths['/users/{id}'].post;
     expect(stripped.requestBody).toBeUndefined();
-    expect(stripped.parameters).toBeUndefined();
+    expect(stripped.parameters).toEqual([expect.objectContaining({ name: 'id', in: 'path', required: true })]);
     expect(stripped.responses['201']).toEqual({ description: 'Created', headers: { 'X-Trace': { schema: { type: 'string' } } } });
   });
   it('replaces edited media types and treats runtime examples as authoritative', async () => {

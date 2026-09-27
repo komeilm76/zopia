@@ -57,6 +57,22 @@ function primarySwaggerMediaType(value: unknown): string | undefined {
 }
 
 const SWAGGER_SCHEMA_KEYS = new Set(['format', 'items', 'default', 'maximum', 'exclusiveMaximum', 'minimum', 'exclusiveMinimum', 'maxLength', 'minLength', 'pattern', 'maxItems', 'minItems', 'uniqueItems', 'enum', 'multipleOf']);
+
+/**
+ * Test whether a response key is valid for the selected source dialect.
+ *
+ * @param status Response-object key to validate.
+ * @param swagger Whether the target dialect is Swagger 2.0.
+ * @returns Whether the key is `default`, an exact HTTP status, or an OpenAPI range.
+ */
+export function isValidResponseStatus(status: string, swagger: boolean): boolean {
+  return status === 'default' || /^[1-5]\d{2}$/.test(status) || !swagger && /^[1-5]XX$/.test(status);
+}
+
+function pathParameterNames(path: string): Set<string> {
+  return new Set([...path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]));
+}
+
 function swaggerParameterSchema(parameter: Record<string, any>): Record<string, unknown> {
   return {
     type: parameter.type === 'file' ? 'string' : parameter.type,
@@ -102,6 +118,12 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (schema === undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Parameter requires schema or content: ${parameter.name}`);
     return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema };
   });
+  const placeholders = pathParameterNames(ir.path);
+  const pathParameters = new Set(parameters.filter((parameter) => parameter.in === 'path').map((parameter) => parameter.name));
+  const missingPathParameter = [...placeholders].find((name) => !pathParameters.has(name));
+  if (missingPathParameter) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Path template parameter is not defined: ${missingPathParameter}`);
+  const unrelatedPathParameter = [...pathParameters].find((name) => !placeholders.has(name));
+  if (unrelatedPathParameter) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Path parameter is not present in the template: ${unrelatedPathParameter}`);
   const operation = ir.operation;
   let body = operation.requestBody;
   if (body === undefined && ir.document.swagger === '2.0') {
@@ -133,8 +155,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   const responses = operation.responses;
   if (!responses || typeof responses !== 'object' || Array.isArray(responses) || Object.keys(responses).length === 0) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid responses: ${ir.method} ${ir.path}`);
   return { parameters, requestBody, responses: Object.entries(responses).map(([status, value]) => {
-    const validStatus = ir.document.swagger === '2.0' ? /^[1-5]\d{2}$/.test(status) : /^[1-5](?:\d{2}|XX)$/.test(status);
-    if (status !== 'default' && !validStatus) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid response status: ${status}`);
+    if (!isValidResponseStatus(status, ir.document.swagger === '2.0')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid response status: ${status}`);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid response ${status}: ${ir.method} ${ir.path}`);
     const response = resolveRef(value as Record<string, any>, ir, 'response');
     if (typeof response.description !== 'string' || response.description.trim() === '') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid response description: ${status}`);

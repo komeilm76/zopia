@@ -5,6 +5,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { decodeJsonPointerSegment } from './openapi-ref';
+import { isValidResponseStatus } from './openapi-contracts';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { ZOPIA_MANIFEST_FILE, ZOPIA_MANIFEST_SCHEMA, type ZopiaManifest } from './manifest-writer';
 import { ensureFallbackSecurityScheme, normalizeSecurityRequirements } from './reverse-security';
@@ -840,6 +841,19 @@ function serializeParameters(operation: Record<string, any>, config: EndpointCon
   return parameters;
 }
 
+function validateRuntimePathParameters(path: string, parameters: Record<string, any>[]): void {
+  const placeholders = new Set([...path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]));
+  const pathParameters = new Map(parameters
+    .filter((parameter) => parameter.in === 'path' && typeof parameter.name === 'string')
+    .map((parameter) => [parameter.name, parameter]));
+  const missing = [...placeholders].find((name) => !pathParameters.has(name));
+  if (missing) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Generated endpoint path parameter is not defined: ${missing}`);
+  const unrelated = [...pathParameters.keys()].find((name) => !placeholders.has(name));
+  if (unrelated) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Generated endpoint path parameter is not present in the template: ${unrelated}`);
+  const optional = [...pathParameters.values()].find((parameter) => parameter.required !== true);
+  if (optional) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Generated endpoint path parameter must be required: ${optional.name}`);
+}
+
 function canonicalJson(value: unknown): string | undefined {
   try {
     return JSON.stringify(value, (_key, child) => child && typeof child === 'object' && !Array.isArray(child)
@@ -941,7 +955,7 @@ function serializeResponses(operation: Record<string, any>, config: EndpointConf
   const contentTypeEdited = contentType !== undefined && typeof baselineContentType === 'string' && contentType !== baselineContentType;
   if (Object.keys(config.response).length === 0) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', 'Generated endpoint must define at least one response');
   for (const [status, runtimeSchema] of Object.entries(config.response)) {
-    if (status !== 'default' && !/^(?:\d{3}|[1-5]XX)$/.test(status)) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint response status: ${status}`);
+    if (!isValidResponseStatus(status, isSwagger)) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint response status: ${status}`);
     if (!isComponentSchema(runtimeSchema)) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint response schema: ${status}`);
     const previous = isRecord(original[status]) ? resolveResponse(original[status], manifest) : {};
     const response: Record<string, any> = { ...previous, description: typeof previous.description === 'string' && previous.description ? previous.description : 'Generated response' };
@@ -1009,6 +1023,7 @@ function runtimeOperation(api: ZopiaManifest['apis'][number], sourceOperation: R
   for (const field of ['requestContentType', 'responseContentType'] as const) if (config[field] !== undefined && (typeof config[field] !== 'string' || !config[field])) throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `Invalid generated endpoint ${field}: ${String(config[field])}`);
   const operationAt = `#/paths/${pointerToken(path)}/${method}`;
   const parameters = serializeParameters(operation, config, manifest, references, operationAt, warnings);
+  validateRuntimePathParameters(path, parameters);
   serializeRequestBody(operation, config, manifest, references, parameters, operationAt, warnings);
   serializeResponses(operation, config, manifest, references, operationAt, warnings);
   if (Array.isArray(operation.parameters) && operation.parameters.length === 0) delete operation.parameters;

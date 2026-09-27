@@ -44,6 +44,17 @@ describe('OpenAPI operation contracts', () => {
     expect(contracts.requestBody?.contentType).toBe('application/vnd.example+json');
     expect(contracts.responses[0].contentType).toBe('application/json');
   });
+  it('requires path parameters to match every path-template placeholder', () => {
+    const operation = (path: string, parameters: unknown[]) => buildOpenApiOperationIR({
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { [path]: { get: { parameters, responses: { '200': { description: 'ok' } } } } },
+    })[0];
+    expect(() => extractOperationContracts(operation('/users/{id}', []))).toThrow('Path template parameter is not defined: id');
+    expect(() => extractOperationContracts(operation('/users', [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]))).toThrow('Path parameter is not present in the template: id');
+    expect(extractOperationContracts(operation('/users/{id}', [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }])).parameters).toEqual([
+      { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+    ]);
+  });
   it('extracts OpenAPI parameter content schemas', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ name: 'filter', in: 'query', content: { 'application/json': { schema: { type: 'object' } } } }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).parameters[0].schema).toEqual({ type: 'object' });
@@ -95,7 +106,11 @@ describe('OpenAPI operation contracts', () => {
   it('rejects invalid response status keys', () => {
     const [ir] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { nope: { description: 'bad' } } } } } });
     expect(() => extractOperationContracts(ir)).toThrow('Invalid response status');
+    const [invalidNumber] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { '999': { description: 'bad' } } } } } });
+    expect(() => extractOperationContracts(invalidNumber)).toThrow('Invalid response status: 999');
     const [swaggerRange] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { '2XX': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(swaggerRange)).toThrow('Invalid response status: 2XX');
+    const [openApiRange] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { '2XX': { description: 'ok' } } } } } });
+    expect(extractOperationContracts(openApiRange).responses[0].status).toBe('2XX');
   });
 });

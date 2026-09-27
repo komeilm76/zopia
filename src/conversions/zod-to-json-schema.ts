@@ -135,6 +135,93 @@ function isZodSchema(value: unknown): value is z.ZodType {
   return isRecord(value) && isRecord(value._zod) && typeof value._zod.run === 'function';
 }
 
+interface SanitizedSchemas {
+  schemas: z.ZodType[];
+  originals: WeakMap<object, z.core.$ZodType>;
+  invalidDefaults: WeakSet<object>;
+}
+
+function isJsonValue(value: unknown, active = new Set<object>()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (!value || typeof value !== 'object' || active.has(value)) return false;
+  if (!Array.isArray(value) && ![Object.prototype, null].includes(Object.getPrototypeOf(value))) return false;
+  if (Object.getOwnPropertySymbols(value).length) return false;
+  active.add(value);
+  const valid = Array.isArray(value)
+    ? Object.keys(value).length === value.length && value.every((child, index) => Object.prototype.hasOwnProperty.call(value, index) && isJsonValue(child, active))
+    : Object.values(value).every((child) => isJsonValue(child, active));
+  active.delete(value);
+  return valid;
+}
+
+function sanitizeUnsupportedDefaults(roots: z.ZodType[]): SanitizedSchemas {
+  const schemas = new WeakMap<object, z.ZodType>();
+  const originals = new WeakMap<object, z.core.$ZodType>();
+  const invalidDefaults = new WeakSet<object>();
+
+  const sanitize = (schema: z.ZodType): z.ZodType => {
+    const cached = schemas.get(schema);
+    if (cached) return cached;
+    const definition = schema._zod.def as unknown as Record<string, unknown>;
+    let defaultValue: unknown;
+    if (definition.type === 'default') {
+      try { defaultValue = definition.defaultValue; }
+      catch { defaultValue = Symbol('invalid default'); }
+      if (!isJsonValue(defaultValue)) {
+        const replacement = z.custom();
+        schemas.set(schema, replacement);
+        originals.set(replacement, schema);
+        invalidDefaults.add(replacement);
+        return replacement;
+      }
+    }
+
+    let changed = definition.type === 'default';
+    const mapValue = (value: unknown): unknown => {
+      if (isZodSchema(value)) {
+        const converted = sanitize(value);
+        if (converted !== value) changed = true;
+        return converted;
+      }
+      if (Array.isArray(value)) {
+        const converted = value.map(mapValue);
+        if (converted.some((child, index) => child !== value[index])) changed = true;
+        return converted;
+      }
+      if (isRecord(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+        const converted = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, mapValue(child)]));
+        if (Object.keys(converted).some((key) => converted[key] !== value[key])) changed = true;
+        return converted;
+      }
+      return value;
+    };
+
+    const convertedDefinition: Record<string, unknown> = {};
+    for (const key of Object.keys(definition)) {
+      if (definition.type === 'default' && key === 'defaultValue') {
+        convertedDefinition[key] = defaultValue;
+        continue;
+      }
+      const value = definition[key];
+      if (definition.type === 'lazy' && key === 'getter' && typeof value === 'function') {
+        convertedDefinition[key] = () => sanitize(value());
+        changed = true;
+      } else convertedDefinition[key] = mapValue(value);
+    }
+    if (!changed) {
+      schemas.set(schema, schema);
+      return schema;
+    }
+    const converted = schema.clone(convertedDefinition as any);
+    schemas.set(schema, converted);
+    originals.set(converted, schema);
+    return converted;
+  };
+
+  return { schemas: roots.map(sanitize), originals, invalidDefaults };
+}
+
 /**
  * Convert a Zod 4 schema to canonical JSON Schema or an OpenAPI Schema Object.
  *
@@ -185,18 +272,20 @@ export function zodSchemasToJsonSchema(
       if (typeof name !== 'string' || !name) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', 'named Zod schemas require non-empty names', { at: 'schemas' });
       if (!isZodSchema(schema)) throw new ZopiaError('ZOPIA_SCHEMA_INVALID', `invalid named Zod schema: ${name}`, { at: name, hint: 'pass Zod 4 schema instances' });
     }
+    const sanitized = sanitizeUnsupportedDefaults(entries.map(([, schema]) => schema));
+    const sanitizedEntries = entries.map(([name], index) => [name, sanitized.schemas[index]] as const);
     const registry = z.registry<{ id?: string }>();
-    for (const [name, schema] of entries) registry.add(schema, { id: name });
+    for (const [name, schema] of sanitizedEntries) registry.add(schema, { id: name });
 
     const warnings: ZopiaWarning[] = [];
     const unrepresentable = new WeakSet<object>();
-    const owners = indexNamedSchemaOwners(entries);
+    const owners = indexNamedSchemaOwners(sanitizedEntries);
     const converted = z.toJSONSchema(registry, {
       target: zodTarget,
       io: options.io ?? 'output',
       uri,
-      metadata: metadataWithoutIds(),
-      unrepresentable: warningHandler(warnings, unrepresentable, owners),
+      metadata: metadataWithoutIds(sanitized.originals),
+      unrepresentable: warningHandler(warnings, unrepresentable, owners, sanitized.invalidDefaults),
       override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
     }).schemas as Record<string, Record<string, unknown>>;
 
@@ -220,12 +309,13 @@ function convert(
   options: ZodToJsonSchemaOptions,
   warnings: ZopiaWarning[],
 ): Record<string, unknown> {
+  const sanitized = sanitizeUnsupportedDefaults([schema]);
   const unrepresentable = new WeakSet<object>();
-  const result = z.toJSONSchema(schema, {
+  const result = z.toJSONSchema(sanitized.schemas[0], {
     target: zodTargetFor(target),
     io: options.io ?? 'output',
-    metadata: metadataWithoutIds(),
-    unrepresentable: warningHandler(warnings, unrepresentable),
+    metadata: metadataWithoutIds(sanitized.originals),
+    unrepresentable: warningHandler(warnings, unrepresentable, undefined, sanitized.invalidDefaults),
     override: ({ zodSchema, jsonSchema }) => finalizeZodNode(zodSchema, jsonSchema, unrepresentable),
   }) as Record<string, unknown>;
   finalizeDialect(result, target, options.$schema);
@@ -236,9 +326,10 @@ function zodTargetFor(target: InternalZodJsonSchemaTarget): 'draft-4' | 'draft-0
   return target === 'openapi-3.1' ? 'draft-2020-12' : target;
 }
 
-function warningHandler(warnings: ZopiaWarning[], unrepresentable: WeakSet<object>, owners?: WeakMap<object, Set<string>>) {
-  return ({ zodSchema, path, message }: { zodSchema: z.core.$ZodType; path: (string | number)[]; message: string }): 'any' => {
+function warningHandler(warnings: ZopiaWarning[], unrepresentable: WeakSet<object>, owners?: WeakMap<object, Set<string>>, invalidDefaults?: WeakSet<object>) {
+  return ({ zodSchema, path, message: sourceMessage }: { zodSchema: z.core.$ZodType; path: (string | number)[]; message: string }): 'any' => {
     unrepresentable.add(zodSchema);
+    const message = invalidDefaults?.has(zodSchema) ? 'Default value cannot be represented in JSON Schema' : sourceMessage;
     const names = owners?.get(zodSchema);
     if (names?.size) for (const name of names) warnings.push({
       code: 'ZOPIA_WARN_UNREPRESENTABLE',
@@ -284,10 +375,10 @@ function jsonPointer(path: (string | number)[]): string {
   return `#/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
 }
 
-function metadataWithoutIds(): typeof z.globalRegistry {
+function metadataWithoutIds(originals?: WeakMap<object, z.core.$ZodType>): typeof z.globalRegistry {
   return {
     get(schema: z.core.$ZodType): Record<string, unknown> | undefined {
-      const metadata = z.globalRegistry.get(schema);
+      const metadata = z.globalRegistry.get(originals?.get(schema) ?? schema);
       if (!metadata) return undefined;
       const copy: Record<string, unknown> = { ...metadata };
       delete copy.id;

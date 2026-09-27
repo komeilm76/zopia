@@ -163,7 +163,7 @@ published package (D-14; the golden-tree contract test enforces this, R-126):
 | 🧩 Field | 📏 Published km-api 0.4.1 / zopia contract |
 | --- | --- |
 | `method` (`IMethod`) | all **8** standard methods — `get/post/put/delete/head/options/patch/trace` (each case-insensitive: `GET`, `Get`, …) |
-| `response` keys | standard statuses, **any custom numeric code** (`419`, `499`, `512`, …), and the OpenAPI **`default`** key; all are pinned by generated compilation |
+| `response` keys | standard statuses, **any valid custom `100`–`599` code** (`419`, `499`, `512`, …), OpenAPI `1XX`–`5XX` ranges, and the **`default`** key; all are pinned by generated compilation and validated against the source/output dialect |
 | `responseContentType` / `requestContentType` | km-api's declarations enumerate known MIME values, while OpenAPI media-type maps are open; zopia emits every exact string and applies a narrow type-only assertion at this package boundary, preserving the runtime value and reverse conversion |
 | `operationId` | any string — a real km-api field in 0.4.1; zopia emits it and reuses it as the export identifier (R-732) |
 

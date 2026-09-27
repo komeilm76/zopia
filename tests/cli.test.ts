@@ -75,6 +75,7 @@ describe('CLI command contract', () => {
       info: { title: 'CLI options', version: '1' },
       paths: {
         '/users/{id}': {
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           get: {
             operationId: 'getUser',
             responses: { '200': { description: 'User', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } },

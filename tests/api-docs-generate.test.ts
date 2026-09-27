@@ -34,8 +34,8 @@ describe('API docs endpoint generation', () => {
       paths: {
         '/': { get: response('root') },
         '/root': { get: response('literalRoot') },
-        '/users//{id}': { get: response('repeatedSlash') },
-        '/users/{id}': { get: response('singleSlash') },
+        '/users//{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], get: response('repeatedSlash') },
+        '/users/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], get: response('singleSlash') },
       },
     }, { outputDir, insertComponents: true, useComponentAsReference: true });
 

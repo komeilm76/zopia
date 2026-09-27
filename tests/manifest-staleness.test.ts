@@ -74,7 +74,7 @@ describe('manifest staleness', () => {
   it('detects layout and component-option drift while removing obsolete artifacts', async () => {
     const outDir = await mkdtemp(join(tmpdir(), 'zopia-stale-'));
     const source = document(
-      { '/users/{id}': operation() },
+      { '/users/{id}': { ...operation(), parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }] } },
       { User: { type: 'object', properties: { id: { type: 'string' } } } },
     );
     await openApiToApiDocs(source, {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { zodToJsonSchema, type ZopiaWarning } from '../src';
+import { zodSchemasToJsonSchema } from '../src/conversions/zod-to-json-schema';
 
 describe('zodToJsonSchema', () => {
   it('defaults to OpenAPI 3.1 with its JSON Schema 2020-12 dialect marker', () => {
@@ -114,6 +115,9 @@ describe('zodToJsonSchema', () => {
   it.each([
     ['bigint literal', z.literal(1n)],
     ['bigint default', z.string().default(1n as never)],
+    ['non-finite default', z.number().default(Number.NaN)],
+    ['symbol default', z.string().default(Symbol('default') as never)],
+    ['throwing default factory', z.string().default((() => { throw new Error('dynamic default'); }) as never)],
     ['dynamic catch', z.string().catch(() => { throw new Error('dynamic'); })],
     ['symbol object key', z.object({ [Symbol('secret')]: z.string() } as any)],
   ])('handles the unrepresentable %s callback site without throwing', (_name, schema) => {
@@ -139,6 +143,44 @@ describe('zodToJsonSchema', () => {
     })]);
   });
 
+  it('localizes invalid JSON defaults without losing surrounding schema metadata', () => {
+    const warnings: ZopiaWarning[] = [];
+    const schema = z.object({
+      valid: z.string().default('ok'),
+      invalid: z.object({}).default({ score: Number.NaN } as never),
+    }).meta({ title: 'Defaults' });
+    expect(zodToJsonSchema(schema, { $schema: false, onWarning: (warning) => warnings.push(warning) })).toEqual({
+      type: 'object',
+      properties: { valid: { type: 'string', default: 'ok' }, invalid: {} },
+      required: ['valid', 'invalid'],
+      additionalProperties: false,
+      title: 'Defaults',
+    });
+    expect(warnings).toEqual([{
+      code: 'ZOPIA_WARN_UNREPRESENTABLE',
+      at: '#/properties/invalid',
+      message: 'Default value cannot be represented in JSON Schema',
+    }]);
+  });
+
+  it('preserves named-schema warning ownership for invalid defaults', () => {
+    const warnings: ZopiaWarning[] = [];
+    expect(zodSchemasToJsonSchema([
+      ['Account', z.object({ score: z.number().default(Number.POSITIVE_INFINITY) })],
+    ], { $schema: false, onWarning: (warning) => warnings.push(warning) })).toEqual({
+      Account: {
+        type: 'object',
+        properties: { score: {} },
+        required: ['score'],
+        additionalProperties: false,
+      },
+    });
+    expect(warnings).toEqual([expect.objectContaining({
+      code: 'ZOPIA_WARN_UNREPRESENTABLE',
+      at: '#/Account/properties/score',
+    })]);
+  });
+
   it('uses the representable input side of a transform without warning', () => {
     const warnings: ZopiaWarning[] = [];
     expect(zodToJsonSchema(z.string().transform((value) => value.length), {
@@ -147,6 +189,12 @@ describe('zodToJsonSchema', () => {
       onWarning: (warning) => warnings.push(warning),
     })).toEqual({ type: 'string' });
     expect(warnings).toEqual([]);
+  });
+
+  it('evaluates a dynamic JSON-compatible default only once during conversion', () => {
+    let calls = 0;
+    expect(zodToJsonSchema(z.string().default(() => { calls += 1; return 'x'; }), { $schema: false })).toEqual({ type: 'string', default: 'x' });
+    expect(calls).toBe(1);
   });
 
   it('uses input semantics for defaulted request properties', () => {
