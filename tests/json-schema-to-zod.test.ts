@@ -13,11 +13,27 @@ describe('jsonSchemaToZod', () => {
     expect(jsonSchemaToZod({ type: [1] }).warnings.map((warning) => warning.message)).toContain('Invalid type: expected a non-empty array of valid JSON Schema type names');
   });
   it('supports JSON Schema boolean and empty schemas without false warnings', () => {
-    expect(jsonSchemaToZod(true).schema.safeParse('anything').success).toBe(true);
-    expect(jsonSchemaToZod(false).schema.safeParse('anything').success).toBe(false);
+    const always = jsonSchemaToZod(true);
+    const never = jsonSchemaToZod(false);
+    expect(always.schema.safeParse('anything').success).toBe(true);
+    expect(never.schema.safeParse('anything').success).toBe(false);
+    expect(always.overlays).toEqual([{ at: '', node: true }]);
+    expect(never.overlays).toEqual([{ at: '', node: false }]);
+    expect(always.warnings).toEqual([]);
+    expect(never.warnings).toEqual([]);
     const empty = jsonSchemaToZod({});
     expect(empty.schema.safeParse('anything').success).toBe(true);
     expect(empty.warnings).toEqual([]);
+    expect(empty.overlays).toEqual([]);
+  });
+  it('recognizes Zod never JSON Schema as an exact identity mapping', () => {
+    const source = { not: {} };
+    const result = jsonSchemaToZod(source);
+    expect(result.code).toContain('z.never()');
+    expect(result.schema.safeParse('anything').success).toBe(false);
+    expect(result.warnings).toEqual([]);
+    expect(result.overlays).toEqual([]);
+    expect(zodToJsonSchema(result.schema, { $schema: false })).toEqual(source);
   });
   it('converts objects and preserves optional properties', () => {
     const result = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'integer' }, nickname: { type: 'string' } }, required: ['id'] });
@@ -476,7 +492,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse(['x', 1, true]).success).toBe(false);
     expect(result.warnings.map((warning) => warning.message)).not.toContain('Unsupported constraint: minItems');
     expect(result.warnings.map((warning) => warning.message)).not.toContain('Unsupported constraint: maxItems');
-    expect(result.overlays).toEqual([{ at: '', set: { minItems: 1, maxItems: 2 } }]);
+    expect(result.overlays).toEqual([{ at: '', set: { minItems: 1, maxItems: 2 }, remove: ['items'] }]);
     expect(result.code).toContain('z.tuple([z.string(), z.number().optional(), z.boolean().optional()])');
     expect(result.code).toContain('items.length >= 1');
     expect(result.code).toContain('items.length <= 2');
@@ -865,8 +881,6 @@ describe('jsonSchemaToZod', () => {
     expect(result.schema.safeParse({ kind: 'cat', good: true }).success).toBe(false);
     expect(result.overlays).toEqual([
       { at: '', set: { oneOf: source.oneOf, discriminator: source.discriminator }, remove: ['anyOf'] },
-      { at: '/oneOf/0', remove: ['additionalProperties'] },
-      { at: '/oneOf/1', remove: ['additionalProperties'] },
     ]);
   });
   it('preserves non-native encoding annotations and source numeric bounds in overlays', () => {

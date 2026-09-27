@@ -13,7 +13,7 @@ export const traceProbe = makeApiConfig({
   summary: "Exercise km-api open unions",
   description: "",
   tags: ["#contract"],
-  
+
   request: { body: z.object({ ["active"]: z.boolean() }).strict(),  params: z.object({ ["probeId"]: z.string() }), query: z.object({  }), headers: z.object({  }), cookies: z.object({  }) },
   response: { 419: z.string(), "default": z.object({  }).catchall(z.any()) },
 });

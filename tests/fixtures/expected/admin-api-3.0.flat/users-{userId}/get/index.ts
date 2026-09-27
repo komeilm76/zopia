@@ -6,7 +6,7 @@ export const getUser = makeApiConfig({
   method: "GET",
   pathShape: "/users/{userId}",
   operationId: "getUser",
-  
+
   responseContentType: "application/json" as unknown as import('km-api').IResponseContentType,
   deprecated: 'YES',
   auth: "YES",
@@ -15,7 +15,7 @@ export const getUser = makeApiConfig({
   tags: ["#users"],
   examples: JSON.parse("{\"response\":{\"200\":{\"default\":{\"value\":{\"email\":\"admin@example.test\",\"id\":\"22ccbc6a-436b-4b1c-9e64-7440ce63a90e\",\"role\":\"admin\"}}}}}"),
   request: { body: z.any(),  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({ ["X-Trace-Id"]: z.string().optional() }), cookies: z.object({  }) },
-  response: { 200: z.object({ ["id"]: z.string().uuid(), ["email"]: z.string().email(), ["role"]: z.string().and(z.enum(["admin","viewer"])).optional(), ["nickname"]: z.string().nullable().optional() }).strict().meta({"title":"User","description":"A user account"}), 404: z.object({  }).passthrough() },
+  response: { 200: z.object({ ["email"]: z.string().email(), ["id"]: z.string().uuid(), ["nickname"]: z.string().nullable().optional(), ["role"]: z.enum(["admin","viewer"]).optional() }).strict().meta({"title":"User","description":"A user account"}), 404: z.object({  }).passthrough() },
 });
 
 export default getUser;

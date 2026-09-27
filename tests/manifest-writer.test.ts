@@ -101,6 +101,8 @@ describe('dedicated manifest writer', () => {
     expect(manifest.source).toMatchObject({ kind: 'openapi-3.1', openapiVersion: '3.1.1', title: 'Manifest API', version: '2.3.4', description: 'Writer contract' });
     expect(manifest.source.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(manifest.options).toEqual({ insertComponents: true, useComponentAsReference: true });
+    expect(manifest.pathOrder).toEqual(['/things/{id}']);
+    expect(manifest.schemaComponentsPresent).toBe(true);
     expect(manifest.infoOverlay).toEqual({ termsOfService: 'https://example.test/terms', 'x-info': true });
     expect(manifest.documentOverlay).toEqual({
       externalDocs: source.externalDocs,
@@ -166,6 +168,8 @@ describe('dedicated manifest writer', () => {
     const manifest = build(source, false);
 
     expect(manifest.source.kind).toBe('swagger-2.0');
+    expect(manifest.pathOrder).toEqual(['/legacy']);
+    expect(manifest.schemaComponentsPresent).toBe(true);
     expect(manifest.servers).toEqual(['/v1']);
     expect(manifest).toMatchObject({
       swaggerHost: source.host,
@@ -182,6 +186,8 @@ describe('dedicated manifest writer', () => {
 
     const minimal: OpenApiDocument = { swagger: '2.0', info: { title: 'Minimal', version: '1' }, paths: {} };
     const minimalManifest = build(minimal, false);
+    expect(minimalManifest.pathOrder).toEqual([]);
+    expect(minimalManifest.schemaComponentsPresent).toBe(false);
     expect(minimalManifest).not.toHaveProperty('swaggerHost');
     expect(minimalManifest).not.toHaveProperty('servers');
     expect(minimalManifest).not.toHaveProperty('tags');
@@ -231,6 +237,9 @@ describe('dedicated manifest writer', () => {
       ['paths overlay', (manifest) => { manifest.pathsOverlay['/invalid'] = { get: {} }; }],
       ['path-item reference flag', (manifest) => { manifest.apis[0].pathItemRef = 'yes'; }],
       ['generation options', (manifest) => { manifest.options.insertComponents = false; }],
+      ['path order', (manifest) => { manifest.pathOrder.push(manifest.pathOrder[0]); }],
+      ['missing API path order', (manifest) => { manifest.pathOrder = []; }],
+      ['schema-component presence', (manifest) => { manifest.schemaComponentsPresent = false; }],
       ['security scheme', (manifest) => { manifest.securitySchemes.oauth = 'invalid'; }],
       ['default security', (manifest) => { manifest.defaultSecurity = [{ oauth: ['read', 42] }]; }],
       ['API security', (manifest) => { manifest.apis[0].security = [{ oauth: 'read' }]; }],

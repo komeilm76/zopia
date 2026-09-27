@@ -8,14 +8,14 @@ export const updateUser = makeApiConfig({
   operationId: "updateUser",
   requestContentType: "application/json" as unknown as import('km-api').IRequestContentType,
   responseContentType: "application/json" as unknown as import('km-api').IResponseContentType,
-  
+
   auth: "YES",
   summary: "",
   description: "",
   tags: ["#users"],
   examples: JSON.parse("{\"request\":{\"viewer\":{\"summary\":\"Viewer\",\"value\":{\"email\":\"v@example.test\"}}}}"),
   request: { body: z.object({ ["email"]: z.string().email(), ["role"]: z.string().default("viewer").optional() }).strict(),  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({  }), cookies: z.object({  }) },
-  response: { 200: z.object({ ["id"]: z.string().uuid(), ["email"]: z.string().email(), ["role"]: z.string().and(z.enum(["admin","viewer"])).optional(), ["nickname"]: z.string().nullable().optional() }).strict().meta({"title":"User","description":"A user account"}), "default": z.object({  }).passthrough() },
+  response: { 200: z.object({ ["email"]: z.string().email(), ["id"]: z.string().uuid(), ["nickname"]: z.string().nullable().optional(), ["role"]: z.enum(["admin","viewer"]).optional() }).strict().meta({"title":"User","description":"A user account"}), "default": z.object({  }).passthrough() },
 });
 
 export default updateUser;

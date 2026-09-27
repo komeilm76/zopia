@@ -7,7 +7,7 @@ export const getUser = makeApiConfig({
   method: "GET",
   pathShape: "/users/{userId}",
   operationId: "getUser",
-  
+
   responseContentType: "application/json" as unknown as import('km-api').IResponseContentType,
   deprecated: 'YES',
   auth: "YES",

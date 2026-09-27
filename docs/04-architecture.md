@@ -140,8 +140,9 @@ interface OperationContracts {
 
 Reverse conversion is anchored by `ZopiaManifest`, not by a hidden in-memory
 model. It records source dialect/frame metadata, generated file ownership,
-operation snapshots, component schemas, local-reference placements, and
-restoration overlays. Current writer shapes are validated before serialization;
+operation snapshots, component schemas, source path order/empty Path Items,
+explicit schema-container presence, local-reference placements, and restoration
+overlays. Current writer shapes are validated before serialization;
 the reader retains explicit compatibility allowances for older optional fields.
 
 ### 🔁 Canonical order (determinism, P-1)
@@ -150,14 +151,17 @@ the reader retains explicit compatibility allowances for older optional fields.
 | --- | --- |
 | collected operations | source path order; fixed method order `get, post, put, delete, head, options, patch, trace` |
 | public generated-file result | lexical order by portable relative `path` |
-| schema properties | document order (JSON object key order of the source) |
+| runtime schema properties | document order (JSON object key order of the source) |
+| generated TypeScript schema maps/literal-object keys | lexical order (reverse restores source `required` order only while membership is unchanged) |
 | OpenAPI output document | `openapi, info, servers, security, tags, paths, components, externalDocs` |
 | path keys inside `paths` | sorted by path string |
 
 > 📌 **Rule R-401** — anywhere zopia *creates* a list or object, the order above
-> applies. Anywhere zopia *mirrors* source data (properties, params), the
-> source order applies. No `Date.now()`, no `Math.random()` anywhere in the
-> package (P-1). Value-level normalizations (Zod sentinel bounds, const-union →
+> applies. Anywhere zopia *mirrors* source data (runtime properties, params),
+> the source order applies. Generated TypeScript canonicalizes schema-map and
+> literal-object keys so parsing a canonical manifest cannot change the next
+> generated tree. No `Date.now()`, no `Math.random()` anywhere in the package
+> (P-1). Value-level normalizations (Zod sentinel bounds, const-union →
 > `enum`, the `io` input/output split for `required`/`default`) live with the
 > engines that apply them — see
 > [Conversions → R-615 / R-618 / R-654](06-conversions.md).

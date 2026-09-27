@@ -304,6 +304,10 @@
     "insertComponents": false,
     "useComponentAsReference": false
   },
+  "pathOrder": [
+    "/users/{userId}",
+    "/health"
+  ],
   "pathsOverlay": {
     "/users/{userId}": {
       "parameters": [
@@ -324,6 +328,7 @@
       "summary": "User resource"
     }
   },
+  "schemaComponentsPresent": true,
   "securitySchemes": {
     "oauth": {
       "flows": {

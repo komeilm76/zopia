@@ -6,14 +6,14 @@ export const health = makeApiConfig({
   method: "GET",
   pathShape: "/health",
   operationId: "health",
-  
-  
-  
+
+
+
   auth: "NO",
   summary: "",
   description: "",
   tags: [],
-  
+
   request: { body: z.any(),  params: z.object({  }), query: z.object({  }), headers: z.object({  }), cookies: z.object({  }) },
   response: { 204: z.void() },
 });

@@ -139,7 +139,7 @@ export const getUser = makeApiConfig({
   tags: ["#users"],
   examples: JSON.parse("{\"response\":{\"200\":{\"default\":{\"value\":{\"email\":\"admin@example.test\",\"id\":\"22ccbc6a-436b-4b1c-9e64-7440ce63a90e\",\"role\":\"admin\"}}}}}"),
   request: { body: z.any(),  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({ ["X-Trace-Id"]: z.string().optional() }), cookies: z.object({  }) },
-  response: { 200: z.object({ ["id"]: z.string().uuid(), ["email"]: z.string().email(), ["role"]: z.string().and(z.enum(["admin","viewer"])).optional(), ["nickname"]: z.string().nullable().optional() }).strict().meta({"title":"User","description":"A user account"}), 404: z.object({  }).passthrough() },
+  response: { 200: z.object({ ["email"]: z.string().email(), ["id"]: z.string().uuid(), ["nickname"]: z.string().nullable().optional(), ["role"]: z.enum(["admin","viewer"]).optional() }).strict().meta({"title":"User","description":"A user account"}), 404: z.object({  }).passthrough() },
 });
 
 export default getUser;
@@ -201,6 +201,8 @@ request/parameter/response expression (R-403). Cross-file imports appear
     "insertComponents": false,
     "useComponentAsReference": false
   },
+  "pathOrder": ["/health", "/users/{userId}"],
+  "schemaComponentsPresent": true,
   "source": {
     "kind": "openapi-3.0",
     "openapiVersion": "3.0.3",
@@ -252,6 +254,8 @@ request/parameter/response expression (R-403). Cross-file imports appear
 | 🧾 Key | 📝 What engine ④ needs it for |
 | --- | --- |
 | `source` | 🏷️ rebuild `info`; retain the exact source `openapi` patch string in `source.openapiVersion`; verify the tree matches the spec it claims to come from |
+| `pathOrder` | 🧭 retain source `paths` key order so reverse regeneration makes the same collision decisions; it also records operation-free and completely empty Path Items that have no endpoint file or overlay |
+| `schemaComponentsPresent` | 🧱 distinguish an absent schema-component container from an explicitly empty Swagger `definitions: {}` or OpenAPI `components.schemas: {}` declaration |
 | `servers`, `tags`, `securitySchemes` | 🌍🏷️🔐 document frame that has no home in Zod; presence is retained independently from value, so absent and explicitly empty collections round-trip differently (R-656/R-657) |
 | `pathsOverlay` | 🛣️ path-item metadata (`summary`, `description`, shared parameters, local `$ref`, extensions) and `paths` extensions that endpoint modules cannot own |
 | `components[].schema` | 🧱 the **full** component JSON Schema — restored verbatim into `components.schemas` (R-655/R-751) |
@@ -267,13 +271,16 @@ request/parameter/response expression (R-403). Cross-file imports appear
 | `apis[].responseOverlay` | 🚦 response facts with no km-api home — response `headers` and future non-schema fields, restored after code-derived response schemas/content (R-754) |
 | `source.sha256` | 🆔 canonical source identity: regeneration compares it with the normalized new input, alongside `mode` and component options, to detect a stale tree without false positives from object-key order |
 
+Presence is part of the reversible contract: an absent optional field remains absent rather than becoming `false`, and explicit empty schema containers, empty Path Items, unconstrained boolean schemas, schema-less media objects, and schema-local definition containers survive file-backed reverse conversion exactly.
+
 Before importing any code, `manifestFileToOpenApi()` verifies that every `apis[].file` and every non-null `components[].file` still resolves to a regular file inside the manifest directory. Missing or renamed entries fail the whole preflight with `ZOPIA_DOCS_MANIFEST_MISMATCH`; no earlier module is executed.
 
 Security requirements remain manifest-owned because km-api stores only `auth: 'YES' | 'NO'`: an operation-level requirement (including `[]`, or the recoverable `sourceOperation.security` in a legacy manifest) wins first, then `defaultSecurity` applies. Runtime `auth: 'YES'` triggers a reverse fallback only when neither source records a requirement. That fallback emits one `ZOPIA_WARN_DEFAULT_SECURITY` warning per affected operation, reuses one deterministic bearer scheme across operations, and never overwrites an existing incompatible `bearerAuth` definition (it selects `bearerAuth2`, `bearerAuth3`, and so on). OpenAPI 3 output receives an HTTP bearer scheme; source-preserving Swagger 2.0 output receives an `Authorization` header `apiKey` approximation because Swagger 2.0 has no HTTP bearer scheme type.
 
 > 📌 **Rule R-751** — the manifest carries a **full** `schema` for every
-> declared component, in every mode. It is the verbatim source of
-> `components.schemas` on the reverse trip; when `file` is set, the imported
+> declared component, in every mode. `schemaComponentsPresent` separately
+> retains an explicitly empty declaration. The component snapshot is the
+> verbatim source of `components.schemas` on the reverse trip; when `file` is set, the imported
 > file takes precedence (the code is the truth, D-08), followed only by the
 > component's R-635 overlay for facts Zod cannot serialize.
 >
@@ -286,9 +293,12 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 > type segments were not escaped remain readable.
 >
 > 📌 **Rule R-753** — `overlay` entries are `{ at, set?, remove?, node? }`
-> (R-635). `node`-form entries freeze a subtree to its original form; the
-> corresponding generated position carries a `// @zopia:warn
-> ZOPIA_WARN_FROZEN_SUBTREE` comment, so developers see what is not live.
+> (R-635). `node`-form entries retain a subtree's original form while the
+> generated reference-free subtree still matches its deterministic baseline;
+> an edit skips that restoration. Reference-bearing frozen subtrees remain
+> manifest-owned when no independent local baseline can be built. The generated
+> position carries a `// @zopia:warn ZOPIA_WARN_FROZEN_SUBTREE` comment so
+> developers can see the boundary.
 >
 > 📌 **Rule R-754** — `apis[].responseOverlay` records the response facts that
 > have no home in km-api (today: response `headers`; any future

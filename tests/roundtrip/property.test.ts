@@ -60,13 +60,85 @@ describe('round-trip contract', () => {
     it(`T-11: reproduces ${fixture} in ${label} mode after canonicalization`, async () => {
       const source = await readFixture(fixture);
       const outputDirectory = await temporaryDirectory();
+      const regeneratedDirectory = await temporaryDirectory();
 
       await openApiToApiDocs(source, { ...options, outDir: outputDirectory });
       const reversed = await manifestFileToOpenApi(join(outputDirectory, '.zopia-manifest.json'));
+      await openApiToApiDocs(reversed, { ...options, outDir: regeneratedDirectory });
 
       expect(canonicalize(reversed), `${basename(fixture)} (${label})`).toEqual(canonicalize(source));
+      expect(await treeSnapshot(regeneratedDirectory), `${basename(fixture)} (${label}) regenerated tree`).toEqual(await treeSnapshot(outputDirectory));
     });
   }
+
+  it.each([
+    { label: 'Swagger definitions', source: { swagger: '2.0', info: { title: 'Empty Swagger schemas', version: '1' }, definitions: {}, paths: {} } },
+    { label: 'OpenAPI schemas', source: { openapi: '3.1.0', info: { title: 'Empty OpenAPI schemas', version: '1' }, components: { schemas: {} }, paths: {} } },
+  ])('T-10: preserves explicitly empty $label containers', async ({ source }) => {
+    const outputDirectory = await temporaryDirectory();
+    await openApiToApiDocs(source, { outDir: outputDirectory });
+    const reversed = await manifestFileToOpenApi(join(outputDirectory, '.zopia-manifest.json'));
+    expect(canonicalize(reversed)).toEqual(canonicalize(source));
+  });
+
+  it('T-10: preserves absent Swagger body optionality with an unconstrained schema', async () => {
+    const source = {
+      swagger: '2.0', info: { title: 'Optional legacy body', version: '1' },
+      definitions: { Tuple: { type: 'array', items: [{ type: 'string' }], additionalItems: false } },
+      paths: { '/legacy': { post: {
+        parameters: [{ name: 'body', in: 'body', schema: {} }],
+        responses: { '200': { description: 'ok', examples: { 'application/json': { ok: true } } } },
+      } } },
+    };
+    const outputDirectory = await temporaryDirectory();
+    await openApiToApiDocs(source, { outDir: outputDirectory, insertComponents: true });
+    const reversed = await manifestFileToOpenApi(join(outputDirectory, '.zopia-manifest.json'));
+    expect(canonicalize(reversed)).toEqual(canonicalize(source));
+  });
+
+  it('T-10: preserves empty Path Items, boolean schemas, and schema-less media types', async () => {
+    const source = {
+      openapi: '3.1.0',
+      info: { title: 'Manifest edge shapes', version: '1' },
+      components: { schemas: {
+        Always: true,
+        Never: false,
+        BooleanChildren: { type: 'object', properties: { anything: true, impossible: false }, additionalProperties: true },
+        ClosedArray: { type: 'array', items: false },
+        EmptyRequired: { type: 'object', properties: {}, required: [] },
+        LocalDefinitions: { type: 'object', $defs: { Unused: { type: 'string' } }, properties: {} },
+        UntypedEnum: { enum: ['ready', 'done'] },
+        ConstrainedEnum: { type: 'string', enum: ['ready', 'done'], minLength: 4, default: 'ready' },
+      } },
+      paths: {
+        '/empty': {},
+        '/media': { post: {
+          parameters: [{ name: 'filter', in: 'query', content: { 'application/json': { schema: true, example: 'all' } } }],
+          requestBody: { required: true, content: { 'application/json': { example: { accepted: true } } } },
+          responses: { '200': { description: 'schema-less', content: { 'application/json': { example: { ok: true } } } } },
+        } },
+      },
+    };
+    const outputDirectory = await temporaryDirectory();
+    await openApiToApiDocs(source, { outDir: outputDirectory, insertComponents: true });
+    const reversed = await manifestFileToOpenApi(join(outputDirectory, '.zopia-manifest.json'));
+    expect(canonicalize(reversed)).toEqual(canonicalize(source));
+  });
+
+  it('T-10: preserves explicit false schema keywords in OpenAPI 3.0', async () => {
+    const source = {
+      openapi: '3.0.3', info: { title: 'False schema keywords', version: '1' },
+      components: { schemas: { Maybe: { type: 'string', nullable: false }, Bound: { type: 'number', minimum: 0, exclusiveMinimum: false } } },
+      paths: { '/value': { get: {
+        parameters: [{ name: 'value', in: 'query', schema: { type: 'string', nullable: false } }],
+        responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'number', minimum: 0, exclusiveMinimum: false } } } } },
+      } } },
+    };
+    const outputDirectory = await temporaryDirectory();
+    await openApiToApiDocs(source, { outDir: outputDirectory, insertComponents: true });
+    const reversed = await manifestFileToOpenApi(join(outputDirectory, '.zopia-manifest.json'));
+    expect(canonicalize(reversed)).toEqual(canonicalize(source));
+  });
 
   it('R-658: translates Swagger path-item metadata when selecting OpenAPI output', async () => {
     const source = await readFixture('admin-api-2.0.json');
@@ -123,6 +195,24 @@ describe('round-trip contract', () => {
     expect(await treeSnapshot(secondDirectory)).toEqual(await treeSnapshot(firstDirectory));
   });
 
+  it('R-409: reverse regeneration preserves source-order-sensitive collision plans', async () => {
+    const response = { responses: { '200': { description: 'ok' } } };
+    const source = {
+      openapi: '3.1.0', info: { title: 'Collision stability', version: '1' },
+      paths: {
+        '/users': { get: { ...response, operationId: 'users' } },
+        '/users/get/details': { post: { ...response, operationId: 'details' } },
+        '/empty': {},
+      },
+    };
+    const firstDirectory = await temporaryDirectory();
+    const secondDirectory = await temporaryDirectory();
+    await openApiToApiDocs(source, { outDir: firstDirectory });
+    const reversed = await manifestFileToOpenApi(join(firstDirectory, '.zopia-manifest.json'));
+    await openApiToApiDocs(reversed, { outDir: secondDirectory });
+    expect(await treeSnapshot(secondDirectory)).toEqual(await treeSnapshot(firstDirectory));
+  });
+
   it('T-10: the spec-clean canonical fixture needs no operation restorations', async () => {
     const source = await readFixture('admin-api-3.0.json');
     const outputDirectory = await temporaryDirectory();
@@ -139,8 +229,10 @@ describe('round-trip contract', () => {
       z.object({ id: z.uuid(), email: z.email(), count: z.number().int().min(0), nickname: z.string().nullable().optional() }).strict(),
       z.array(z.string().min(1)).min(1).max(5),
       z.union([z.literal('ready'), z.literal('done'), z.literal(7)]),
+      z.enum(['ready', 'done']),
       z.tuple([z.string(), z.number().int()]).rest(z.boolean()),
       z.record(z.string(), z.number()),
+      z.never(),
       recursive,
     ];
 

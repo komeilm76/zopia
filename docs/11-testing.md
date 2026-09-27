@@ -124,7 +124,7 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-64 | `version: '3.0'` vs `'3.1'` output diff | D-09 |
 | S-65 | missing manifest / renamed file / broken export → typed errors | R-651/R-652 |
 | S-66 | metadata restoration — titles, examples, servers, tag descriptions, security schemes, multi-content types come back verbatim | R-656/R-657 + honest-limits table |
-| S-67 | idempotence — `reverse(generate(spec))` then `generate(…)` ⇒ identical tree (T-11) | R-409 |
+| S-67 | idempotence — `reverse(generate(spec))` then `generate(…)` ⇒ identical tree, including source-order-sensitive method/path collisions and empty Path Items (T-11) | R-409 |
 | S-68 | non-standard status (`419`) + `default` response → emitted as numeric/`default` response keys, round-trips exactly (km-api ≥ 0.4.1) | R-642 |
 | S-69 | exotic media type (`application/vnd.custom+json`) → emitted verbatim as the content type, used as the `content` key on reverse (km-api ≥ 0.4.1) | R-642 |
 | S-70 | parameter extras (`allowEmptyValue`, `style`, `explode`) + response `headers` → overlay/`responseOverlay`, restored verbatim on reverse | R-635/R-754 |
@@ -141,12 +141,15 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 // 🧪 tests/roundtrip/property.test.ts (implemented)
 for (const fixture of fixtures) {
   it(`round-trips ${fixture}`, async () => {
-    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zopia-roundtrip-')); // R-111
+    const outDir = await temporaryDirectory(); // shared R-111 cleanup helper
     await openApiToApiDocs(await loadFixture(fixture), { outDir });
     // Omitting `version` preserves the source dialect, including Swagger 2.0
     // and an exact OpenAPI patch version such as 3.0.3.
     const back = await manifestFileToOpenApi(path.join(outDir, '.zopia-manifest.json'));
     expect(canonicalize(back)).toEqual(canonicalize(await loadFixture(fixture)));
+    const regenerated = await temporaryDirectory();
+    await openApiToApiDocs(back, { outDir: regenerated });
+    expect(await treeSnapshot(regenerated)).toEqual(await treeSnapshot(outDir));
   });
 }
 ```
@@ -160,11 +163,14 @@ is a real engine bug. Every dialect fixture (S-01…S-06) round-trips against
 single frozen subtree or keyword restoration.
 
 The implemented matrix also runs flat mode, emitted-but-inlined components,
-emitted component references, nested and cyclic refs, and frozen overlays. It
-asserts both same-input regeneration and reverse-output regeneration are
-byte-identical, checks source-preserving Swagger → OpenAPI selection separately,
-and verifies that supported Zod → JSON Schema → Zod pipelines converge on the
-same canonical schema. Every temporary tree is removed after its test (R-111).
+emitted component references, nested and cyclic refs, and frozen overlays. For
+every fixture/layout/component case it asserts that reverse output reproduces
+the source and regenerates a byte-identical tree; separate properties cover
+same-input regeneration and collision-sensitive path plans. It checks source-preserving
+Swagger → OpenAPI selection separately, covers explicit empty schema containers,
+empty Path Items, boolean/tuple/local-definition schemas, schema-less media and
+absent optional flags, and verifies that supported Zod → JSON Schema → Zod
+pipelines (including `z.never()`) converge on the same canonical schema. Every temporary tree is removed after its test (R-111).
 
 ## 🧰 Fixtures
 

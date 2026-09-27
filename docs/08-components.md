@@ -62,7 +62,7 @@ export const UserSchema = (() => { /**
  * User
  * A user account
  */
-const UserSchema = z.object({ ["id"]: z.string().uuid(), ["email"]: z.string().email(), ["role"]: z.enum(["admin","viewer"]).optional(), ["nickname"]: z.string().nullable().optional() }).strict().meta({"title":"User","description":"A user account"}); return UserSchema; })();
+const UserSchema = z.object({ ["email"]: z.string().email(), ["id"]: z.string().uuid(), ["nickname"]: z.string().nullable().optional(), ["role"]: z.enum(["admin","viewer"]).optional() }).strict().meta({"title":"User","description":"A user account"}); return UserSchema; })();
 
 export default UserSchema;
 ```

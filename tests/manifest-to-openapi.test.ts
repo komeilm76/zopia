@@ -555,9 +555,10 @@ describe('manifest reverse conversion', () => {
     expect(reversed.components.schemas.UserAlias).toEqual({ $ref: '#/components/schemas/User' });
     expect(reversed.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/UserAlias' });
 
-    await writeFile(componentFile, (await readFile(componentFile, 'utf8')).replace('.min(1)', '.min(2)'), 'utf8');
+    await writeFile(componentFile, (await readFile(componentFile, 'utf8')).replace('.min(1)', '.min(2)').replace('.passthrough()', '.strict()'), 'utf8');
     const rereversed = await manifestFileToOpenApi(manifestFile) as any;
     expect(rereversed.components.schemas.User.properties.id.minimum).toBe(2);
+    expect(rereversed.components.schemas.User.additionalProperties).toBe(false);
 
     const endpointFile = join(outputDir, 'users', 'get', 'index.ts');
     const endpoint = await readFile(endpointFile, 'utf8');
@@ -567,6 +568,48 @@ describe('manifest reverse conversion', () => {
     await writeFile(manifestFile, JSON.stringify(editedManifest), 'utf8');
     const referenceEdited = await manifestFileToOpenApi(manifestFile) as any;
     expect(referenceEdited.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/Group' });
+  });
+  it('keeps edited component openness authoritative over source structure', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    await generateApiDocsFiles({
+      openapi: '3.1.0', info: { title: 'Openness', version: '1' },
+      components: { schemas: { Closed: { type: 'object', properties: { id: { type: 'string' }, blocked: false }, required: ['id'], additionalProperties: false } } },
+      paths: {},
+    }, { outputDir, insertComponents: true });
+    const componentFile = join(outputDir, 'components', 'Closed', 'index.ts');
+    const generated = await readFile(componentFile, 'utf8');
+    await writeFile(componentFile, generated.replace('.strict()', '.passthrough()').replace('["blocked"]: z.never().optional()', '["blocked"]: z.string().optional()'), 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.components.schemas.Closed.additionalProperties).toEqual({});
+    expect(reversed.components.schemas.Closed.properties.blocked).toEqual({ type: 'string' });
+  });
+  it('keeps edited draft tuple members authoritative over tuple-spelling overlays', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    await generateApiDocsFiles({
+      swagger: '2.0', info: { title: 'Tuple edits', version: '1' },
+      definitions: { Pair: { type: 'array', items: [{ type: 'string' }, { type: 'number' }], additionalItems: false } }, paths: {},
+    }, { outputDir, insertComponents: true });
+    const componentFile = join(outputDir, 'components', 'Pair', 'index.ts');
+    const generated = await readFile(componentFile, 'utf8');
+    await writeFile(componentFile, generated.replace('z.string().optional()', 'z.boolean().optional()'), 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.definitions.Pair.items[0]).toEqual({ type: 'boolean' });
+  });
+  it('does not let frozen overlays overwrite edited component validation', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    await generateApiDocsFiles({
+      openapi: '3.1.0', info: { title: 'Frozen edits', version: '1' },
+      components: { schemas: { Name: { allOf: [{ type: 'string', minLength: 2 }, { type: 'string', maxLength: 8 }] } } }, paths: {},
+    }, { outputDir, insertComponents: true });
+    const componentFile = join(outputDir, 'components', 'Name', 'index.ts');
+    const generated = await readFile(componentFile, 'utf8');
+    await writeFile(componentFile, generated.replace('.min(2)', '.min(3)'), 'utf8');
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.components.schemas.Name.minLength).toBe(3);
+    expect(reversed.components.schemas.Name).not.toHaveProperty('allOf');
   });
   it('round-trips emitted root and nested component annotations through generated code', async () => {
     const outputDir = await temporaryDirectory('zopia-');

@@ -42,6 +42,7 @@ interface AnalysisWarning extends ZopiaWarning { keyword: string; }
 const pointer = (at: string, token: string | number): string => `${at}/${String(token).replace(/~/g, '~0').replace(/\//g, '~1')}`;
 const warningAt = (at: string): string => at === '' ? '#' : `#${at}`;
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const sortedEntries = <T>(value: Record<string, T>): Array<[string, T]> => Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
 const isSchemaValue = (value: unknown): value is JsonSchema => typeof value === 'boolean' || (value !== null && typeof value === 'object' && !Array.isArray(value));
 
 function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overlays: JsonSchemaOverlay[] } {
@@ -67,13 +68,21 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
     warn(code, at, keyword, message);
     addOverlay({ at, node: cloneJson(node) });
   };
-  const visit = (node: JsonSchema, at = ''): void => {
-    if (typeof node === 'boolean') return;
+  const visit = (node: JsonSchema, at = '', _parentKeyword?: string): void => {
+    if (typeof node === 'boolean') { addOverlay({ at, node }); return; }
 
     if (Object.prototype.hasOwnProperty.call(node, 'not')) {
-      freeze(node, at, 'ZOPIA_WARN_NOT', 'not', '`not` is enforced by a Zod refinement and frozen for exact reverse conversion');
+      const exactNever = Object.keys(node).length === 1 && node.not !== null && typeof node.not === 'object' && !Array.isArray(node.not) && Object.keys(node.not).length === 0;
+      if (!exactNever) freeze(node, at, 'ZOPIA_WARN_NOT', 'not', '`not` is enforced by a Zod refinement and frozen for exact reverse conversion');
       return;
     }
+    if (node.nullable === false) addOverlay({ at, set: { nullable: false } });
+    for (const keyword of ['exclusiveMinimum', 'exclusiveMaximum'] as const) if (node[keyword] === false) addOverlay({ at, set: { [keyword]: false } });
+    if (node.type === 'array' && node.items === false && !Array.isArray(node.prefixItems)) addOverlay({
+      at,
+      set: { items: false, ...(Object.prototype.hasOwnProperty.call(node, 'maxItems') ? { maxItems: cloneJson(node.maxItems) } : {}) },
+      remove: ['prefixItems', ...(Object.prototype.hasOwnProperty.call(node, 'maxItems') ? [] : ['maxItems'])],
+    });
     if (Object.prototype.hasOwnProperty.call(node, 'allOf')) {
       freeze(node, at, 'ZOPIA_WARN_FROZEN_SUBTREE', 'allOf', '`allOf` structure is frozen because Zod intersections can serialize with a different shape');
       return;
@@ -88,6 +97,7 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
       return;
     }
 
+    if (Array.isArray(node.enum) && node.type === undefined && node.enum.length > 0 && node.enum.every((value: unknown) => typeof value === 'string')) addOverlay({ at, remove: ['type'] });
     if (Array.isArray(node.oneOf)) {
       warn('ZOPIA_WARN_ONE_OF', at, 'oneOf', '`oneOf` requires an overlay because Zod unions do not serialize exclusivity and discriminator metadata identically');
       addOverlay({ at, set: { oneOf: cloneJson(node.oneOf), ...(node.discriminator === undefined ? {} : { discriminator: cloneJson(node.discriminator) }) }, remove: ['anyOf'] });
@@ -97,18 +107,23 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
       addOverlay({ at, set: { uniqueItems: true } });
     }
     if (node.type === 'array' && (Array.isArray(node.prefixItems) || Array.isArray(node.items))) {
-      const set = Object.fromEntries(['minItems', 'maxItems'].filter((key) => Object.prototype.hasOwnProperty.call(node, key)).map((key) => [key, cloneJson(node[key])]));
-      const closed = Array.isArray(node.prefixItems)
-        ? node.items === false || node.items === undefined && node.unevaluatedItems === false
-        : node.additionalItems === false;
-      const remove = !Object.prototype.hasOwnProperty.call(node, 'maxItems') && closed ? ['maxItems'] : [];
+      const draftTuple = Array.isArray(node.items);
+      const set = {
+        ...Object.fromEntries(['minItems', 'maxItems'].filter((key) => Object.prototype.hasOwnProperty.call(node, key)).map((key) => [key, cloneJson(node[key])])),
+        ...(draftTuple ? {
+          items: cloneJson(node.items),
+          ...(Object.prototype.hasOwnProperty.call(node, 'additionalItems') ? { additionalItems: cloneJson(node.additionalItems) } : {}),
+        } : node.items === undefined && node.unevaluatedItems !== undefined ? { unevaluatedItems: cloneJson(node.unevaluatedItems) } : {}),
+      };
+      const closed = draftTuple
+        ? node.additionalItems === false
+        : node.items === false || node.items === undefined && node.unevaluatedItems === false;
+      const remove = [
+        ...(draftTuple ? ['prefixItems'] : node.items === undefined ? ['items'] : []),
+        ...(!Object.prototype.hasOwnProperty.call(node, 'maxItems') && closed ? ['maxItems'] : []),
+      ];
       if (Object.keys(set).length || remove.length) addOverlay({ at, ...(Object.keys(set).length ? { set } : {}), ...(remove.length ? { remove } : {}) });
     }
-    if (node.type === 'object' && !Object.prototype.hasOwnProperty.call(node, 'additionalProperties')) {
-      addOverlay({ at, remove: ['additionalProperties'] });
-    }
-    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties) && Object.keys(node.properties).length === 0) addOverlay({ at, set: { properties: {} } });
-
     for (const [name, bound] of [['exclusiveMinimum', node.exclusiveMinimum], ['exclusiveMaximum', node.exclusiveMaximum]] as const) {
       if (bound !== true) continue;
       warn('ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND', at, name, `legacy boolean \`${name}\` is approximated by a Zod numeric bound`);
@@ -180,16 +195,16 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
       return;
     }
 
-    const visitChild = (key: string, value: unknown): void => { if (isSchemaValue(value)) visit(value, pointer(at, key)); };
-    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) for (const [key, child] of Object.entries(node.properties)) if (isSchemaValue(child)) visit(child, pointer(pointer(at, 'properties'), key));
-    if (node.patternProperties && typeof node.patternProperties === 'object' && !Array.isArray(node.patternProperties)) for (const [key, child] of Object.entries(node.patternProperties)) if (isSchemaValue(child)) visit(child, pointer(pointer(at, 'patternProperties'), key));
+    const visitChild = (key: string, value: unknown): void => { if (isSchemaValue(value)) visit(value, pointer(at, key), key); };
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) for (const [key, child] of Object.entries(node.properties)) if (isSchemaValue(child)) visit(child, pointer(pointer(at, 'properties'), key), 'properties');
+    if (node.patternProperties && typeof node.patternProperties === 'object' && !Array.isArray(node.patternProperties)) for (const [key, child] of Object.entries(node.patternProperties)) if (isSchemaValue(child)) visit(child, pointer(pointer(at, 'patternProperties'), key), 'patternProperties');
     for (const key of ['additionalProperties', 'unevaluatedProperties', 'propertyNames', 'contains', 'not', 'if', 'then', 'else'] as const) visitChild(key, node[key]);
     for (const key of ['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf'] as const) {
       const value = node[key];
-      if (Array.isArray(value)) value.forEach((child, index) => { if (isSchemaValue(child)) visit(child, pointer(pointer(at, key), index)); });
+      if (Array.isArray(value)) value.forEach((child, index) => { if (isSchemaValue(child)) visit(child, pointer(pointer(at, key), index), key); });
       else visitChild(key, value);
     }
-    for (const key of ['$defs', 'definitions', 'dependentSchemas'] as const) if (node[key] && typeof node[key] === 'object' && !Array.isArray(node[key])) for (const [name, child] of Object.entries(node[key])) if (isSchemaValue(child)) visit(child, pointer(pointer(at, key), name));
+    for (const key of ['$defs', 'definitions', 'dependentSchemas'] as const) if (node[key] && typeof node[key] === 'object' && !Array.isArray(node[key])) for (const [name, child] of Object.entries(node[key])) if (isSchemaValue(child)) visit(child, pointer(pointer(at, key), name), key);
   };
   visit(source);
   return { warnings, overlays };
@@ -252,8 +267,11 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       return valid;
     };
     if (!visit(value)) return undefined;
-    try { return JSON.stringify(value); }
-    catch { return undefined; }
+    try {
+      return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+        ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
+        : item);
+    } catch { return undefined; }
   };
   const canonicalJson = (value: unknown): string | undefined => {
     const literal = jsonLiteral(value);
@@ -303,7 +321,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
   if (typeof source === 'object') for (const keyword of ['$defs', 'definitions'] as const) {
     const definitions = source[keyword];
     if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) continue;
-    for (const [rawName, definition] of Object.entries(definitions)) {
+    for (const [rawName, definition] of sortedEntries(definitions)) {
       if (!isSchema(definition)) continue;
       const words = rawName.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
       let name = words.map((word, index) => index === 0 ? word[0]?.toLowerCase() + word.slice(1) : word[0]?.toUpperCase() + word.slice(1)).join('') || 'definition';
@@ -323,6 +341,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     if (node === true) return { schema: z.any(), code: 'z.any()' };
     if (node === false) return { schema: z.never(), code: 'z.never()' };
     if (!node || typeof node !== 'object' || Array.isArray(node)) { pushWarning('Schema node is not an object'); return { schema: z.any(), code: 'z.any()' }; }
+    if (Object.keys(node).length === 1 && node.not !== null && typeof node.not === 'object' && !Array.isArray(node.not) && Object.keys(node.not).length === 0) return { schema: z.never(), code: 'z.never()' };
     if (node.nullable !== undefined) {
       const withoutNullable = Object.fromEntries(Object.entries(node).filter(([key]) => key !== 'nullable')) as JsonSchema;
       if (typeof node.nullable !== 'boolean') { pushWarning('Invalid nullable: expected a boolean'); return convert(withoutNullable, resolving, at); }
@@ -467,7 +486,9 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
             ? literals[0]
             : { schema: z.union(literals.map((item) => item.schema) as [z.ZodType, z.ZodType, ...z.ZodType[]]), code: `z.union([${literals.map((item) => item.code).join(', ')}])` };
       }
-      return withSiblings('enum', combined);
+      const stringConstraints = ['minLength', 'maxLength', 'pattern', 'format', 'contentEncoding', 'contentMediaType'];
+      const redundantType = node.type === 'string' && node.enum.length > 0 && node.enum.every((value: unknown) => typeof value === 'string') && !stringConstraints.some((key) => Object.prototype.hasOwnProperty.call(node, key));
+      return withSiblings('enum', combined, redundantType ? ['type'] : []);
     }
     if ('const' in node) {
       const literal = literalSchema(node.const, 'const') ?? { schema: z.any(), code: 'z.any()' };
@@ -517,15 +538,21 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
         if (!additionalPropertiesValid) pushWarning('Invalid additionalProperties: expected a schema');
         const unevaluatedPropertiesValid = node.unevaluatedProperties === undefined || isSchema(node.unevaluatedProperties);
         if (!unevaluatedPropertiesValid) pushWarning('Invalid unevaluatedProperties: expected a schema');
-        const shape: Record<string, z.ZodType> = Object.create(null); const parts: string[] = [];
+        const shape: Record<string, z.ZodType> = Object.create(null); const codeByProperty = new Map<string, string>();
         const declaredKeys = new Set(Object.keys(node.properties ?? {}));
         const undeclaredRequiredKeys = requiredKeys.filter((key) => !declaredKeys.has(key));
-        for (const [key, child] of Object.entries(node.properties ?? {})) { const item = convert(child as JsonSchema, resolving, pointer(pointer(at, 'properties'), key)); const required = requiredKeys.includes(key); shape[key] = required ? item.schema : item.schema.optional(); parts.push(`[${JSON.stringify(key)}]: ${required ? item.code : `${item.code}.optional()`}`); }
-        for (const key of undeclaredRequiredKeys) { shape[key] = z.unknown(); parts.push(`[${JSON.stringify(key)}]: z.unknown()`); }
+        for (const [key, child] of Object.entries(node.properties ?? {})) {
+          const item = convert(child as JsonSchema, resolving, pointer(pointer(at, 'properties'), key));
+          const required = requiredKeys.includes(key);
+          shape[key] = required ? item.schema : item.schema.optional();
+          codeByProperty.set(key, `[${JSON.stringify(key)}]: ${required ? item.code : `${item.code}.optional()`}`);
+        }
+        for (const key of undeclaredRequiredKeys) { shape[key] = z.unknown(); codeByProperty.set(key, `[${JSON.stringify(key)}]: z.unknown()`); }
+        const parts = [...codeByProperty].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, code]) => code);
         let objectSchema = z.object(shape); let objectCode = `z.object({ ${parts.join(', ')} })`;
         const patternSchemas: Array<{ expression: string; regex: RegExp; converted: Converted }> = [];
         if (patternPropertiesValid && node.patternProperties) {
-          for (const [expression, patternNode] of Object.entries(node.patternProperties as Record<string, JsonSchema>)) {
+          for (const [expression, patternNode] of sortedEntries(node.patternProperties as Record<string, JsonSchema>)) {
             try {
               const regex = new RegExp(expression);
               patternSchemas.push({ expression, regex, converted: convert(patternNode, resolving, pointer(pointer(at, 'patternProperties'), expression)) });
@@ -730,7 +757,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     }
     if (node.type === 'object' && node.dependencies !== undefined) {
       if (!node.dependencies || typeof node.dependencies !== 'object' || Array.isArray(node.dependencies)) pushWarning('Invalid dependencies: expected an object');
-      else for (const [key, dependency] of Object.entries(node.dependencies as Record<string, unknown>)) {
+      else for (const [key, dependency] of sortedEntries(node.dependencies as Record<string, unknown>)) {
         if (Array.isArray(dependency)) {
           if (!dependency.every((item) => typeof item === 'string')) { pushWarning('Invalid dependencies entry: expected a string array or schema'); continue; }
           const requiredKeys = dependency as string[];
@@ -749,7 +776,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     }
     if (node.type === 'object' && node.dependentRequired !== undefined && (!node.dependentRequired || typeof node.dependentRequired !== 'object' || Array.isArray(node.dependentRequired))) pushWarning('Invalid dependentRequired: expected an object of string arrays');
     if (node.type === 'object' && node.dependentRequired && typeof node.dependentRequired === 'object' && !Array.isArray(node.dependentRequired)) {
-      const dependencies = Object.entries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => {
+      const dependencies = sortedEntries(node.dependentRequired as Record<string, unknown>).filter(([, value]) => {
         const valid = Array.isArray(value) && value.every((item) => typeof item === 'string');
         if (!valid) pushWarning('Invalid dependentRequired entry: expected an array of strings');
         return valid;
@@ -762,7 +789,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     }
     if (node.type === 'object' && node.dependentSchemas !== undefined && (!node.dependentSchemas || typeof node.dependentSchemas !== 'object' || Array.isArray(node.dependentSchemas))) pushWarning('Invalid dependentSchemas: expected an object of schemas');
     if (node.type === 'object' && node.dependentSchemas && typeof node.dependentSchemas === 'object' && !Array.isArray(node.dependentSchemas)) {
-      for (const [key, dependency] of Object.entries(node.dependentSchemas as Record<string, JsonSchema>)) {
+      for (const [key, dependency] of sortedEntries(node.dependentSchemas as Record<string, JsonSchema>)) {
         const dependent = convert(dependency, resolving, pointer(pointer(at, 'dependentSchemas'), key));
         result = { schema: result.schema.refine((value: any) => !Object.prototype.hasOwnProperty.call(value, key) || dependent.schema.safeParse(value).success), code: `${result.code}.refine((value) => !Object.prototype.hasOwnProperty.call(value, ${JSON.stringify(key)}) || (${dependent.code}).safeParse(value).success)` };
       }
@@ -827,7 +854,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
         metadata[key] = JSON.parse(literal);
       };
       for (const key of ['title', 'description', 'examples', 'readOnly', 'writeOnly', 'deprecated', 'discriminator', 'xml', 'externalDocs'] as const) if (Object.prototype.hasOwnProperty.call(node, key)) addMetadata(key, node[key]);
-      for (const [key, value] of Object.entries(node)) if (key.startsWith('x-')) addMetadata(key, value);
+      for (const [key, value] of sortedEntries(node)) if (key.startsWith('x-')) addMetadata(key, value);
       if (!Object.prototype.hasOwnProperty.call(node, 'examples') && Object.prototype.hasOwnProperty.call(node, 'example')) {
         const literal = jsonLiteral(node.example);
         if (literal === undefined) pushWarning('Invalid example: expected a JSON value');

@@ -85,7 +85,11 @@
     "insertComponents": false,
     "useComponentAsReference": false
   },
+  "pathOrder": [
+    "/probe/{probeId}"
+  ],
   "pathsOverlay": {},
+  "schemaComponentsPresent": false,
   "securitySchemes": {
     "bearerAuth": {
       "scheme": "bearer",

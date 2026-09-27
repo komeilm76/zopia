@@ -9,7 +9,7 @@ export const updateUser = makeApiConfig({
   operationId: "updateUser",
   requestContentType: "application/json" as unknown as import('km-api').IRequestContentType,
   responseContentType: "application/json" as unknown as import('km-api').IResponseContentType,
-  
+
   auth: "YES",
   summary: "",
   description: "",
