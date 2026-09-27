@@ -58,7 +58,7 @@ api_docs/
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
 | R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `head`, `options`, `patch`, `trace` (km-api ≥ 0.4.1) |
 | R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
-| R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): within the endpoint area (outside `components/`, whose component dirs also hold an `index.ts`) the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
+| R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): within the endpoint area (outside `components/`, whose component dirs also hold an `index.ts`) the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). If another path would place directories beneath a method directory, the conflicting literal segment receives `-2`, `-3`, … regardless of source order. The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
 ## 📂 Mode — `flat`
 
@@ -110,9 +110,10 @@ file-level API, and the manifest remains authoritative (D-06).
 
 Before rendering an endpoint, zopia normalizes each operation into an
 intermediate representation and preserves request/response media types. The
-first content-bearing media type is emitted verbatim; malformed content and
-unresolved request/response `$ref` values are errors, never silently dropped.
-Endpoint rendering either inlines reusable schema references or imports emitted
+first content-bearing media type is emitted verbatim; malformed content, `null`
+schema nodes, malformed schema-component maps, and unresolved request/response
+`$ref` values are errors, never silently replaced or dropped. Endpoint rendering
+either inlines reusable schema references or imports emitted
 components according to the selected component options.
 
 ## 📄 The `index.ts` contract
@@ -304,8 +305,8 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 | --- | --- | --- |
 | Endpoint export (with `operationId`) | `operationId` camelCased | `getUser` |
 | Endpoint export (derived) | `method + PascalCase(segments)` — braces stripped; synthetic collisions receive `2`, `3`, while explicit IDs remain authoritative | `getAdminUsersId` |
-| Directory-mode directories | path segments verbatim (braces preserved); collapsed/root/case/component-file collisions receive `-2`, `-3` on the leaf | `admin/users/{id}` |
-| Flat-mode directory | segments joined by `-` (braces preserved); collisions → `-2`, `-3` | `admin-users-{id}` |
+| Directory-mode directories | path segments verbatim (braces preserved); collapsed/root/case/component-file collisions receive `-2`, `-3` on the conflicting segment or leaf, including method-directory prefix conflicts | `admin/users/{id}` |
+| Flat-mode directory | segments joined by `-` (braces preserved); collisions → `-2`, `-3`; a name equal to the enabled `.zopia-manifest.json` file is also disambiguated | `admin-users-{id}` |
 | Method directories | lowercase method | `get` |
 | Component directories | exact component name (case preserved — round-trip) | `User`, `CreateUser` |
 | Component export | `<ComponentName>Schema` (a name already ending in `Schema` is kept as-is) | `UserSchema` |

@@ -16,6 +16,10 @@ describe('normalizeOpenApiDocument', () => {
     expect(() => normalizeOpenApiDocument({ ...base('3.0.3'), webhooks: {} })).toThrow('unsupported root field: webhooks');
     expect(() => normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'x', version: '1' }, components: {}, paths: {} })).toThrow('unsupported root field: components');
     expect(() => normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: 'application/json', paths: {} })).toThrow('Invalid Swagger consumes: #');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), components: null })).toThrow('components must be an object');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), components: { schemas: [] } })).toThrow('schema components must be an object');
+    expect(() => normalizeOpenApiDocument({ ...base('3.1.0'), components: { schemas: { Broken: null } } })).toThrow('Invalid schema component: Broken');
+    expect(() => normalizeOpenApiDocument({ swagger: '2.0', info: { title: 'x', version: '1' }, definitions: 'invalid', paths: {} })).toThrow('schema components must be an object');
     expect(normalizeOpenApiDocument({ ...base('3.1.0'), 'x-root': { retained: true } }).version).toBe('3.1');
   });
   it('accepts JSON text and rejects malformed or incomplete input', () => {

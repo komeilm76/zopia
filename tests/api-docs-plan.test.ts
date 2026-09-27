@@ -34,7 +34,7 @@ describe('API docs file planning', () => {
     expect(planApiDocsFiles(caseCollisions).map((item) => item.file)).toEqual(['Users/get/index.ts', 'users-2/get/index.ts']);
     expect(planApiDocsFiles(caseCollisions, 'flat').map((item) => item.file)).toEqual(['Users/get/index.ts', 'users-2/get/index.ts']);
   });
-  it('S-24: preserves a literal path segment whose name is an HTTP method', () => {
+  it('S-24: preserves an isolated literal path segment whose name is an HTTP method', () => {
     const methodSegment = {
       openapi: '3.1.0',
       info: { title: 'x', version: '1' },
@@ -43,6 +43,30 @@ describe('API docs file planning', () => {
 
     expect(planApiDocsFiles(methodSegment)).toEqual([
       expect.objectContaining({ path: '/users/get', method: 'get', file: 'users/get/get/index.ts' }),
+    ]);
+  });
+  it('keeps method directories leaf-only when a literal path segment is also a method', () => {
+    const response = { responses: { '200': { description: 'ok' } } };
+    const parentFirst = {
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/users': { get: { ...response, operationId: 'users' } }, '/users/get/details': { post: { ...response, operationId: 'details' } } },
+    };
+    expect(planApiDocsFiles(parentFirst).map(({ file }) => file)).toEqual([
+      'users/get/index.ts',
+      'users/get-2/details/post/index.ts',
+    ]);
+
+    const childFirst = {
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/users/get': { post: { ...response, operationId: 'child' } }, '/users': { get: { ...response, operationId: 'parent' } } },
+    };
+    expect(planApiDocsFiles(childFirst).map(({ file }) => file)).toEqual([
+      'users/get/post/index.ts',
+      'users-2/get/index.ts',
+    ]);
+    expect(planApiDocsFiles(parentFirst, 'flat').map(({ file }) => file)).toEqual([
+      'users/get/index.ts',
+      'users-get-details/post/index.ts',
     ]);
   });
   it('S-25: preserves every segment and parameter in deeply nested paths', () => {

@@ -50,6 +50,20 @@ export function normalizeOpenApiDocument(input: OpenApiDocument | string): Norma
     const value = document[field];
     if (value !== undefined && (!Array.isArray(value) || !value.every((item) => typeof item === 'string' && item.length > 0))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger ${field}: #`, { at: `#/${field}`, hint: `provide ${field} as an array of non-empty media-type strings` });
   }
+  let schemas: unknown;
+  let schemasAt: string;
+  if (version === '2.0') {
+    schemas = document.definitions;
+    schemasAt = '#/definitions';
+  } else {
+    if (document.components !== undefined && (!document.components || typeof document.components !== 'object' || Array.isArray(document.components))) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI document: components must be an object', { at: '#/components', hint: 'provide an OpenAPI Components Object' });
+    schemas = document.components?.schemas;
+    schemasAt = '#/components/schemas';
+  }
+  if (schemas !== undefined) {
+    if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI document: schema components must be an object', { at: schemasAt, hint: 'provide a map of named schemas' });
+    for (const [name, schema] of Object.entries(schemas)) if (!name || typeof schema !== 'boolean' && (!schema || typeof schema !== 'object' || Array.isArray(schema))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid schema component: ${name || '(empty name)'}`, { at: `${schemasAt}/${pointerToken(name)}`, hint: 'provide a non-empty component name and an object or boolean schema' });
+  }
   if (!document.info || typeof document.info !== 'object' || typeof document.info.title !== 'string' || document.info.title.trim() === '' || typeof document.info.version !== 'string' || document.info.version.trim() === '') throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI document: info.title and info.version are required', { at: '#/info', hint: 'provide non-empty info.title and info.version strings' });
   if (!document.paths || typeof document.paths !== 'object' || Array.isArray(document.paths)) throw new ZopiaError('ZOPIA_SPEC_MISSING_PATHS', 'invalid OpenAPI document: paths must be an object', { at: '#/paths', hint: 'add a paths object to the API document' });
   for (const [path, item] of Object.entries(document.paths)) {

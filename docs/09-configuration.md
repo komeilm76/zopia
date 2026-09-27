@@ -36,7 +36,7 @@ interface ZopiaGenerateOptions {
 | `outDir` | `string` | `'api_docs'` | relative or absolute; created if missing; **never deleted recursively without this exact dir** (safety R-406) |
 | `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](07-api-docs.md) |
 | `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` |
-| `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact component schema references in endpoints and recursively renders nested component references; direct and mutual cycles use lazy schemas; **requires** `insertComponents: true` |
+| `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
 
 ### ✅ Validation rules

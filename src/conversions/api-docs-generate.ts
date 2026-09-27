@@ -9,7 +9,6 @@ import { isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
 import { createZopiaManifest, hashOpenApiDocument, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { inspectZopiaManifestStaleness, removeObsoleteManifestFiles } from './manifest-staleness';
-import { formatZopiaWarningComment } from '../warnings';
 import { decodeJsonPointerSegment, resolveOpenApiLocalRef } from './openapi-ref';
 
 /** A low-level generated file record with both relative and absolute paths. */
@@ -46,7 +45,7 @@ function componentTarget(ref: unknown): string | undefined {
   return suffix !== undefined && !suffix.includes('/') ? decodeJsonPointerSegment(suffix, String(ref)) : undefined;
 }
 function componentExport(ref: unknown): string | undefined {
-  const target = componentTarget(ref); return target === undefined ? undefined : `${exportName(target)}Schema`;
+  const target = componentTarget(ref); return target === undefined ? undefined : componentExportName(target);
 }
 const STRUCTURAL_REF_MAP_KEYS = new Set(['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'responses', 'content', 'headers', 'links', 'encoding', 'callbacks']);
 function collectComponentRefs(value: unknown, names = new Set<string>(), mapEntries = false): Set<string> {
@@ -61,7 +60,7 @@ function collectComponentRefs(value: unknown, names = new Set<string>(), mapEntr
 }
 function schemaCode(schema: unknown, name: string): string {
   const safeName = exportName(name);
-  const converted = jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: safeName });
+  const converted = jsonSchemaToZod(schema === undefined ? true : schema as any, { rootName: safeName });
   const source = converted.code.trimEnd();
   const direct = source.match(new RegExp(`^const ${safeName.replace(/[$]/g, '\\$&')} = ([\\s\\S]*);$`));
   return direct ? direct[1] : `(() => { ${source} return ${safeName}; })()`;
@@ -74,17 +73,18 @@ function schemaCodeWithDocumentRefs(schema: unknown, name: string, source: OpenA
   let namespace = '__zopiaComponents';
   while (Object.prototype.hasOwnProperty.call(ownDefinitions, namespace)) namespace += '_';
   let found = false;
-  const normalizeRefs = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(normalizeRefs);
+  const normalizeRefs = (value: unknown, mapEntries = false): unknown => {
+    if (Array.isArray(value)) return value.map((child) => normalizeRefs(child));
     if (!value || typeof value !== 'object') return value;
     const object = value as Record<string, unknown>;
+    if (mapEntries) return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, normalizeRefs(child)]));
     return Object.fromEntries(Object.entries(object).map(([key, child]) => {
       if (key === '$ref') {
         const suffix = componentReferenceSuffix(child);
         if (suffix !== undefined) { found = true; return [key, `#/$defs/${namespace}/${suffix}`]; }
       }
       if (['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-')) return [key, child];
-      return [key, normalizeRefs(child)];
+      return [key, normalizeRefs(child, STRUCTURAL_REF_MAP_KEYS.has(key))];
     }));
   };
   const normalized = normalizeRefs(schema);
@@ -101,10 +101,39 @@ function schemaCodeWithDocumentRefs(schema: unknown, name: string, source: OpenA
   }, name);
 }
 
-function generatedWarningComments(schema: unknown, name: string): string {
-  const result = jsonSchemaToZod(schema === undefined || schema === null ? true : schema as any, { rootName: exportName(name) });
-  if (result.warnings.length === 0) return '';
-  return `${result.warnings.map((warning) => formatZopiaWarningComment(warning, 'schema')).join('\n')}\n`;
+function schemaCodeWithComponentImports(schema: unknown, name: string, source: OpenApiDocument, rootComponent: string): { code: string; imports: Map<string, string> } {
+  const imports = new Map<string, string>();
+  const replacements = new Map<string, string>();
+  let markerIndex = 0;
+  const rewrite = (value: unknown, root = false, mapEntries = false): unknown => {
+    if (Array.isArray(value)) return value.map((child) => rewrite(child));
+    if (!value || typeof value !== 'object') return value;
+    const object = value as Record<string, unknown>;
+    if (mapEntries) return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, rewrite(child)]));
+    const target = componentTarget(object.$ref);
+    if (target) {
+      const component = componentExportName(target);
+      imports.set(component, target);
+      let marker = `__zopia_component_reference_${markerIndex++}__`;
+      const serialized = JSON.stringify(value) ?? '';
+      while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_component_reference_${markerIndex++}__`;
+      replacements.set(marker, root || componentReaches(source, target, rootComponent) ? `z.lazy(() => ${component})` : component);
+      const siblings = Object.fromEntries(Object.entries(object).filter(([key]) => key !== '$ref').map(([key, child]) => [key, ['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-') ? child : rewrite(child, false, STRUCTURAL_REF_MAP_KEYS.has(key))]));
+      if (Object.keys(siblings).length === 0) return { const: marker };
+      const existingAllOf = siblings.allOf; delete siblings.allOf;
+      const allOf: unknown[] = [{ const: marker }];
+      if (Array.isArray(existingAllOf)) allOf.push(...existingAllOf);
+      else if (existingAllOf !== undefined) allOf.push({ allOf: existingAllOf });
+      return { ...siblings, allOf };
+    }
+    const entries = Object.entries(object).map(([key, child]) => [key, ['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-') ? child : rewrite(child, false, STRUCTURAL_REF_MAP_KEYS.has(key))] as const);
+    const stringConstraints = ['minLength', 'maxLength', 'pattern', 'format', 'contentEncoding', 'contentMediaType'];
+    if (object.type === 'string' && Array.isArray(object.enum) && object.enum.every((item) => typeof item === 'string') && !stringConstraints.some((key) => Object.prototype.hasOwnProperty.call(object, key))) return Object.fromEntries(entries.filter(([key]) => key !== 'type'));
+    return Object.fromEntries(entries);
+  };
+  let code = schemaCodeWithDocumentRefs(rewrite(schema, true), name, source);
+  for (const [marker, replacement] of replacements) code = code.split(`z.literal(${JSON.stringify(marker)})`).join(replacement);
+  return { code, imports };
 }
 
 function quoteStatus(status: string): string { return /^\d+$/.test(status) ? status : JSON.stringify(status); }
@@ -173,19 +202,9 @@ function exportName(operationId: string): string {
   if (['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield'].includes(name)) name = `${name}Endpoint`;
   return name;
 }
-function objectConstraints(expression: string, schema: Record<string, unknown>): string {
-  let constrained = expression;
-  if (typeof schema.minProperties === 'number') constrained += `.refine((value) => Object.keys(value).length >= ${schema.minProperties}).meta({ minProperties: ${schema.minProperties} })`;
-  if (typeof schema.maxProperties === 'number') constrained += `.refine((value) => Object.keys(value).length <= ${schema.maxProperties}).meta({ maxProperties: ${schema.maxProperties} })`;
-  return constrained;
-}
-function componentMetadata(expression: string, schema: unknown): string {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return expression;
-  const object = schema as Record<string, unknown>;
-  const metadata: Record<string, unknown> = {};
-  for (const key of ['title', 'description', 'examples'] as const) if (Object.prototype.hasOwnProperty.call(object, key)) metadata[key] = object[key];
-  if (!Object.prototype.hasOwnProperty.call(metadata, 'examples') && Object.prototype.hasOwnProperty.call(object, 'example')) metadata.examples = [object.example];
-  return Object.keys(metadata).length ? `${expression}.meta(${JSON.stringify(metadata)})` : expression;
+function componentExportName(componentName: string): string {
+  const name = exportName(componentName);
+  return name.endsWith('Schema') ? name : `${name}Schema`;
 }
 function componentReaches(source: OpenApiDocument, from: string, target: string, seen = new Set<string>()): boolean {
   if (from === target) return true;
@@ -195,100 +214,23 @@ function componentReaches(source: OpenApiDocument, from: string, target: string,
   const schema = schemas[from];
   if (!schema || typeof schema !== 'object') return false;
   const refs: string[] = [];
-  const visit = (value: unknown): void => { if (!value || typeof value !== 'object') return; if (Array.isArray(value)) { value.forEach(visit); return; } const ref = componentTarget((value as any).$ref); if (ref) refs.push(ref); Object.values(value as Record<string, unknown>).forEach(visit); };
+  const visit = (value: unknown, mapEntries = false): void => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { value.forEach((child) => visit(child)); return; }
+    const object = value as Record<string, unknown>;
+    if (mapEntries) { for (const child of Object.values(object)) visit(child); return; }
+    const ref = componentTarget(object.$ref);
+    if (ref) refs.push(ref);
+    for (const [key, child] of Object.entries(object)) if (!['example', 'examples', 'default', 'enum', 'const'].includes(key) && !key.startsWith('x-')) visit(child, STRUCTURAL_REF_MAP_KEYS.has(key));
+  };
   visit(schema);
   return refs.some((ref) => componentReaches(source, ref, target, seen));
 }
-function renderNestedSchema(value: unknown, name: string, imports: Map<string, string>, stack = new Set<string>(), source?: OpenApiDocument, root?: string): string {
-  const object = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : undefined;
-  if (object?.const !== undefined) {
-    const value = object.const;
-    return value === null || ['string', 'number', 'boolean'].includes(typeof value) ? `z.literal(${JSON.stringify(value)})` : `${schemaCode(object, name)}.meta({ const: ${JSON.stringify(value)} })`;
-  }
-  if (Array.isArray(object?.enum)) {
-    const values = object.enum;
-    if (values.every((value: unknown) => typeof value === 'string')) return `z.enum(${JSON.stringify(values)})`;
-    if (values.every((value: unknown) => value === null || ['string', 'number', 'boolean'].includes(typeof value))) return `z.union([${values.map((value: unknown) => `z.literal(${JSON.stringify(value)})`).join(', ')}])`;
-    return `${schemaCode(object, name)}.meta({ enum: ${JSON.stringify(values)} })`;
-  }
-  if (object?.nullable === true) {
-    const withoutNullable = { ...object }; delete withoutNullable.nullable;
-    return `z.nullable(${renderNestedSchema(withoutNullable, name, imports, stack, source, root)})`;
-  }
-  const target = componentTarget(object?.$ref);
-  if (target) {
-    const ref = `${exportName(target)}Schema`;
-    imports.set(ref, target);
-    return source && root && componentReaches(source, target, root) ? `z.lazy(() => ${ref})` : ref;
-  }
-  if (Array.isArray(object?.oneOf) || Array.isArray(object?.anyOf)) {
-    const choices = (object.oneOf ?? object.anyOf).map((child: unknown, index: number) => renderNestedSchema(child, `${name}Choice${index}`, imports, stack, source, root));
-    return `z.union([${choices.join(', ')}])`;
-  }
-  if (Array.isArray(object?.allOf)) {
-    const choices = object.allOf.map((child: unknown, index: number) => renderNestedSchema(child, `${name}Part${index}`, imports, stack, source, root));
-    return choices.length === 0 ? 'z.never()' : choices.slice(1).reduce((left: string, right: string) => `z.intersection(${left}, ${right})`, choices[0]);
-  }
-  if (object?.type === 'array' && Array.isArray(object.prefixItems)) {
-    const minimum = typeof object.minItems === 'number' ? object.minItems : 0;
-    const items = object.prefixItems.map((item: unknown, index: number) => {
-      const rendered = renderNestedSchema(item, `${name}Item${index}`, imports, stack, source, root);
-      return index < minimum ? rendered : `${rendered}.optional()`;
-    });
-    const hasItems = Object.prototype.hasOwnProperty.call(object, 'items');
-    const restSchema = hasItems ? object.items : object.unevaluatedItems;
-    const allowsRest = restSchema !== false;
-    const rest = allowsRest ? `.rest(${restSchema && typeof restSchema === 'object' ? renderNestedSchema(restSchema, `${name}Rest`, imports, stack, source, root) : 'z.unknown()'})` : '';
-    let expression = `z.tuple([${items.join(', ')}])${rest}`;
-    if (minimum > object.prefixItems.length) expression += `.refine((items) => items.length >= ${minimum})`;
-    if (typeof object.maxItems === 'number') expression += `.refine((items) => items.length <= ${object.maxItems})`;
-    const metadata = Object.fromEntries(['prefixItems', 'items', 'minItems', 'maxItems', 'unevaluatedItems'].filter((key) => Object.prototype.hasOwnProperty.call(object, key)).map((key) => [key, object[key]]));
-    return `${expression}.meta(${JSON.stringify(metadata)})`;
-  }
-  if (object?.type === 'array' && object.items !== undefined) {
-    let expression = `z.array(${renderNestedSchema(object.items, `${name}Item`, imports, stack, source, root)})`;
-    if (typeof object.minItems === 'number') expression += `.min(${object.minItems})`;
-    if (typeof object.maxItems === 'number') expression += `.max(${object.maxItems})`;
-    if (object.uniqueItems === true) expression += `.refine((items) => new Set(items.map((item) => JSON.stringify(item, (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value))).size === items.length).meta({ uniqueItems: true })`;
-    return expression;
-  }
-  if (object?.type === 'object' && object.properties && typeof object.properties === 'object') {
-    const required = new Set(Array.isArray(object.required) ? object.required : []);
-    const fields = Object.entries(object.properties).map(([key, child]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(child, `${name}${key}`, imports, stack, source, root)}${required.has(key) ? '' : '.optional()'}`);
-    const additionalValue = object.additionalProperties;
-    const additional = additionalValue && typeof additionalValue === 'object' ? `.catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, stack, source, root)})` : additionalValue === false ? '.strict()' : additionalValue === undefined || additionalValue === true ? '.passthrough()' : '';
-    return objectConstraints(`z.object({ ${fields.join(', ')} })${additional}`, object);
-  }
-  return source && componentReferenceSuffix(object?.$ref) !== undefined ? schemaCodeWithDocumentRefs(value, name, source) : schemaCode(value, name);
-}
 function renderComponent(name: string, schema: unknown, source: OpenApiDocument): string {
-  const componentName = `${exportName(name)}Schema`;
-  const warningComments = generatedWarningComments(schema, componentName);
-  const directTarget = componentTarget(schema && typeof schema === 'object' ? (schema as any).$ref : undefined);
-  const directRef = directTarget === undefined ? undefined : `${exportName(directTarget)}Schema`;
-  const directSiblings = schema && typeof schema === 'object' && !Array.isArray(schema) ? Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$ref')) : {};
-  const directMetadata = Object.keys(directSiblings).length ? `.meta(${JSON.stringify(directSiblings)})` : '';
-  if (directRef && directRef !== componentName) return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\nimport { ${directRef} } from ${JSON.stringify(`../${directTarget}/index`)};\n\n${warningComments}export const ${componentName} = z.lazy(() => ${directRef})${directMetadata};\n\nexport default ${componentName};\n`;
-  if (directRef === componentName) return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n\n${warningComments}export const ${componentName} = z.lazy(() => ${componentName})${directMetadata};\n\nexport default ${componentName};\n`;
-  if (schema && typeof schema === 'object' && !Array.isArray(schema) && (schema as any).type === 'array') {
-    const imports = new Map<string, string>();
-    const expression = componentMetadata(renderNestedSchema(schema, name, imports, new Set([name]), source, name), schema);
-    const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
-    return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\n${warningComments}export const ${componentName} = ${expression};\n\nexport default ${componentName};\n`;
-  }
-  if (schema && typeof schema === 'object' && !Array.isArray(schema) && (schema as any).type === 'object' && ((schema as any).properties && typeof (schema as any).properties === 'object' || (schema as any).additionalProperties !== undefined)) {
-    const properties = ((schema as any).properties ?? {}) as Record<string, unknown>;
-    const imports = new Map<string, string>();
-    const required = new Set(Array.isArray((schema as any).required) ? (schema as any).required : []);
-    const fields = Object.entries(properties).map(([key, value]) => `[${JSON.stringify(key)}]: ${renderNestedSchema(value, `${name}${key}`, imports, new Set([name]), source, name)}${required.has(key) ? '' : '.optional()'}`).join(', ');
-    const additionalValue = (schema as any).additionalProperties;
-    const additional = additionalValue && typeof additionalValue === 'object' ? ` .catchall(${renderNestedSchema(additionalValue, `${name}Additional`, imports, new Set([name]), source, name)})` : additionalValue === false ? ' .strict()' : additionalValue === undefined || additionalValue === true ? ' .passthrough()' : '';
-    const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
-    const expression = componentMetadata(objectConstraints(imports.has(componentName) ? `z.lazy(() => z.object({ ${fields} })${additional})` : `z.object({ ${fields} })${additional}`, schema as Record<string, unknown>), schema);
-    return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\n${warningComments}export const ${componentName} = ${expression};\n\nexport default ${componentName};\n`;
-  }
-  const converted = schemaCodeWithDocumentRefs(schema, componentName, source);
-  return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n\nexport const ${exportName(name)}Schema = ${converted};\n\nexport default ${exportName(name)}Schema;\n`;
+  const componentName = componentExportName(name);
+  const { code, imports } = schemaCodeWithComponentImports(schema, componentName, source, name);
+  const importLine = [...imports.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
+  return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\nexport const ${componentName} = ${code};\n\nexport default ${componentName};\n`;
 }
 function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMode = 'directory', useComponents = false): string {
   const ir = buildOpenApiOperationIR(source).find((candidate) => candidate.operationId === operation.operationId && candidate.path === operation.path && candidate.method.toLowerCase() === operation.method);
@@ -298,10 +240,11 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const componentSchema = (schema: unknown, fallback: string) => {
     if (useComponents) {
       const replacements = new Map<string, string>(); let markerIndex = 0;
-      const rewrite = (value: unknown): unknown => {
-        if (Array.isArray(value)) return value.map(rewrite);
+      const rewrite = (value: unknown, mapEntries = false): unknown => {
+        if (Array.isArray(value)) return value.map((child) => rewrite(child));
         if (!value || typeof value !== 'object') return value;
         const object = value as Record<string, unknown>;
+        if (mapEntries) return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, rewrite(child)]));
         const component = componentExport(object.$ref);
         if (component) {
           componentRefs.add(component);
@@ -309,7 +252,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
           const serialized = JSON.stringify(value) ?? '';
           while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_component_reference_${markerIndex++}__`;
           replacements.set(marker, component);
-          const siblings = Object.fromEntries(Object.entries(object).filter(([key]) => key !== '$ref').map(([key, child]) => [key, rewrite(child)]));
+          const siblings = Object.fromEntries(Object.entries(object).filter(([key]) => key !== '$ref').map(([key, child]) => [key, ['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-') ? child : rewrite(child, STRUCTURAL_REF_MAP_KEYS.has(key))]));
           if (Object.keys(siblings).length === 0) return { const: marker };
           const existingAllOf = siblings.allOf; delete siblings.allOf;
           const allOf: unknown[] = [{ const: marker }];
@@ -317,7 +260,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
           else if (existingAllOf !== undefined) allOf.push({ allOf: existingAllOf });
           return { ...siblings, allOf };
         }
-        return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, rewrite(child)]));
+        return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, ['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-') ? child : rewrite(child, STRUCTURAL_REF_MAP_KEYS.has(key))]));
       };
       let code = schemaCodeWithDocumentRefs(rewrite(schema), fallback, source);
       for (const [marker, component] of replacements) code = code.split(`z.literal(${JSON.stringify(marker)})`).join(component);
@@ -362,28 +305,44 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
 }
 
 function avoidReservedFileCollisions(plans: readonly ApiDocsFilePlan[], reservedFiles: Iterable<string>): ApiDocsFilePlan[] {
-  const used = new Set([...reservedFiles].map((file) => file.toLowerCase()));
+  const reserved = [...reservedFiles].map((file) => file.split('/').map((segment) => segment.toLowerCase()));
+  const used = new Set(reserved.map((segments) => segments.join('/')));
   const groups = new Map<string, ApiDocsFilePlan[]>();
+  const assigned: Array<{ segments: string[]; methods: string[] }> = [];
   for (const plan of plans) {
     const group = groups.get(plan.path);
     if (group) group.push(plan);
     else groups.set(plan.path, [plan]);
   }
+  const startsWith = (value: readonly string[], prefix: readonly string[]): boolean => prefix.length <= value.length && prefix.every((segment, index) => value[index].toLowerCase() === segment.toLowerCase());
   const filesByPath = new Map<string, Map<string, string>>();
   for (const [path, group] of groups) {
-    const baseSegments = group[0].file.split('/').slice(0, -2);
-    const baseLeaf = baseSegments.at(-1)!;
-    let suffix = 1;
-    let candidateSegments = baseSegments;
-    let candidateFiles: string[];
-    do {
-      candidateFiles = group.map((plan) => `${candidateSegments.join('/')}/${plan.method}/index.ts`);
-      if (!candidateFiles.some((file) => used.has(file.toLowerCase()))) break;
-      candidateSegments = [...baseSegments];
-      candidateSegments[candidateSegments.length - 1] = `${baseLeaf}-${++suffix}`;
-    } while (true);
+    const originalSegments = group[0].file.split('/').slice(0, -2);
+    const candidate = [...originalSegments];
+    const methods = group.map((plan) => plan.method);
+    const suffixes = new Map<number, number>();
+    const conflictIndex = (): number | undefined => {
+      const candidateFiles = methods.map((method) => `${candidate.join('/')}/${method}/index.ts`.toLowerCase());
+      if (candidateFiles.some((file) => used.has(file))) return candidate.length - 1;
+      for (const file of reserved) if (startsWith(candidate, file)) return file.length - 1;
+      for (const previous of assigned) {
+        if (candidate.length === previous.segments.length && startsWith(candidate, previous.segments)) return candidate.length - 1;
+        for (const method of previous.methods) if (startsWith(candidate, [...previous.segments, method])) return previous.segments.length;
+        for (const method of methods) if (startsWith(previous.segments, [...candidate, method])) return candidate.length - 1;
+      }
+      return undefined;
+    };
+    let conflict = conflictIndex();
+    while (conflict !== undefined) {
+      const suffix = (suffixes.get(conflict) ?? 1) + 1;
+      suffixes.set(conflict, suffix);
+      candidate[conflict] = `${originalSegments[conflict]}-${suffix}`;
+      conflict = conflictIndex();
+    }
+    const candidateFiles = group.map((plan) => `${candidate.join('/')}/${plan.method}/index.ts`);
     filesByPath.set(path, new Map(group.map((plan, index) => [plan.method, candidateFiles[index]])));
     for (const file of candidateFiles) used.add(file.toLowerCase());
+    assigned.push({ segments: candidate, methods });
   }
   return plans.map((plan) => ({ ...plan, file: filesByPath.get(plan.path)!.get(plan.method)! }));
 }
@@ -424,6 +383,7 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   const componentNames = insertComponents ? Object.keys(schemas).sort() : [];
   const reservedFiles = componentNames.map((name) => `components/${name}/index.ts`);
   if (insertComponents) reservedFiles.push('components/index.ts');
+  if (retainManifest) reservedFiles.push(ZOPIA_MANIFEST_FILE);
   const plans = avoidReservedFileCollisions(planApiDocsFiles(source, mode), reservedFiles);
   const previous = await inspectZopiaManifestStaleness(options.outputDir, {
     sourceSha256: hashOpenApiDocument(source),
@@ -445,10 +405,11 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
     const componentExports = new Map<string, string>();
     const componentDirectories = new Map<string, string>();
     for (const name of componentNames) {
+      if (name.toLowerCase() === 'index.ts') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component file name collides with the barrel: ${name}`);
       const existingDirectory = componentDirectories.get(name.toLowerCase());
       if (existingDirectory) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component file name collision: ${existingDirectory} and ${name}`);
       componentDirectories.set(name.toLowerCase(), name);
-      const componentExport = `${exportName(name)}Schema`;
+      const componentExport = componentExportName(name);
       const previous = componentExports.get(componentExport);
       if (previous) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component export name collision: ${previous} and ${name}`);
       componentExports.set(componentExport, name);
@@ -462,7 +423,7 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
       const absolutePath = await writeGeneratedFile(root, file, content, previouslyOwned);
       generated.push({ file, absolutePath, operationId: name });
     }
-    const barrel = componentNames.map((name) => `export { ${exportName(name)}Schema } from ${JSON.stringify(`./${name}/index`)};`).join('\n') + (componentNames.length ? '\n' : '');
+    const barrel = componentNames.map((name) => `export { ${componentExportName(name)} } from ${JSON.stringify(`./${name}/index`)};`).join('\n') + (componentNames.length ? '\n' : '');
     const barrelFile = 'components/index.ts';
     const barrelPath = await writeGeneratedFile(root, barrelFile, barrel, previouslyOwned);
     generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: 'components' });

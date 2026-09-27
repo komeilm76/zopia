@@ -568,6 +568,20 @@ describe('manifest reverse conversion', () => {
     const referenceEdited = await manifestFileToOpenApi(manifestFile) as any;
     expect(referenceEdited.paths['/users'].get.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/Group' });
   });
+  it('round-trips emitted root and nested component annotations through generated code', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    await generateApiDocsFiles({
+      openapi: '3.1.0', info: { title: 'Annotations', version: '1' },
+      components: { schemas: { Annotated: {
+        type: 'object', deprecated: true, readOnly: true, 'x-root': 'kept',
+        properties: { nested: { type: 'object', description: 'Nested', writeOnly: true, 'x-nested': 1, properties: { value: { type: 'string' } } } },
+      } } }, paths: {},
+    }, { outputDir, insertComponents: true });
+
+    const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
+    expect(reversed.components.schemas.Annotated).toMatchObject({ deprecated: true, readOnly: true, 'x-root': 'kept' });
+    expect(reversed.components.schemas.Annotated.properties.nested).toMatchObject({ description: 'Nested', writeOnly: true, 'x-nested': 1 });
+  });
   it('round-trips escaped component names and direct-ref siblings through generated code', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Escaped refs', version: '1' }, components: { schemas: {
@@ -577,7 +591,9 @@ describe('manifest reverse conversion', () => {
 
     const aliasFile = await readFile(join(outputDir, 'components', 'Alias~Model', 'index.ts'), 'utf8');
     expect(aliasFile).toContain('from "../User~Model/index"');
-    expect(aliasFile).toContain('.meta({"description":"Alias schema","maxProperties":2})');
+    expect(aliasFile).toContain('z.lazy(() => UserModelSchema)');
+    expect(aliasFile).toContain('Object.keys(value).length <= 2');
+    expect(aliasFile).toContain('.meta({"description":"Alias schema"})');
 
     const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
     expect(reversed.components.schemas['Alias~Model']).toEqual({ description: 'Alias schema', maxProperties: 2, $ref: '#/components/schemas/User~0Model' });
