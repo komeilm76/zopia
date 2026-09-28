@@ -1,0 +1,33 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Cycle API", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "Node": {
+        "$comment": "Self-referential tree node",
+        "type": "object",
+        "required": ["value"],
+        "properties": {
+          "value": { "type": "string", "description": "Node value" },
+          "children": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Node" }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/tree": {
+      "get": {
+        "operationId": "getTree",
+        "responses": {
+          "200": {
+            "description": "Tree",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Node" } } }
+          }
+        }
+      }
+    }
+  }
+}

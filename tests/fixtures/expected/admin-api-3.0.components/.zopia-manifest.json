@@ -1,0 +1,371 @@
+{
+  "$schema": "zopia:manifest@1",
+  "apis": [
+    {
+      "file": "health/get/index.ts",
+      "method": "get",
+      "operationId": "health",
+      "overlay": [],
+      "path": "/health",
+      "refs": [],
+      "responseOverlay": [],
+      "security": [],
+      "sourceOperation": {
+        "operationId": "health",
+        "responses": {
+          "204": {
+            "description": "Healthy"
+          }
+        },
+        "security": []
+      }
+    },
+    {
+      "file": "users/{userId}/get/index.ts",
+      "method": "get",
+      "operationId": "getUser",
+      "overlay": [],
+      "path": "/users/{userId}",
+      "refs": [
+        {
+          "at": "/parameters/0/$ref",
+          "ref": "#/components/parameters/TraceId"
+        },
+        {
+          "at": "/responses/200/content/application~1json/schema/$ref",
+          "component": "User",
+          "ref": "#/components/schemas/User"
+        },
+        {
+          "at": "/responses/200/content/application~1xml/schema/$ref",
+          "component": "User",
+          "ref": "#/components/schemas/User"
+        },
+        {
+          "at": "/responses/404/$ref",
+          "ref": "#/components/responses/Problem"
+        }
+      ],
+      "responseOverlay": [
+        {
+          "headers": {
+            "ETag": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "status": "200"
+        }
+      ],
+      "sourceOperation": {
+        "deprecated": true,
+        "description": "Returns one user",
+        "operationId": "getUser",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TraceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "email": "admin@example.test",
+                  "id": "22ccbc6a-436b-4b1c-9e64-7440ce63a90e",
+                  "role": "admin"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              },
+              "application/xml": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "User found",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    {
+      "file": "users/{userId}/patch/index.ts",
+      "method": "patch",
+      "operationId": "updateUser",
+      "overlay": [],
+      "path": "/users/{userId}",
+      "refs": [
+        {
+          "at": "/requestBody/content/application~1json/schema/$ref",
+          "component": "CreateUser",
+          "ref": "#/components/schemas/CreateUser"
+        },
+        {
+          "at": "/responses/200/content/application~1json/schema/$ref",
+          "component": "User",
+          "ref": "#/components/schemas/User"
+        },
+        {
+          "at": "/responses/default/$ref",
+          "ref": "#/components/responses/Problem"
+        }
+      ],
+      "responseOverlay": [],
+      "security": [
+        {
+          "oauth": [
+            "users:write"
+          ]
+        }
+      ],
+      "sourceOperation": {
+        "operationId": "updateUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "viewer": {
+                  "summary": "Viewer",
+                  "value": {
+                    "email": "v@example.test"
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/CreateUser"
+              }
+            }
+          },
+          "description": "Fields to update",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "Updated"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "users:write"
+            ]
+          }
+        ],
+        "tags": [
+          "users"
+        ]
+      }
+    }
+  ],
+  "components": [
+    {
+      "file": "components/CreateUser/index.ts",
+      "name": "CreateUser",
+      "overlay": [],
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "type": "string"
+          },
+          "role": {
+            "default": "viewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "file": "components/User/index.ts",
+      "name": "User",
+      "overlay": [],
+      "schema": {
+        "additionalProperties": false,
+        "description": "A user account",
+        "properties": {
+          "email": {
+            "format": "email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "nickname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "viewer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "User",
+        "type": "object"
+      }
+    }
+  ],
+  "componentsOverlay": {
+    "parameters": {
+      "TraceId": {
+        "description": "Request trace",
+        "in": "header",
+        "name": "X-Trace-Id",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "description": "Problem response",
+        "headers": {
+          "X-Trace-Id": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "defaultSecurity": [
+    {
+      "oauth": [
+        "users:read"
+      ]
+    }
+  ],
+  "documentOverlay": {
+    "externalDocs": {
+      "url": "https://docs.example.test"
+    },
+    "x-owner": "platform"
+  },
+  "infoOverlay": {
+    "contact": {
+      "email": "api@example.test",
+      "name": "API Team"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "mode": "directory",
+  "options": {
+    "insertComponents": true,
+    "useComponentAsReference": true
+  },
+  "pathOrder": [
+    "/users/{userId}",
+    "/health"
+  ],
+  "pathsOverlay": {
+    "/users/{userId}": {
+      "parameters": [
+        {
+          "deprecated": false,
+          "description": "User identifier",
+          "explode": false,
+          "in": "path",
+          "name": "userId",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "style": "simple"
+        }
+      ],
+      "summary": "User resource"
+    }
+  },
+  "schemaComponentsPresent": true,
+  "securitySchemes": {
+    "oauth": {
+      "flows": {
+        "clientCredentials": {
+          "scopes": {
+            "users:read": "Read users",
+            "users:write": "Write users"
+          },
+          "tokenUrl": "https://auth.example.test/token"
+        }
+      },
+      "type": "oauth2"
+    }
+  },
+  "servers": [
+    {
+      "description": "Production",
+      "url": "https://api.example.test/v1"
+    },
+    {
+      "description": "Staging",
+      "url": "https://staging.example.test/v1"
+    }
+  ],
+  "source": {
+    "description": "Administrative endpoints",
+    "kind": "openapi-3.0",
+    "openapiVersion": "3.0.3",
+    "sha256": "de6afdd09c3db1444044438bca0ed29c28a7876d786cb4750f254b898e11ac10",
+    "title": "Admin API",
+    "version": "1.2.0"
+  },
+  "tags": [
+    {
+      "description": "User administration",
+      "name": "users"
+    }
+  ],
+  "zopiaVersion": "0.1.0"
+}

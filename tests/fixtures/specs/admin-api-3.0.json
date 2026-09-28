@@ -1,0 +1,145 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Admin API",
+    "version": "1.2.0",
+    "description": "Administrative endpoints",
+    "contact": { "name": "API Team", "email": "api@example.test" },
+    "license": { "name": "MIT" }
+  },
+  "servers": [
+    { "url": "https://api.example.test/v1", "description": "Production" },
+    { "url": "https://staging.example.test/v1", "description": "Staging" }
+  ],
+  "tags": [
+    { "name": "users", "description": "User administration" }
+  ],
+  "externalDocs": { "url": "https://docs.example.test" },
+  "x-owner": "platform",
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "title": "User",
+        "description": "A user account",
+        "additionalProperties": false,
+        "required": ["id", "email"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "role": { "type": "string", "enum": ["admin", "viewer"] },
+          "nickname": { "type": "string", "nullable": true }
+        }
+      },
+      "CreateUser": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["email"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "role": { "type": "string", "default": "viewer" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "oauth": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "https://auth.example.test/token",
+            "scopes": { "users:read": "Read users", "users:write": "Write users" }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "TraceId": {
+        "name": "X-Trace-Id",
+        "in": "header",
+        "required": false,
+        "description": "Request trace",
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "Problem response",
+        "headers": { "X-Trace-Id": { "schema": { "type": "string" } } },
+        "content": {
+          "application/problem+json": {
+            "schema": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    }
+  },
+  "security": [{ "oauth": ["users:read"] }],
+  "paths": {
+    "/users/{userId}": {
+      "summary": "User resource",
+      "parameters": [
+        {
+          "name": "userId",
+          "in": "path",
+          "required": true,
+          "description": "User identifier",
+          "deprecated": false,
+          "style": "simple",
+          "explode": false,
+          "schema": { "type": "string", "format": "uuid" }
+        }
+      ],
+      "get": {
+        "operationId": "getUser",
+        "summary": "Get a user",
+        "description": "Returns one user",
+        "tags": ["users"],
+        "deprecated": true,
+        "parameters": [{ "$ref": "#/components/parameters/TraceId" }],
+        "responses": {
+          "200": {
+            "description": "User found",
+            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/User" },
+                "example": { "id": "22ccbc6a-436b-4b1c-9e64-7440ce63a90e", "email": "admin@example.test", "role": "admin" }
+              },
+              "application/xml": { "schema": { "$ref": "#/components/schemas/User" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "operationId": "updateUser",
+        "tags": ["users"],
+        "security": [{ "oauth": ["users:write"] }],
+        "requestBody": {
+          "description": "Fields to update",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateUser" },
+              "examples": { "viewer": { "summary": "Viewer", "value": { "email": "v@example.test" } } }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "security": [],
+        "responses": { "204": { "description": "Healthy" } }
+      }
+    }
+  }
+}

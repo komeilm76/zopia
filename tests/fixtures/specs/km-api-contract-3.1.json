@@ -1,0 +1,69 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "km-api 0.4.1 Contract",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "paths": {
+    "/probe/{probeId}": {
+      "trace": {
+        "operationId": "traceProbe",
+        "summary": "Exercise km-api open unions",
+        "deprecated": true,
+        "tags": ["contract"],
+        "parameters": [
+          {
+            "name": "probeId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.zopia+json": {
+              "schema": {
+                "type": "object",
+                "required": ["active"],
+                "properties": {
+                  "active": { "type": "boolean" }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "419": {
+            "description": "Custom response status",
+            "content": {
+              "application/vnd.zopia+json": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "default": {
+            "description": "Fallback response",
+            "content": {
+              "application/vnd.zopia+json": {
+                "schema": { "type": "object", "additionalProperties": {} }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

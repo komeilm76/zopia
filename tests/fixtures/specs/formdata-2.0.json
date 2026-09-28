@@ -1,0 +1,29 @@
+{
+  "swagger": "2.0",
+  "info": { "title": "Form Upload API", "version": "1.0.0" },
+  "consumes": ["application/x-www-form-urlencoded"],
+  "produces": ["application/json"],
+  "paths": {
+    "/profile": {
+      "post": {
+        "operationId": "updateProfile",
+        "parameters": [
+          { "name": "displayName", "in": "formData", "required": true, "type": "string", "minLength": 1 },
+          { "name": "labels", "in": "formData", "required": false, "type": "array", "items": { "type": "string" }, "collectionFormat": "multi" }
+        ],
+        "responses": { "200": { "description": "Updated", "schema": { "type": "boolean" } } }
+      }
+    },
+    "/avatar": {
+      "post": {
+        "operationId": "uploadAvatar",
+        "consumes": ["multipart/form-data"],
+        "parameters": [
+          { "name": "avatar", "in": "formData", "required": true, "type": "file", "description": "Avatar image" },
+          { "name": "caption", "in": "formData", "required": false, "type": "string" }
+        ],
+        "responses": { "201": { "description": "Uploaded", "schema": { "type": "string", "format": "uri" } } }
+      }
+    }
+  }
+}

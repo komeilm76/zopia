@@ -1,0 +1,24 @@
+# ── Dependencies ─────────────────────────────────────────────
+node_modules/
+
+# ── Build output ─────────────────────────────────────────────
+dist/
+lib/
+*.tsbuildinfo
+
+# ── Tests ────────────────────────────────────────────────────
+coverage/
+
+# ── Generated output (local dev runs of zopia itself) ───────
+api_docs/
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+bun-debug.log*
+
+# ── Environment & OS ─────────────────────────────────────────
+.env
+.env.*
+.DS_Store
+Thumbs.db

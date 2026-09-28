@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest';
+import { collectOpenApiOperations, deriveOperationId } from '../src';
+
+describe('OpenAPI operation collection', () => {
+  it('uses canonical method order and operation ids', () => {
+    const result = collectOpenApiOperations({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: { '/users/{id}': { delete: {}, get: {}, trace: {} } } });
+    expect(result.map((item) => item.method)).toEqual(['get', 'delete', 'trace']);
+    expect(result[0].operationId).toBe('getUsersId');
+  });
+  it('disambiguates derived operation IDs while preserving explicit IDs', () => {
+    const derived = collectOpenApiOperations({
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/a-b': { get: {} }, '/a/b': { get: {} } },
+    });
+    expect(derived.map((operation) => operation.operationId)).toEqual(['getAB', 'getAB2']);
+
+    const explicit = collectOpenApiOperations({
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/a-b': { get: {} }, '/a/b': { get: { operationId: 'getAB' } } },
+    });
+    expect(explicit.map((operation) => operation.operationId)).toEqual(['getAB2', 'getAB']);
+  });
+  it('lets operation parameters override path parameters', () => {
+    const [result] = collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x/{id}': { parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], get: { parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }] } } } });
+    expect(result.parameters).toHaveLength(1);
+    expect(result.parameters[0].schema.type).toBe('integer');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { parameters: [{ name: 'q', in: 'query' }, { name: 'q', in: 'query' }], get: {} } } })).toThrow('Duplicate path-level parameter');
+  });
+  it('uses resolved parameter identities for references and overrides', () => {
+    const document = {
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      components: { parameters: {
+        IdString: { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        Filter: { name: 'filter', in: 'query', schema: { type: 'string' } },
+        IdInteger: { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+      } },
+      paths: { '/x/{id}': {
+        parameters: [{ $ref: '#/components/parameters/IdString' }, { $ref: '#/components/parameters/Filter' }],
+        get: { parameters: [{ $ref: '#/components/parameters/IdInteger' }] },
+      } },
+    };
+    const [result] = collectOpenApiOperations(document);
+    expect(result.parameters).toHaveLength(2);
+    expect(result.parameters[0].$ref).toBe('#/components/parameters/IdInteger');
+    expect(result.parameters[1].$ref).toBe('#/components/parameters/Filter');
+  });
+  it('preserves explicit operation ids and rejects invalid operations', () => {
+    expect(collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { operationId: 'createX' } } } })[0].operationId).toBe('createX');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: null } } })).toThrow('Invalid OpenAPI operation');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { $ref: '#/components/pathItems/X' } } })).toThrow('Unresolved OpenAPI reference');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { $ref: 1 } } })).toThrow('Invalid path-item $ref');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { operationId: 1 } } } })).toThrow('Invalid operationId');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { operationId: 'same' } }, '/y': { get: { operationId: 'same' } } } })).toThrow('Duplicate operationId');
+  });
+  it('resolves local path-item references', () => {
+    const result = collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { pathItems: { Shared: { get: { operationId: 'sharedGet' } } } }, paths: { '/x': { $ref: '#/components/pathItems/Shared' } } });
+    expect(result[0].operationId).toBe('sharedGet');
+    expect(() => collectOpenApiOperations({ openapi: '3.1.0', info: { title: 'x', version: '1' }, components: { pathItems: { A: { $ref: '#/components/pathItems/B' }, B: { $ref: '#/components/pathItems/A' } } }, paths: { '/x': { $ref: '#/components/pathItems/A' } } })).toThrow('Circular path-item $ref');
+  });
+  it('derives root ids deterministically', () => expect(deriveOperationId('/users', 'get')).toBe('getUsers'));
+});

@@ -1,0 +1,94 @@
+import { describe, expect, it } from 'vitest';
+import { planApiDocsFiles } from '../src';
+
+describe('API docs file planning', () => {
+  const doc = { openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/a-b': { get: { operationId: 'first' }, delete: { operationId: 'firstDelete' } }, '/a/b': { get: { operationId: 'second' } } } };
+  it('plans directory files', () => expect(planApiDocsFiles(doc)[0].file).toBe('a-b/get/index.ts'));
+  it('S-23: disambiguates flat collisions', () => expect(planApiDocsFiles(doc, 'flat').map((item) => item.file)).toEqual(['a-b/get/index.ts', 'a-b/delete/index.ts', 'a-b-2/get/index.ts']));
+  it('disambiguates directory paths that collapse to the same output directory', () => {
+    const colliding = {
+      openapi: '3.1.0',
+      info: { title: 'x', version: '1' },
+      paths: {
+        '/users//{id}': { get: { operationId: 'repeatedSlash' }, post: { operationId: 'repeatedSlashPost' } },
+        '/users/{id}': { get: { operationId: 'singleSlash' } },
+        '/': { get: { operationId: 'root' } },
+        '/root': { get: { operationId: 'literalRoot' } },
+      },
+    };
+
+    expect(planApiDocsFiles(colliding).map((item) => item.file)).toEqual([
+      'users/{id}/get/index.ts',
+      'users/{id}/post/index.ts',
+      'users/{id}-2/get/index.ts',
+      'root/get/index.ts',
+      'root-2/get/index.ts',
+    ]);
+  });
+  it('disambiguates paths that differ only by filesystem case', () => {
+    const caseCollisions = {
+      openapi: '3.1.0',
+      info: { title: 'x', version: '1' },
+      paths: { '/Users': { get: { operationId: 'upper' } }, '/users': { get: { operationId: 'lower' } } },
+    };
+    expect(planApiDocsFiles(caseCollisions).map((item) => item.file)).toEqual(['Users/get/index.ts', 'users-2/get/index.ts']);
+    expect(planApiDocsFiles(caseCollisions, 'flat').map((item) => item.file)).toEqual(['Users/get/index.ts', 'users-2/get/index.ts']);
+  });
+  it('S-24: preserves an isolated literal path segment whose name is an HTTP method', () => {
+    const methodSegment = {
+      openapi: '3.1.0',
+      info: { title: 'x', version: '1' },
+      paths: { '/users/get': { get: { operationId: 'getUsersGet', responses: { '200': { description: 'ok' } } } } },
+    };
+
+    expect(planApiDocsFiles(methodSegment)).toEqual([
+      expect.objectContaining({ path: '/users/get', method: 'get', file: 'users/get/get/index.ts' }),
+    ]);
+  });
+  it('keeps method directories leaf-only when a literal path segment is also a method', () => {
+    const response = { responses: { '200': { description: 'ok' } } };
+    const parentFirst = {
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/users': { get: { ...response, operationId: 'users' } }, '/users/get/details': { post: { ...response, operationId: 'details' } } },
+    };
+    expect(planApiDocsFiles(parentFirst).map(({ file }) => file)).toEqual([
+      'users/get/index.ts',
+      'users/get-2/details/post/index.ts',
+    ]);
+
+    const childFirst = {
+      openapi: '3.1.0', info: { title: 'x', version: '1' },
+      paths: { '/users/get': { post: { ...response, operationId: 'child' } }, '/users': { get: { ...response, operationId: 'parent' } } },
+    };
+    expect(planApiDocsFiles(childFirst).map(({ file }) => file)).toEqual([
+      'users/get/post/index.ts',
+      'users-2/get/index.ts',
+    ]);
+    expect(planApiDocsFiles(parentFirst, 'flat').map(({ file }) => file)).toEqual([
+      'users/get/index.ts',
+      'users-get-details/post/index.ts',
+    ]);
+  });
+  it('S-25: preserves every segment and parameter in deeply nested paths', () => {
+    const path = '/organizations/{organizationId}/projects/{projectId}/builds/{buildId}';
+    const parameters = [
+      { name: 'organizationId', in: 'path', required: true, schema: { type: 'string' } },
+      { name: 'projectId', in: 'path', required: true, schema: { type: 'string' } },
+      { name: 'buildId', in: 'path', required: true, schema: { type: 'string' } },
+    ];
+    const deeplyNested = {
+      openapi: '3.1.0',
+      info: { title: 'x', version: '1' },
+      paths: { [path]: { post: { operationId: 'createBuild', parameters, responses: { '201': { description: 'created' } } } } },
+    };
+
+    const [plan] = planApiDocsFiles(deeplyNested);
+    expect(plan).toMatchObject({
+      path,
+      method: 'post',
+      file: 'organizations/{organizationId}/projects/{projectId}/builds/{buildId}/post/index.ts',
+    });
+    expect(plan.parameters.map((parameter) => parameter.name)).toEqual(['organizationId', 'projectId', 'buildId']);
+  });
+  it('validates mode even when there are no operations', () => expect(() => planApiDocsFiles({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: {} }, 'bad' as any)).toThrow('Unsupported API docs mode'));
+});
