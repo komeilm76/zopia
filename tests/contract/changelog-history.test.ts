@@ -29,12 +29,11 @@ describe('changelog history contract', () => {
 
   it('T-17/R-161/R-171: every post-release user-visible commit updates the changelog', () => {
     const changelog = readFileSync(join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
-    const unreleased = changelog.slice(changelog.indexOf('## [Unreleased]'), changelog.indexOf('\n## [0.1.0]'));
-    expect(unreleased).toMatch(/^- .+/m);
+    expect(changelog).toMatch(/^## \[Unreleased]$/m);
 
     const releaseCommit = git(['log', '--format=%H', '--grep=^chore(release):', '-1']);
     if (!releaseCommit) return;
-    const commits = git(['rev-list', `${releaseCommit}..HEAD`]).split(/\r?\n/).filter(Boolean);
+    const commits = git(['rev-list', `${releaseCommit}^..HEAD`]).split(/\r?\n/).filter(Boolean);
     const missing: string[] = [];
     for (const commit of commits) {
       const files = git(['diff-tree', '--no-commit-id', '--name-only', '-r', commit]).split(/\r?\n/).filter(Boolean);

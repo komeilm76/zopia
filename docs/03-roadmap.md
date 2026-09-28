@@ -20,7 +20,7 @@ implementation; it now describes the implemented v0.1.0 behavior and deferred sc
 
 ## 🚀 Phase 1 — The four engines (v0.1.0) ✅
 
-Everything in [Targets](02-targets.md) marked ✅:
+**Released:** 2026-09-28. Everything in [Targets](02-targets.md) is marked ✅:
 
 - [x] ⚙️ Package scaffold — ESM `package.json` (Bun-first, zero direct runtime
       dependencies; `zod` + `km-api ^0.4.1` peers from npm — D-15), strict `tsconfig`,
@@ -88,7 +88,7 @@ Everything in [Targets](02-targets.md) marked ✅:
 
 ### ✅ Definition of done — Phase 1 (met)
 
-The v0.1.0 release candidate satisfies all of the following:
+The v0.1.0 release satisfies all of the following:
 
 1. 📄 `bun run test` is green — unit + integration + round-trip suites
 2. 📈 Coverage gates are met (see [Testing → Coverage gates](11-testing.md#-coverage-gates))

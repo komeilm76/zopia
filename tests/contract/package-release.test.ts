@@ -85,8 +85,8 @@ describe('package and release contract', () => {
     const readme = readFileSync(join(repositoryRoot, 'README.md'), 'utf8');
     expect(packageLock.version).toBe(manifest.version);
     expect(packageLock.packages?.['']?.version).toBe(manifest.version);
-    expect(changelog).toContain(`## [${manifest.version}] - 2026-09-27`);
-    expect(readme).toContain(`v${manifest.version} release-ready`);
+    expect(changelog).toContain(`## [${manifest.version}] - 2026-09-28`);
+    expect(readme).toContain(`v${manifest.version} released`);
   });
 
   it('T-14/R-193: the pinned Bun gate owns every required release check', () => {
