@@ -87,9 +87,11 @@ another. Three shapes matter for zopia:
 { "properties": { "replies": { "type": "array", "items": { "$ref": "#/components/schemas/Comment" } } } }
 ```
 
-> 📌 **Rule R-501** — zopia resolves *internal* refs only in Phase 1
-> (refs must stay inside the same document). External-file refs are a
-> `ZOPIA_REF_EXTERNAL` error until Phase 2.
+> 📌 **Rule R-501** — zopia resolves *internal* refs natively (refs stay
+> inside the bundled document). Spec file paths additionally bundle
+> **same-folder** external refs before processing (D-17); everything else —
+> URLs, other folders, external refs in non-file inputs — stays a
+> `ZOPIA_REF_EXTERNAL` error.
 
 ### ⚛️ Zod v4
 

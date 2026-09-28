@@ -3,6 +3,7 @@ import { ZopiaError } from '../errors';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { generateApiDocsFiles } from './api-docs-generate';
 import type { ApiDocsMode } from './api-docs-layout';
+import { bundleExternalOpenApiRefs } from './openapi-external-ref';
 import { extractOperationContracts } from './openapi-contracts';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { resolveOpenApiLocalRef } from './openapi-ref';
@@ -118,14 +119,22 @@ function parseYamlSpec(text: string, source: string | undefined): OpenApiDocumen
   }
 }
 
-async function readInput(input: string | Record<string, unknown>): Promise<OpenApiDocument> {
-  if (input && typeof input === 'object' && !Array.isArray(input)) return input;
+/** The parsed input document plus the spec file it was read from (when any). */
+interface ReadInputResult {
+  /** Parsed Swagger/OpenAPI document. */
+  document: OpenApiDocument;
+  /** Input spec file path; external `$ref`s resolve against its folder (D-17). */
+  sourceFile?: string;
+}
+
+async function readInput(input: string | Record<string, unknown>): Promise<ReadInputResult> {
+  if (input && typeof input === 'object' && !Array.isArray(input)) return { document: input };
   if (typeof input !== 'string' || input.trim() === '') {
     throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a Swagger/OpenAPI object, JSON/YAML text, or a .json/.yaml/.yml file path', { at: '#', hint: 'pass a Swagger/OpenAPI document object, document text, or file path' });
   }
   const trimmed = input.trimStart();
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return parseJsonSpec(input, undefined);
-  if (isInlineYamlText(input)) return parseYamlSpec(input, undefined);
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return { document: parseJsonSpec(input, undefined) };
+  if (isInlineYamlText(input)) return { document: parseYamlSpec(input, undefined) };
   const yamlPath = YAML_PATH_PATTERN.test(input);
   let text: string;
   try { text = await readFile(input, 'utf8'); }
@@ -133,11 +142,11 @@ async function readInput(input: string | Record<string, unknown>): Promise<OpenA
     const code = yamlPath ? 'ZOPIA_SPEC_INVALID_YAML' : 'ZOPIA_SPEC_INVALID_JSON';
     throw new ZopiaError(code, `unable to read ${yamlPath ? 'YAML' : 'JSON'} input: ${input}`, { at: input, hint: 'check that the spec file exists and is readable', cause: error });
   }
-  if (yamlPath) return parseYamlSpec(text, input);
-  if (/\.json$/i.test(input)) return parseJsonSpec(text, input);
-  try { return parseJsonSpec(text, input); }
+  if (yamlPath) return { document: parseYamlSpec(text, input), sourceFile: input };
+  if (/\.json$/i.test(input)) return { document: parseJsonSpec(text, input), sourceFile: input };
+  try { return { document: parseJsonSpec(text, input), sourceFile: input }; }
   catch (error) {
-    if (error instanceof ZopiaError && error.code === 'ZOPIA_SPEC_INVALID_JSON') return parseYamlSpec(text, input);
+    if (error instanceof ZopiaError && error.code === 'ZOPIA_SPEC_INVALID_JSON') return { document: parseYamlSpec(text, input), sourceFile: input };
     throw error;
   }
 }
@@ -334,8 +343,9 @@ function mapGenerationError(error: unknown): ZopiaError {
  */
 export async function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult> {
   const config = validateOptions(options);
-  const parsed = await readInput(input);
-  const document = normalizePublic(parsed);
+  const inputDocument = await readInput(input);
+  const bundled = inputDocument.sourceFile ? await bundleExternalOpenApiRefs(inputDocument.document, inputDocument.sourceFile) : inputDocument.document;
+  const document = normalizePublic(bundled);
   validateReferences(document);
 
   let hash: string;

@@ -41,6 +41,8 @@ implementation; it now describes the implemented v0.1.0 behavior and deferred sc
 - [x] 📝 **YAML input** — owned deterministic YAML 1.2 core-schema parser,
       `.yaml`/`.yml` paths and inline YAML text, anchors/aliases/merge keys,
       stable `ZOPIA_SPEC_INVALID_YAML` ([rules](06-conversions.md#engine-③--openapi--api-docs), D-16)
+- [x] 🔗 **External `$ref`s** — same-folder references bundled inline for
+      spec file paths, byte-identical to inline twins ([rules](06-conversions.md#engine-③--openapi--api-docs), D-17)
 - [x] 📦 Manifest writer/reader — `.zopia-manifest.json` (D-06)
 - [x] ⚠️ **Warnings pipeline** — stable typed codes, exact JSON Pointer locations,
       deterministic collection/callbacks, generated-code markers, and CLI stderr
@@ -105,8 +107,8 @@ The v0.1.0 release satisfies all of the following:
 
 ## 🧰 Phase 2 — Breadth (v0.2.x)
 
-- 📝 **YAML input** — accept `swagger.yaml` / `openapi.yaml` (D-13 lifts)
-- 🔗 **External `$ref`s** — resolve references to other files in the same folder
+- 📝 **YAML input** — ✅ accept `swagger.yaml` / `openapi.yaml` (D-13 lifts → D-16)
+- 🔗 **External `$ref`s** — ✅ resolve references to other files in the same folder (D-17)
 - 🧩 **Reusable parameters & responses** — emitted as their own component files
   (v0.1.0 resolves them for endpoint code and preserves/restores their reusable
   declarations through the manifest; km-api has no standalone-parameter concept)

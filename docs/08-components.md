@@ -164,9 +164,14 @@ for generated km-api code. The manifest preserves their declarations and ref
 placements, so engine ④ restores reusable identity. Phase 2 is only needed to
 emit those objects as standalone generated files.
 
-| 🧩 Thing | Phase 1 behaviour | When |
+For file-path inputs, same-folder external refs are bundled inline before
+this matrix applies (D-17), so an external spec and its inline equivalent land
+in the same rows.
+
+| 🧩 Thing | Current behaviour | When |
 | --- | --- | --- |
-| external refs to other files | `ZOPIA_REF_EXTERNAL` | Phase 2 |
+| external refs in the spec folder (file inputs) | bundled inline before processing (D-17) | v0.2.x |
+| external refs outside the spec folder, or from object/text input | `ZOPIA_REF_EXTERNAL` | — |
 
 ## 🔗 Next
 

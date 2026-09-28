@@ -258,7 +258,7 @@ function openApiToApiDocs(input: string | Record<string, unknown>, options?: Zop
 ```
 
 Pipeline (see [Architecture → The pipeline](04-architecture.md#-the-pipeline)):
-**detect → normalize (v2 | v3) → refs → render (directory | flat) → manifest**.
+**detect → bundle external refs (file inputs, D-17) → normalize (v2 | v3) → refs → render (directory | flat) → manifest**.
 
 **Input parsing (v0.2.x, D-16):** text starting with `{`/`[` is parsed as
 JSON; otherwise an unreadable-path-looking string is read as a file, and the
@@ -279,6 +279,27 @@ followed by a deeper `a: b`/`- x` line), bare `key: value` pairs inside
 flow sequences, and `.inf`/`.nan` are rejected. Parsed YAML produces the same plain values as
 an equivalent JSON document, so every downstream rule in this document is
 identical for both input formats.
+
+**External `$ref` bundling (v0.2.x, D-17):** inputs that resolve to a *file
+path* bundle same-folder external references before normalization — `other.yaml`
+(with `.json`/`.yml` variants, `./…` spellings, an optional `#` JSON Pointer,
+and whole-file targets without a fragment). Every sibling file is read and
+parsed once (JSON/YAML by extension, same rules as the primary input), bundled
+content is deep-cloned into place, sibling keys next to a `$ref` win over the
+bundled content, a local ref inside bundled content keeps resolving against its
+own file, and host-document local refs (`#/…`) stay untouched. Traversal skips
+literal/example payload positions exactly like the reference preflight walker.
+References outside the spec folder (URLs, `../`, absolute paths, subdirectories,
+drives, non-spec extensions) — and *any* external ref in object or text inputs —
+keep failing with `ZOPIA_REF_EXTERNAL`; unreadable targets keep that code with
+the file as `cause`; unparsable targets fail with
+`ZOPIA_SPEC_INVALID_JSON`/`ZOPIA_SPEC_INVALID_YAML` at the target path; missing
+pointers, bad fragments, circular external chains, sibling keys on non-object
+targets, and chains deeper than 512 fail with `ZOPIA_REF_NOT_FOUND`. Because
+bundling runs before the manifest's source hash, the bundled spec, an
+equivalent inline spec, and everything derived from them (generated trees,
+warnings, reverse conversion output) are byte-identical; reverse conversion
+emits the bundled single-file document and never re-splits files.
 
 ### 🔍 Step 1 — detect
 
@@ -352,8 +373,9 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 ### 🔗 Step 3 — refs
 
 Per [Architecture → The reference graph](04-architecture.md#-the-reference-graph)
-(R-402): unknown → `ZOPIA_REF_NOT_FOUND`; external → `ZOPIA_REF_EXTERNAL`;
-cycles → `z.lazy` plan. Refs to **non-schema** reusable objects (global
+(R-402): file-path inputs first bundle *same-folder* external refs inline
+(D-17, above); afterwards unknown → `ZOPIA_REF_NOT_FOUND`; remaining external
+→ `ZOPIA_REF_EXTERNAL`; cycles → `z.lazy` plan. Refs to **non-schema** reusable objects (global
 `parameters`/`responses` in 2.0, `components.parameters/responses/examples`
 in 3.x) are resolved at use sites for endpoint rendering rather than entering
 the schema graph. Their declarations and exact ref placements remain in the

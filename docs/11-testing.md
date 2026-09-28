@@ -140,6 +140,8 @@ Vitest source tree so a newly documented scenario cannot remain unimplemented:
 | S-76 | Package/release contract — version and public metadata stay synchronized; Vitest/coverage versions and Bun scripts stay pinned; the npm archive is allowlisted and executable; `prepublishOnly` runs the complete release gate; the exact tarball installs offline and passes package-root import plus generate/reverse CLI smoke tests | R-191…R-193 |
 | S-77 | YAML input — `.yaml`/`.yml` paths, inline YAML text, extension-less YAML fallback, and JSON-inside-YAML flow text enter engine ③; byte-identical trees vs JSON twins, reverse round-trips, CLI parity, stable YAML-side error codes | D-16/R-404 |
 | S-78 | YAML parser (D-16) — core-schema scalars, nested block/flow collections, quoted escapes, literal/folded block scalars with chomping/indent indicators, anchors/aliases/`<<` merge keys, directives/markers, deterministic failure matrix, recursion guard | D-16/R-1006 |
+| S-79 | external `$ref` bundling (D-17) — same-folder YAML/JSON chains resolve inline with clone-on-splice, sibling-key merges, self-file refs, literal/example shielding, and read-once caching; API/CLI generated trees are byte-identical to inline twins, reverse emits the bundled single file, and manifest staleness reacts to sibling-file edits | D-17/P-1 |
+| S-80 | external `$ref` failure matrix (D-17) — URL/`../`/absolute/subdirectory/drive/unknown-extension targets keep `ZOPIA_REF_EXTERNAL`; unreadable, unparsable (JSON/YAML), missing-pointer, bad-fragment, circular, >512-deep, and sibling-on-scalar targets fail with typed codes located at the referencing pointer | D-17/R-404 |
 
 ## 🔄 Round-trip property tests
 
@@ -194,7 +196,14 @@ tests/fixtures/
 │   ├── cookies-3.0.json          # 🍪 cookie parameters
 │   ├── unsupported-keywords.json # 🚫 D-12 matrix in one spec
 │   ├── path-item-ref-3.1.json    # 🔗 local path-item reference identity
-│   └── km-api-contract-3.1.json  # 📐 trace/custom/default/extension type surface
+│   ├── km-api-contract-3.1.json  # 📐 trace/custom/default/extension type surface
+│   ├── external-refs/            # 🔗 spec folder with sibling YAML/JSON shards (D-17/S-79)
+│   │   ├── admin-3.0.yaml        # root — cross-file refs, sibling merges, self-file refs
+│   │   ├── shared-schemas.yaml   # schemas with local + cross-file refs of their own
+│   │   ├── shared-responses.yaml # reusable response target
+│   │   └── common.json           # JSON leaf with its own local refs
+│   └── external-refs-inline/     # 🔗 fully-inline twin — byte-identical generated tree (S-79)
+│       └── admin-3.0-inline.json
 └── expected/
     ├── admin-api-3.0.directory/  # 📸 golden tree (defaults)
     ├── admin-api-3.0.flat/       # 📸 golden tree (flat)

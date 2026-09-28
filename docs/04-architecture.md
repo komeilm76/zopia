@@ -23,6 +23,7 @@ release-blocking defect under the
 │       ├── yaml.ts                     #    owned YAML 1.2 core-schema parser (D-16)
 │       ├── openapi.ts                  #    dialect/envelope normalization
 │       ├── openapi-ref.ts              #    local JSON Pointer resolution
+│       ├── openapi-external-ref.ts     #    same-folder external $ref bundling (D-17)
 │       ├── openapi-to-api-docs.ts      #    operation collection
 │       ├── openapi-ir.ts               #    operation-level generation IR
 │       ├── openapi-contracts.ts        #    request/response extraction
@@ -49,6 +50,15 @@ YAML input (v0.2.x, D-16) is parsed by the owned, deterministic parser in
 collections, quoted and block scalars, anchors/aliases/`<<` merge keys,
 single-document streams). It stays pure (P-3) and adds no runtime dependency
 (D-11); every rejection is a typed `ZOPIA_SPEC_INVALID_YAML`.
+
+File-path inputs additionally resolve **same-folder external `$ref`s** before
+normalization (v0.2.x, D-17): `src/conversions/openapi-external-ref.ts` bundles
+references like `other.yaml#/pointer` (plus `other.json`/`other.yml`/`./…`
+spellings and whole-file targets) inline, with each sibling file read once
+(P-1), bundled content deep-cloned, and nested cross-file references resolved
+against their owning file. Targets outside the spec folder (URLs, absolute
+paths, `../`, subdirectories) still fail with `ZOPIA_REF_EXTERNAL`, exactly
+like external references in non-file inputs.
 
 > 📏 Production modules use `kebab-case.ts`; `src/index.ts` is the package-root
 > re-export surface. Focused and integration tests live under `tests/`, with
@@ -186,16 +196,19 @@ flowchart LR
 
 **Implemented flow** (`openapi-ref.ts`, generation, and manifest modules):
 
-1. 🛑 **Preflight** — walk source values, reject external refs, validate local
-   pointer escapes, and report missing targets with exact locations.
-2. 🔗 **Resolve operation refs** — path-item and parameter chains use per-chain
+1. 🧷 **Bundle external refs** (file inputs only, D-17) — resolve same-folder
+   external references inline first so every later step sees one document.
+2. 🛑 **Preflight** — walk source values, reject remaining external refs,
+   validate local pointer escapes, and report missing targets with exact
+   locations.
+3. 🔗 **Resolve operation refs** — path-item and parameter chains use per-chain
    seen sets, so malformed and circular non-schema references fail explicitly.
-3. 🧩 **Collect component dependencies** — rendering finds schema-component
+4. 🧩 **Collect component dependencies** — rendering finds schema-component
    targets while excluding literal/example data that merely contains `$ref` text.
-4. 🧵 **Render schemas** — engine ②'s local-definition state and component
+5. 🧵 **Render schemas** — engine ②'s local-definition state and component
    dependency reachability detect recursive edges; self and mutual cycles become
    `z.lazy()` references.
-5. 📦 **Record identity** — the manifest stores original reference placements;
+6. 📦 **Record identity** — the manifest stores original reference placements;
    reverse conversion combines those records with imported runtime schema
    identity to restore local `$ref`s.
 
@@ -247,7 +260,7 @@ export class ZopiaError extends Error {
 | `ZOPIA_FS_OUTSIDE_OUTDIR` | generation guard | a generated path escapes `outDir` or traverses an unsafe ancestor | "keep generated paths inside the output directory" |
 | `ZOPIA_FS_WRITE_FAILED` | writers / CLI | output inspection, directory creation, cleanup, or writing fails | "check the output path, permissions, and available disk space" |
 | `ZOPIA_MANIFEST_INVALID` | manifest writer/reader | manifest JSON or metadata violates `zopia:manifest@1` | "regenerate the manifest or fix its invalid metadata" |
-| `ZOPIA_REF_EXTERNAL` | reference validation | `$ref` points to another file (Phase 1) | "replace it with a local reference" |
+| `ZOPIA_REF_EXTERNAL` | external-ref bundling / reference validation | `$ref` escapes the spec folder, or a non-file input points to another file | "keep external targets next to the spec file" |
 | `ZOPIA_REF_NOT_FOUND` | reference validation | a local `$ref` is malformed, circular where unsupported, or unresolved | "check that the local JSON Pointer target exists" |
 | `ZOPIA_SCHEMA_INVALID` | engines ①/② | the Zod or JSON Schema input cannot be converted | "provide a valid Zod or JSON Schema value" |
 | `ZOPIA_SPEC_INVALID` | OpenAPI validation | the parsed document violates the supported Swagger/OpenAPI shape | "fix the invalid Swagger/OpenAPI document" |
