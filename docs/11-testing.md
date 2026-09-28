@@ -127,6 +127,7 @@ Vitest source tree so a newly documented scenario cannot remain unimplemented:
 | S-63 | reverse with `insertComponents + refs` on → `components.schemas` + `$ref`s restored | R-821…R-823 |
 | S-64 | `version: '3.0'` vs `'3.1'` output diff | D-09 |
 | S-84 | `version: '2.0'` dialect downgrade — host/basePath/schemes decomposition, `x-nullable`, body/formData parameters, global `parameters`/`responses` tables, security-scheme mapping, deterministic downgrade warnings, native-Swagger identity | D-20 |
+| S-86 | native `z.record` conversion for exact `propertyNames`+`additionalProperties` objects — warning/overlay-free code, runtime key enforcement, verbatim engine ③→④ round-trip; non-native propertyNames forms stay refined + frozen | D-22 |
 | S-65 | missing manifest / renamed file / broken export → typed errors | R-651/R-652 |
 | S-66 | metadata restoration — titles, examples, servers, tag descriptions, security schemes, multi-content types come back verbatim | R-656/R-657 + honest-limits table |
 | S-67 | idempotence — `reverse(generate(spec))` then `generate(…)` ⇒ identical tree, including source-order-sensitive method/path collisions and empty Path Items (T-11) | R-409 |

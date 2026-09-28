@@ -128,9 +128,13 @@ The v0.1.0 release satisfies all of the following:
   `host`/`basePath`/`schemes`, and unrepresentable 3.x features (webhooks,
   `jsonSchemaDialect`, cookie params, `links`, multi-flow OAuth2, …) drop with
   deterministic `ZOPIA_WARN_DIALECT_DOWNGRADE` warnings (D-20)
-- 🧪 More JSON Schema keywords — `patternProperties`, `if/then/else`,
-  `minProperties/maxProperties`, `propertyNames`, `contains`
-  (Phase 1: documented approximation + warning, D-12)
+- 🧪 **More JSON Schema keywords** — ✅ `propertyNames` graduates from the D-12
+  approximation to native conversion: the exact
+  `{ type: 'object', propertyNames: { type: 'string', <pattern/length constraints> }, additionalProperties: <schema> }`
+  form now converts to `z.record(key, value)` (and back) with no warning or
+  frozen overlay (D-22); every other listed keyword keeps its runtime-refinement
+  + frozen-overlay round-trip (`patternProperties`, `if/then/else`,
+  `minProperties/maxProperties`, non-native `propertyNames` forms, `contains`) (Phase 1: documented approximation + warning, D-12)
 - 🪝 **3.1 webhook endpoint generation** — v0.1.0 preserves webhooks in the
   manifest and restores them for 3.1 output with `ZOPIA_WARN_WEBHOOKS`, but does
   not generate endpoint files for them (valid local path-item `$ref`s already
