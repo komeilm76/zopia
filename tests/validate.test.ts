@@ -43,6 +43,22 @@ describe('zopia validate (S-89, Phase 3)', () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it('keeps a schema referenced through a node shared between example and schema positions reachable', async () => {
+    // In-memory documents can share one object instance across positions; the lint
+    // must still see the schema-position occurrence after visiting the example one.
+    const sharedRef = { $ref: '#/components/schemas/Pet' } as Record<string, unknown>;
+    const result = await validateZopia({
+      ...petSpec,
+      paths: {
+        '/pets': {
+          get: { operationId: 'listPets', responses: { '200': { description: 'ok', content: { 'application/json': { example: sharedRef, schema: sharedRef } } } } },
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it('flags unreachable 3.1 components, including chains reachable only from other orphans', async () => {
     const result = await validateZopia({
       ...petSpec,

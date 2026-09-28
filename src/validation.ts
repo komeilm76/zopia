@@ -80,22 +80,28 @@ interface SchemaRefOccurrence {
 
 const decodePointerSegment = (segment: string): string => segment.replace(/~1/g, '/').replace(/~0/g, '~');
 
-function walkSchemaRefs(value: unknown, inSchemaMap: boolean, inExample: boolean, seen: Set<object>, out: SchemaRefOccurrence[], pattern: RegExp, schemaKey: string): void {
-  if (!value || typeof value !== 'object' || seen.has(value as object)) return;
-  seen.add(value as object);
-  if (Array.isArray(value)) {
-    for (const child of value) walkSchemaRefs(child, inSchemaMap, inExample, seen, out, pattern, schemaKey);
-    return;
-  }
-  const object = value as Record<string, unknown>;
-  if (!inExample && typeof object.$ref === 'string') {
-    const match = pattern.exec(object.$ref);
-    if (match) out.push({ name: decodePointerSegment(match[1]), root: !inSchemaMap });
-  }
-  for (const [key, child] of Object.entries(object)) {
-    const childInSchemaMap = inSchemaMap || key === schemaKey;
-    const childInExample = inExample || key === 'example' || key === 'examples';
-    walkSchemaRefs(child, childInSchemaMap, childInExample, seen, out, pattern, schemaKey);
+function walkSchemaRefs(value: unknown, inSchemaMap: boolean, inExample: boolean, stack: Set<object>, out: SchemaRefOccurrence[], pattern: RegExp, schemaKey: string): void {
+  if (!value || typeof value !== 'object' || stack.has(value as object)) return;
+  stack.add(value as object);
+  try {
+    if (Array.isArray(value)) {
+      for (const child of value) walkSchemaRefs(child, inSchemaMap, inExample, stack, out, pattern, schemaKey);
+      return;
+    }
+    const object = value as Record<string, unknown>;
+    // Track the path (not the whole graph) so a subtree shared between an example and
+    // a schema position in an in-memory document still reports the schema occurrence.
+    if (!inExample && typeof object.$ref === 'string') {
+      const match = pattern.exec(object.$ref);
+      if (match) out.push({ name: decodePointerSegment(match[1]), root: !inSchemaMap });
+    }
+    for (const [key, child] of Object.entries(object)) {
+      const childInSchemaMap = inSchemaMap || key === schemaKey;
+      const childInExample = inExample || key === 'example' || key === 'examples';
+      walkSchemaRefs(child, childInSchemaMap, childInExample, stack, out, pattern, schemaKey);
+    }
+  } finally {
+    stack.delete(value as object);
   }
 }
 
@@ -282,7 +288,7 @@ export async function validateZopia(input: string | Record<string, unknown>, opt
   const kind = options.kind ?? 'auto';
   if (kind !== 'spec' && kind !== 'docs' && kind !== 'auto') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `invalid validate kind: ${String(kind)}`, { at: 'kind', hint: "use 'spec', 'docs', or 'auto'" });
   const resolvedKind = kind === 'auto'
-    ? typeof input === 'string' && ((existsSync(input) && (await lstat(input)).isDirectory()) || /(?:^|\/)\.zopia-manifest\.json$/i.test(input) ? 'docs' : 'spec')
+    ? (typeof input === 'string' && ((existsSync(input) && (await lstat(input)).isDirectory()) || /(?:^|\/)\.zopia-manifest\.json$/i.test(input)) ? 'docs' : 'spec' as const)
     : kind;
   if (resolvedKind === 'docs') {
     if (typeof input !== 'string' || input.trim() === '') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'docs validation requires a docs directory or manifest path', { at: 'input', hint: 'pass the generated api-docs directory or its .zopia-manifest.json' });
