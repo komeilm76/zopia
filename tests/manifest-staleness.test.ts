@@ -23,7 +23,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe('manifest staleness', () => {
-  it('warns for changed source and prunes only obsolete manifest-owned files', async () => {
+  it('S-37: warns for changed source and prunes only obsolete manifest-owned files', async () => {
     const outDir = await temporaryDirectory('zopia-stale-');
     await openApiToApiDocs(document({ '/before': operation(), '/obsolete': operation() }), { outDir });
     const custom = join(outDir, 'before', 'get', 'custom.ts');

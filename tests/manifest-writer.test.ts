@@ -92,7 +92,7 @@ function build(source = richOpenApi(), insertComponents = true): GeneratedZopiaM
 }
 
 describe('dedicated manifest writer', () => {
-  it('captures complete OpenAPI frame, component, endpoint, overlay, and security metadata', () => {
+  it('S-36: captures complete OpenAPI frame, component, endpoint, overlay, and security metadata', () => {
     const source = richOpenApi();
     const manifest = build(source);
 

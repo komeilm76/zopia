@@ -5,6 +5,21 @@ import { describe, expect, it } from 'vitest';
 
 const repositoryRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const docsRoot = join(repositoryRoot, 'docs');
+const expectedDocumentationFiles = [
+  '01-overview.md',
+  '02-targets.md',
+  '03-roadmap.md',
+  '04-architecture.md',
+  '05-concepts.md',
+  '06-conversions.md',
+  '07-api-docs.md',
+  '08-components.md',
+  '09-configuration.md',
+  '10-usage.md',
+  '11-testing.md',
+  '12-standards.md',
+  'README.md',
+];
 const documentationFiles = [
   join(repositoryRoot, 'README.md'),
   ...readdirSync(docsRoot)
@@ -29,7 +44,36 @@ function headingAnchor(heading: string): string {
     .replace(/\s/g, '-');
 }
 
+function testSourceFiles(directory = join(repositoryRoot, 'tests')): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? testSourceFiles(path) : entry.isFile() && entry.name.endsWith('.test.ts') ? [path] : [];
+  }).sort();
+}
+
 describe('documentation status contract', () => {
+  it('T-15/R-181/R-182: the standard documentation set is complete and uses structured Markdown', () => {
+    expect(readdirSync(docsRoot).filter((file) => file.endsWith('.md')).sort()).toEqual(expectedDocumentationFiles);
+    const rootReadme = markdown(join(repositoryRoot, 'README.md'));
+    const docsReadme = markdown(join(docsRoot, 'README.md'));
+    for (const file of expectedDocumentationFiles.filter((name) => name !== 'README.md')) {
+      expect(rootReadme, `${file} missing from root documentation map`).toContain(`docs/${file}`);
+      expect(docsReadme, `${file} missing from docs map`).toContain(`(${file})`);
+      expect([...markdown(join(docsRoot, file)).matchAll(/\[[^\]]+\]\((?!https?:)[^)]+\.md(?:#[^)]+)?\)/g)].length, `${file} needs forward/back links`).toBeGreaterThanOrEqual(2);
+    }
+    for (const file of documentationFiles) {
+      const content = markdown(file);
+      expect([...content.matchAll(/^#\s+\S.+$/gm)], `${file} must have one H1`).toHaveLength(1);
+      let inFence = false;
+      for (const [index, line] of content.split(/\r?\n/).entries()) {
+        if (!line.startsWith('```')) continue;
+        if (!inFence) expect(line, `${file}:${index + 1} code fence needs a language`).toMatch(/^```[A-Za-z][A-Za-z0-9-]*$/);
+        inFence = !inFence;
+      }
+      expect(inFence, `${file} has an unclosed code fence`).toBe(false);
+    }
+  });
+
   it('R-184: every local Markdown link and heading anchor resolves', () => {
     const missing: string[] = [];
     for (const file of documentationFiles) {
@@ -87,6 +131,16 @@ describe('documentation status contract', () => {
         if (!existsSync(join(repositoryRoot, match[1]))) missing.push(`${file}: ${match[1]}`);
       }
     }
+    expect(missing).toEqual([]);
+  });
+
+  it('T-13/R-124: every documented scenario is identified by an executable test', () => {
+    const testing = markdown(join(docsRoot, '11-testing.md'));
+    const scenarioIds = [...new Set([...testing.matchAll(/^\| (S-\d{2}) \|/gm)].map((match) => match[1]))].sort();
+    const sources = testSourceFiles().map((file) => ({ file, text: markdown(file) }));
+    const missing = scenarioIds.filter((scenario) => !sources.some(({ text }) => text.includes(scenario)));
+
+    expect(scenarioIds.length).toBeGreaterThan(0);
     expect(missing).toEqual([]);
   });
 

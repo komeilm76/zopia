@@ -10,8 +10,8 @@ descriptions" (T-16) is the headline; everything below makes that checkable.
 | --- | --- | --- |
 | Runtime & toolchain | **Bun ≥ 1.1** — install, run, test, CLI (D-01) | T-14 |
 | Language | **TypeScript 5.9+**, `strict: true`, ESM-only (`"type": "module"`), target ES2022 | — |
-| Test runner | **Vitest** (D-02) — `bun run test` | T-13 |
-| Package manager lockfile | `bun.lock` | — |
+| Test runner | **Vitest 4.1.11** (exactly pinned; D-02) — `bun run test` | T-13 |
+| Package manager lockfiles | authoritative `bun.lock`; npm/Node compatibility `package-lock.json` | — |
 | Node compatibility | generated code must also run on Node ≥ 18 (no Bun-only APIs in generated output) | — |
 
 > 📌 Generated `index.ts` files use **no** Bun-only or Node-only APIs — only
@@ -48,17 +48,19 @@ implementation so local, CI, and publish-time validation cannot drift.
 | R-1003 | 📦 **Named exports only** — no default exports anywhere in `src/` (generated files may have defaults: that's their contract, R-732) |
 | R-1004 | 🧩 **One concern per module** — modules are divided by conversion/boundary responsibility; `src/index.ts` remains re-exports only |
 | R-1005 | 🧵 **Cycle-aware traversal** — reference chains carry seen sets and schema definition/dependency traversals carry cycle state; cycles terminate as errors or `z.lazy()` according to reference kind (R-402) |
-| R-1006 | 🎯 **Determinism (P-1)** — canonical order everywhere (R-401); no `Date.now()`, `Math.random()`, or environment reads in the pure core |
+| R-1006 | 🎯 **Determinism (P-1)** — canonical code-unit order everywhere (R-401), never host-locale collation; no `Date.now()`, `Math.random()`, or environment reads in the pure core |
 | R-1007 | 🛡️ **Safe I/O** — every generated write passes the outDir guard (R-406); no shell-out, `eval`, or `new Function` in conversion paths |
 
 ## 📖 JSDoc standard (T-12)
 
-**Every exported symbol** — function, class, interface, type alias, and
-constant — carries JSDoc. The audited public boundary also includes every
-exposed member of an exported interface or class and every public method or
-constructor; private and protected implementation members are excluded. The
-AST contract suite scans every production module under `src/`, not only the
-package-root re-export list. The template:
+**Every exported symbol** — function, class, interface, type alias, enum, and
+constant — carries JSDoc, including declarations exposed through a named export
+list rather than an `export` modifier. The audited public boundary also includes
+every exposed member of an exported interface, class, or nested type-literal
+shape; public methods, constructors, call/construct signatures, and
+function-valued properties are callables. Private and protected implementation
+members are excluded. The AST contract suite scans every production module
+under `src/`, not only the package-root re-export list. The template:
 
 ```ts
 /**
@@ -87,7 +89,7 @@ export function openApiToApiDocs(
 | --- | --- |
 | R-131 | every `@param`, `@returns`, `@throws` is **specific** — no "the options", always *which* option and *what it does* |
 | R-132 | `@default` on every optional config field |
-| R-133 | `@example` is **runnable** code (tests may extract and execute them — contract suite) |
+| R-133 | `@example` is **runnable** code; the contract suite extracts each TypeScript block and typechecks it semantically against the real public source API |
 | R-134 | internal (non-exported) helpers get a one-line comment when the *why* is non-obvious |
 | R-135 | the docs link in `@see` must resolve (checked in CI) |
 
@@ -154,6 +156,11 @@ export function openApiToApiDocs(
 | R-172 | entries are **user-phrased** ("reverse conversion now restores `servers`"), not internal ("fixed serializer.ts:42") |
 | R-173 | on release: `[Unreleased]` → `[x.y.z] - YYYY-MM-DD`; a fresh empty `[Unreleased]` is created |
 | R-174 | sections per [Keep a Changelog](https://keepachangelog.com/en/1.1.0/): Added / Changed / Deprecated / Removed / Fixed / Security — with the project's emoji markers (✨ 🔄 ⚠️ 🗑️ 🐛 🛡️ 📝 🔑 🚧) |
+
+The contract suite audits every post-release commit that changes `src/`, public
+documentation, the package entry points, or package metadata and fails unless
+that same commit also changes `CHANGELOG.md`. The static Unreleased check remains
+active in shallow/source-only environments where the release boundary is absent.
 
 ## 📖 Docs convention
 

@@ -23,7 +23,7 @@ describe('zodToJsonSchema', () => {
     expect(zodToJsonSchema(z.string(), { target: 'openapi-3.1', $schema: false })).toEqual({ type: 'string' });
   });
 
-  it('uses each target dialect nullability and tuple shape', () => {
+  it('S-47: uses each target dialect nullability and tuple shape', () => {
     expect(zodToJsonSchema(z.string().nullable(), { target: 'openapi-3.1', $schema: false })).toEqual({
       type: ['string', 'null'],
     });
@@ -126,7 +126,7 @@ describe('zodToJsonSchema', () => {
     expect(warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_UNREPRESENTABLE' })]);
   });
 
-  it('reports an escaped JSON Pointer for nested unrepresentable schemas', () => {
+  it('S-48: reports an escaped JSON Pointer for nested unrepresentable schemas', () => {
     const warnings: ZopiaWarning[] = [];
     expect(zodToJsonSchema(
       z.object({ 'a/b~c': z.array(z.bigint()) }),
@@ -214,7 +214,7 @@ describe('zodToJsonSchema', () => {
     expect(calls).toBe(1);
   });
 
-  it('uses input semantics for defaulted request properties', () => {
+  it('S-52: uses input semantics for defaulted request properties', () => {
     expect(zodToJsonSchema(z.object({ value: z.string().default('x') }), {
       io: 'input',
       $schema: false,
@@ -292,7 +292,7 @@ describe('zodToJsonSchema', () => {
     });
   });
 
-  it('strips safe-integer sentinel bounds independently while retaining real bounds', () => {
+  it('S-51: strips safe-integer sentinel bounds independently while retaining real bounds', () => {
     expect(zodToJsonSchema(z.number().int(), { $schema: false })).toEqual({ type: 'integer' });
     expect(zodToJsonSchema(z.number().int().min(-100), { $schema: false })).toEqual({
       type: 'integer',

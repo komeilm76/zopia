@@ -22,6 +22,9 @@ export interface ZopiaReverseOptions {
   version?: '3.0' | '3.1';
   /**
    * Receive each deterministic structured warning emitted during reverse conversion.
+   *
+   * @param warning Normalized warning emitted in deterministic order.
+   * @returns Nothing.
    * @default undefined
    */
   onWarning?: (warning: ZopiaWarning) => void;

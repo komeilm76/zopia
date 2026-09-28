@@ -8,7 +8,7 @@
 
 | 🧩 Piece | 📏 Choice | 📝 Why |
 | --- | --- | --- |
-| Runner | **Vitest** | requested standard (D-02); snapshots, coverage, type-aware assertions |
+| Runner | **Vitest 4.1.11** (exact pin) | requested standard (D-02); snapshots, V8 coverage, type-aware assertions |
 | Runtime | **Bun** | runs the package, the tests, *and* the generated code (D-08) |
 | Types | `tsc --noEmit` (`strict`) | the type-level test gate |
 | Fixtures | plain JSON files under `tests/fixtures/` | specs are the unit of integration |
@@ -38,17 +38,21 @@ same gate so local and publish-time validation cannot drift.
 | **Integration** | top-level `tests/*generate*.test.ts`, `tests/*public*.test.ts`, and `tests/*to-openapi*.test.ts` | full engine runs: spec in → tree out (both modes/options); trusted generated tree in → spec out |
 | **Round-trip** | `tests/roundtrip/**/*.test.ts` | property: `openapi(docs(spec)) ≈ spec` and `zodSchema(zod(jsonSchema(zodSchema))) ≈ schema` (see below) |
 | **Golden files** | `tests/fixtures/expected/**` | byte-exact generated trees (determinism, P-1), regenerated deliberately and reviewed with their fixture inputs |
-| **Contract** | `tests/contract/**/*.test.ts` | public API/JSDoc, error and manifest contracts, golden output, npm artifact, release metadata, and documentation status |
+| **Contract** | `tests/contract/**/*.test.ts` | public API/JSDoc, scenario identifiers, quality/forbidden behavior, changelog history, golden output, npm artifact, release metadata, and documentation status |
 
 > 📌 **Rule R-111** — *no test touches the network*; *no test writes outside
 > a per-test temp directory*. Every test-created directory goes through the
 > shared `useTemporaryDirectories()` helper (`fs.mkdtemp` under `os.tmpdir()`),
 > which removes all owned trees in `afterEach`; a hygiene contract rejects direct
-> temp-directory factories in test files. *No test depends on wall-clock or locale*.
+> temp-directory factories in test files. The same contract rejects network,
+> wall-clock, random, and host-locale behavior in tests.
 
 ## 🧾 The scenario matrix
 
-The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
+The suite **must** cover every cell. A cell is a *spec axis × an output axis*.
+Each `S-…` identifier below appears in the executable test that covers it, and a
+contract test compares the complete documented identifier set with the complete
+Vitest source tree so a newly documented scenario cannot remain unimplemented:
 
 ### 📄 Spec-input scenarios
 
@@ -132,8 +136,8 @@ The suite **must** cover every cell. A cell is a *spec axis × an output axis*:
 | S-72 | reverse warnings — runtime Zod losses, fallback info/security, and 3.1→3.0 omissions return/callback with exact output pointers; security fallback coverage includes multiple operations, definition-name collisions, manifest-authoritative explicit/global requirements, and OpenAPI/Swagger representations | R-408/R-654/R-656…R-658 |
 | S-73 | CLI warning channels — generate/reverse diagnostics go to stderr while reverse stdout remains parseable JSON | R-408/R-933 |
 | S-74 | CLI contract — every flag maps to its API option; options may surround positionals; missing/extra arguments, unknown/cross-command/duplicate/valueless flags fail before engine work; help includes the trusted-tree warning; exit statuses distinguish typed and unexpected failures | R-931…R-934 |
-| S-75 | JSDoc AST audit — every exported declaration and exposed public member has a useful summary; callable parameters/returns, optional configuration defaults, TypeScript examples, relative `@see` links, and named-only exports are checked across `src/` | T-12/R-131…R-135/R-1003 |
-| S-76 | Package/release contract — version and public metadata stay synchronized; the npm archive is allowlisted and executable; `prepublishOnly` runs the complete release gate; the exact tarball installs offline and passes package-root import plus generate/reverse CLI smoke tests | R-191…R-193 |
+| S-75 | JSDoc AST audit — every directly or named-only exported declaration and exposed public/nested-shape member has a useful summary; all callable forms require specific parameters/returns, optional configuration defaults are stated, TypeScript examples semantically typecheck against the source API, and relative `@see` links resolve | T-12/R-131…R-135/R-1003 |
+| S-76 | Package/release contract — version and public metadata stay synchronized; Vitest/coverage versions and Bun scripts stay pinned; the npm archive is allowlisted and executable; `prepublishOnly` runs the complete release gate; the exact tarball installs offline and passes package-root import plus generate/reverse CLI smoke tests | R-191…R-193 |
 
 ## 🔄 Round-trip property tests
 

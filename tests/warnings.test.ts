@@ -14,7 +14,7 @@ import {
 const temporaryDirectory = useTemporaryDirectories();
 
 describe('warnings pipeline', () => {
-  it('validates, sanitizes, deduplicates, and sorts structured warnings deterministically', () => {
+  it('S-53: validates, sanitizes, deduplicates, and sorts structured warnings deterministically', () => {
     const inputs: ZopiaWarning[] = [
       { code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'second\nline' },
       { code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/components/schemas/A', message: 'custom format' },
@@ -80,7 +80,7 @@ describe('warnings pipeline', () => {
     expect(collector.toArray()).toHaveLength(2);
   });
 
-  it('collects reverse runtime-schema and default-security warnings with exact output pointers', async () => {
+  it('S-72: collects reverse runtime-schema and default-security warnings with exact output pointers', async () => {
     const outputDir = await temporaryDirectory('zopia-warnings-');
     await generateApiDocsFiles({
       openapi: '3.1.0',

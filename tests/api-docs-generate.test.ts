@@ -7,7 +7,7 @@ import { generateApiDocsFiles } from '../src';
 const temporaryDirectory = useTemporaryDirectories();
 
 describe('API docs endpoint generation', () => {
-  it('generates component files and a sorted barrel', async () => {
+  it('S-32: generates component files and a sorted barrel', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
     expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts', 'components/index.ts', '.zopia-manifest.json']);
@@ -242,7 +242,7 @@ describe('API docs endpoint generation', () => {
     const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
     expect(manifest.apis[0].refs[0]).not.toHaveProperty('component');
   });
-  it('renders deeply nested object references recursively', async () => {
+  it('S-12: renders deeply nested object references recursively', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' }, Group: { type: 'object', properties: { profile: { type: 'object', properties: { users: { type: 'array', items: { $ref: '#/components/schemas/User' } } } } } } } }, paths: {} }, { outputDir, insertComponents: true });
     const content = await readFile(join(outputDir, 'components', 'Group', 'index.ts'), 'utf8');
@@ -282,7 +282,7 @@ describe('API docs endpoint generation', () => {
     expect(content).toContain('import { UserSchema } from "../User/index";');
     expect(content).toContain('.catchall(UserSchema)');
   });
-  it('uses lazy references for mutual component cycles', async () => {
+  it('S-13: uses lazy references for mutual component cycles', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object', properties: { organization: { $ref: '#/components/schemas/Organization' } } }, Organization: { type: 'object', properties: { owner: { $ref: '#/components/schemas/User' } } } } }, paths: {} }, { outputDir, insertComponents: true });
     const user = await readFile(join(outputDir, 'components', 'User', 'index.ts'), 'utf8');
@@ -384,7 +384,7 @@ describe('API docs endpoint generation', () => {
     const inlineContent = await readFile(join(inlineOutputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
     expect(inlineContent).toContain('params: z.object({ ["id"]: z.string().uuid() })');
   });
-  it('uses component references nested inside endpoint schemas', async () => {
+  it('S-33: uses component references nested inside endpoint schemas', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { UserId: { type: 'string', format: 'uuid' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object', properties: { id: { $ref: '#/components/schemas/UserId' } }, required: ['id'] } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const content = await readFile(join(outputDir, 'users', 'get', 'index.ts'), 'utf8');
@@ -397,7 +397,7 @@ describe('API docs endpoint generation', () => {
     const inlineContent = await readFile(join(inlineOutputDir, 'users', 'get', 'index.ts'), 'utf8');
     expect(inlineContent).toContain('200: z.object({ ["id"]: z.string().uuid() })');
   });
-  it('imports exact component response references', async () => {
+  it('S-11: imports exact component response references', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { User: { type: 'object' } } }, paths: { '/users': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const content = await readFile(join(outputDir, 'users', 'get', 'index.ts'), 'utf8');

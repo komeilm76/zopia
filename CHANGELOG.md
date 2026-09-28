@@ -15,11 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🔄 Changed
+- 📖 Public API documentation is now audited across named-only exports, nested type shapes, callable properties/signatures, parameters, returns, direct throws, defaults, links, and examples that semantically typecheck against the real source API.
+- 🧪 Every documented T-13 scenario now carries an executable `S-…` test identifier, with contracts that prevent matrix, documentation-structure, test-hygiene, deterministic-output, and forbidden-runtime behavior from drifting.
+- 🚢 The release toolchain now pins Vitest and its V8 coverage provider to 4.1.11, uses Bun for TypeScript utility scripts, validates the complete Bun gate contract, and audits post-release user-visible commits for same-commit changelog updates.
 - 🧹 Completed the R-111 test-isolation contract: every test-created temporary tree now uses one shared after-each cleanup helper, including failure and symlink fixtures, and a contract test prevents direct unmanaged temporary-directory creation from returning.
 - 🧪 Completed the remaining T-13 scenario-matrix regressions for method-named/deep parameterized paths, all documented format and upper-bound mappings, Zod `fromJSONSchema` behavior parity, and deterministic output from both schema engines.
 - 📚 Synchronized current documentation with the completed Phase 1 implementation: status labels, actual source/test layout and pipeline boundaries, generated golden examples, facade/component-reuse behavior, dependency wording, and safety/performance claims now match the repository; added a contract test for documentation links, completion state, concrete paths, and canonical output drift.
 
 ### 🐛 Fixed
+- 🐛 Canonical generation and round-trip comparison now use explicit code-unit ordering instead of host-locale collation, keeping output identical across machines and locales.
+- 🐛 Coverage configuration now follows Vitest 4's include-all-source contract instead of using the removed `coverage.all` option, so the pinned release typecheck and coverage gate remain executable.
 - 🐛 T-10 manifests now retain source path order, empty Path Items, and explicit empty schema-component containers; reverse conversion also preserves boolean/tuple/local-definition schema syntax, schema-less media types, absent optional flags, and unconstrained request bodies instead of silently normalizing or deleting them.
 - 🐛 T-11 reverse regeneration now keeps source-order-sensitive collision plans and every fixture/layout/component tree byte-identical, recognizes exact `z.never()` and plain `z.enum()` schemas, normalizes generated scalar intersections without round-trip drift, emits whitespace-clean canonical endpoint files, and canonicalizes emitted Zod map/literal key order while reverse conversion conditionally retains source-only structure (boolean spelling, `required` order, empty maps/definitions, object openness, draft tuples, and reference-free frozen schemas) without overriding developer schema, membership, tuple-member, validation, or strictness edits.
 - 🐛 T-5/T-6 endpoint planning now keeps method directories leaf-only when literal path segments equal HTTP methods and disambiguates endpoint directories that would collide structurally with `.zopia-manifest.json`; component name `index.ts` is rejected before writes because it conflicts with the component barrel.
@@ -38,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🐛 Engine ③ now validates all endpoint renders before writing component artifacts, classifies endpoint files beneath an OpenAPI `/components` path as endpoints rather than mistaking every `components/` prefix for a generated schema artifact, and reports syntactically valid non-object JSON as `ZOPIA_SPEC_INVALID` instead of invalid JSON.
 
 ### 🛡️ Security
+- 🛡️ Updated and locked the test dependency tree to a zero-vulnerability npm audit resolution while retaining the declared Node 20 compatibility range.
 - 🛡️ Warning deduplication now uses collision-free structured identities, and formatted diagnostics/comments escape control characters in locations while sanitizing control characters in messages.
 - 🛡️ Manifest file ownership now detects case-insensitive path collisions before trees are written on case-sensitive hosts.
 

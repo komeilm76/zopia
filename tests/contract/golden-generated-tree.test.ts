@@ -31,7 +31,11 @@ describe('golden generated-tree contract', () => {
   });
 
   for (const golden of GOLDEN_CASES) {
-    it(`R-112: ${golden.name} is byte-exact`, async () => {
+    const scenarios: Record<string, string[]> = {
+      'admin-api-3.0.directory': ['S-21', 'S-31'],
+      'admin-api-3.0.flat': ['S-22'],
+    };
+    it(`${scenarios[golden.name]?.join('/') ?? ''}${scenarios[golden.name] ? '/' : ''}R-112: ${golden.name} is byte-exact`, async () => {
       const source = JSON.parse(await readFile(join(fixtureRoot, golden.fixture), 'utf8')) as Record<string, unknown>;
       const outputDirectory = await temporaryDirectory();
 
@@ -57,7 +61,7 @@ describe('golden generated-tree contract', () => {
     expect(invalid).toEqual([]);
   });
 
-  it('R-126: the km-api contract golden exercises open extension values', async () => {
+  it('S-26/S-68/S-69/R-126: the km-api contract golden exercises open extension values', async () => {
     const content = await readFile(join(expectedRoot, 'km-api-0.4.1.contract', 'probe', '{probeId}', 'trace', 'index.ts'), 'utf8');
     expect(content).toContain('method: "TRACE"');
     expect(content).toContain('"application/vnd.zopia+json"');

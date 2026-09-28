@@ -27,7 +27,7 @@ async function treeSnapshot(root: string, directory = root): Promise<Record<stri
     if (entry.isDirectory()) Object.assign(snapshot, await treeSnapshot(root, path));
     else if (entry.isFile()) snapshot[path.slice(root.length + 1).replace(/\\/g, '/')] = await readFile(path, 'utf8');
   }
-  return Object.fromEntries(Object.entries(snapshot).sort(([left], [right]) => left.localeCompare(right)));
+  return Object.fromEntries(Object.entries(snapshot).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
 }
 
 describe('round-trip contract', () => {
@@ -43,21 +43,31 @@ describe('round-trip contract', () => {
     'petstore-mini-3.1.json',
     'unsupported-keywords.json',
   ];
-  const cases: Array<{ fixture: string; label: string; options?: ZopiaGenerateOptions }> = [
-    ...fixtures.map((fixture) => ({ fixture, label: 'directory/default' })),
-    { fixture: 'admin-api-3.0.json', label: 'flat', options: { mode: 'flat' } },
+  const cases: Array<{ fixture: string; label: string; options?: ZopiaGenerateOptions; scenarios?: string[] }> = [
+    ...fixtures.map((fixture) => ({
+      fixture,
+      label: 'directory/default',
+      scenarios: {
+        'admin-api-2.0.json': ['S-01'],
+        'admin-api-3.0.json': ['S-06', 'S-14', 'S-61'],
+        'cookies-3.0.json': ['S-04'],
+        'petstore-mini-3.1.json': ['S-05'],
+        'unsupported-keywords.json': ['S-46'],
+      }[fixture] ?? [],
+    })),
+    { fixture: 'admin-api-3.0.json', label: 'flat', options: { mode: 'flat' }, scenarios: ['S-62'] },
     { fixture: 'admin-api-3.0.json', label: 'components/inlined', options: { insertComponents: true } },
     { fixture: 'admin-api-3.0.json', label: 'flat/components-inlined', options: { mode: 'flat', insertComponents: true } },
-    { fixture: 'admin-api-3.0.json', label: 'flat/components-references', options: { mode: 'flat', insertComponents: true, useComponentAsReference: true } },
+    { fixture: 'admin-api-3.0.json', label: 'flat/components-references', options: { mode: 'flat', insertComponents: true, useComponentAsReference: true }, scenarios: ['S-63'] },
     { fixture: 'admin-api-2.0.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true } },
-    { fixture: 'admin-api-3.0.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true } },
+    { fixture: 'admin-api-3.0.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true }, scenarios: ['S-63'] },
     { fixture: 'cycle-comment.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true } },
     { fixture: 'nested-refs.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true } },
-    { fixture: 'unsupported-keywords.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true } },
+    { fixture: 'unsupported-keywords.json', label: 'components/references', options: { insertComponents: true, useComponentAsReference: true }, scenarios: ['S-46'] },
   ];
 
-  for (const { fixture, label, options } of cases) {
-    it(`T-11: reproduces ${fixture} in ${label} mode after canonicalization`, async () => {
+  for (const { fixture, label, options, scenarios = [] } of cases) {
+    it(`S-35/${scenarios.length ? `${scenarios.join('/')}/` : ''}T-11: reproduces ${fixture} in ${label} mode after canonicalization`, async () => {
       const source = await readFixture(fixture);
       const outputDirectory = await temporaryDirectory();
       const regeneratedDirectory = await temporaryDirectory();
@@ -182,7 +192,7 @@ describe('round-trip contract', () => {
     expect(await treeSnapshot(outputDirectory)).toEqual(first);
   });
 
-  it('R-409: reverse output regenerates the same byte-identical tree', async () => {
+  it('S-67/R-409: reverse output regenerates the same byte-identical tree', async () => {
     const source = await readFixture('admin-api-3.0.json');
     const firstDirectory = await temporaryDirectory();
     const secondDirectory = await temporaryDirectory();

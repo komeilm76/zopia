@@ -7,7 +7,7 @@ import { join, relative } from 'node:path';
 const temporaryDirectory = useTemporaryDirectories();
 
 describe('manifest reverse conversion', () => {
-  it('reconstructs the document frame and lossless operations', () => {
+  it('S-66: reconstructs the document frame and lossless operations', () => {
     const result = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, infoOverlay: { contact: { name: 'Team' } }, documentOverlay: { externalDocs: { url: 'https://example.com' }, 'x-vendor': true }, components: [{ name: 'User', schema: { type: 'object' } }], apis: [{ path: '/users', method: 'get', operationId: 'getUsers', sourceOperation: { operationId: 'getUsers', responses: { '200': { description: 'ok' } } } }] });
     expect(result.openapi).toBe('3.1.0');
     const document = result as any;
@@ -47,7 +47,7 @@ describe('manifest reverse conversion', () => {
     expect(document.openapi).toBe('3.1.0');
     expect(document.components.schemas.Inline).toEqual({ type: 'string' });
   });
-  it('selects OpenAPI 3.0 or 3.1 for file-backed runtime schemas', async () => {
+  it('S-64: selects OpenAPI 3.0 or 3.1 for file-backed runtime schemas', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Versions', version: '1' }, components: { schemas: { MaybeName: { type: ['string', 'null'] }, User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } } }, paths: { '/name': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: ['string', 'null'] } } } } } } }, '/user': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: { anyOf: [{ $ref: '#/components/schemas/User' }, { type: 'null' }] } } } } } } } } }, { outputDir, insertComponents: true, useComponentAsReference: true });
     const manifestFile = join(outputDir, '.zopia-manifest.json');
@@ -112,7 +112,7 @@ describe('manifest reverse conversion', () => {
     await expect(manifestFileToOpenApi(manifestFile, { version: '2.0' } as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
     await expect(apiDocsToOpenApi(directory, null as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
   });
-  it('reports a missing manifest distinctly from malformed manifest content', async () => {
+  it('S-65: reports a missing manifest distinctly from malformed manifest content', async () => {
     const directory = await temporaryDirectory('zopia-');
     const missingError = await manifestFileToOpenApi(join(directory, '.zopia-manifest.json')).catch((error: unknown) => error);
     expect(missingError).toMatchObject({ code: 'ZOPIA_DOCS_MISSING_MANIFEST', message: expect.stringContaining('manifest file not found') });
@@ -213,7 +213,7 @@ describe('manifest reverse conversion', () => {
     expect(after.paths['/status'].get).toBeUndefined();
     expect(after.paths['/status'].put).toBeDefined();
   });
-  it('keeps manifest security authoritative when runtime auth conflicts', async () => {
+  it('S-71: keeps manifest security authoritative when runtime auth conflicts', async () => {
     const outputDir = await temporaryDirectory('zopia-security-');
     await generateApiDocsFiles({
       openapi: '3.1.0',
@@ -433,7 +433,7 @@ describe('manifest reverse conversion', () => {
     expect(withoutExamples.paths['/messages'].post.requestBody.content['application/xml'].examples).toBeUndefined();
     expect(withoutExamples.paths['/messages'].post.responses['200'].content['application/xml'].examples).toBeUndefined();
   });
-  it('applies manifest refs, schema overlays, and response overlays after runtime serialization', async () => {
+  it('S-70: applies manifest refs, schema overlays, and response overlays after runtime serialization', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Overlays', version: '1' }, components: { schemas: {
       User: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },

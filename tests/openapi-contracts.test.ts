@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildOpenApiOperationIR, extractOperationContracts } from '../src';
 
 describe('OpenAPI operation contracts', () => {
-  it('extracts Swagger primitive parameter types', () => {
+  it('S-03: extracts Swagger primitive parameter types', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'limit', type: 'integer', format: 'int32' }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).parameters[0].schema).toEqual({ type: 'integer', format: 'int32' });
     const [invalid] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'values', type: 'array' }], responses: { '200': { description: 'ok' } } } } } });
@@ -23,7 +23,7 @@ describe('OpenAPI operation contracts', () => {
     const [schemaShaped] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { parameters: [{ in: 'query', name: 'limit', schema: { type: 'integer' } }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(schemaShaped)).toThrow('Swagger non-body parameter must use top-level type keywords: limit');
   });
-  it('extracts Swagger formData parameters', () => {
+  it('S-02: extracts Swagger formData parameters', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/upload': { post: { consumes: ['multipart/form-data'], parameters: [{ in: 'formData', name: 'file', type: 'file', required: true }], responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'multipart/form-data', schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } }, required: ['file'] }, required: true });
     const [referenced] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, parameters: { File: { in: 'formData', name: 'file', type: 'file', required: true } }, paths: { '/upload': { post: { parameters: [{ $ref: '#/parameters/File' }], responses: { '200': { description: 'ok' } } } } } });

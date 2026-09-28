@@ -56,15 +56,27 @@ function label(node: ts.Node, source: ts.SourceFile): string {
   return ts.SyntaxKind[node.kind];
 }
 
-function auditedDeclarations(source: ts.SourceFile): ts.DeclarationStatement[] {
-  return source.statements.filter((node): node is ts.DeclarationStatement => isExported(node) && (
+type AuditedDeclaration = ts.ClassDeclaration | ts.EnumDeclaration | ts.FunctionDeclaration | ts.InterfaceDeclaration | ts.TypeAliasDeclaration | ts.VariableStatement;
+
+function declarationNames(node: AuditedDeclaration): string[] {
+  if (ts.isVariableStatement(node)) {
+    return node.declarationList.declarations.flatMap((declaration) => ts.isIdentifier(declaration.name) ? [declaration.name.text] : []);
+  }
+  return 'name' in node && node.name && ts.isIdentifier(node.name as ts.Node) ? [(node.name as ts.Identifier).text] : [];
+}
+
+function auditedDeclarations(source: ts.SourceFile): AuditedDeclaration[] {
+  const namedExports = new Set(source.statements.flatMap((node) => ts.isExportDeclaration(node) && !node.moduleSpecifier && node.exportClause && ts.isNamedExports(node.exportClause)
+    ? node.exportClause.elements.map((element) => (element.propertyName ?? element.name).text)
+    : []));
+  return source.statements.filter((node): node is AuditedDeclaration => (
     ts.isClassDeclaration(node)
     || ts.isEnumDeclaration(node)
     || ts.isFunctionDeclaration(node)
     || ts.isInterfaceDeclaration(node)
     || ts.isTypeAliasDeclaration(node)
     || ts.isVariableStatement(node)
-  ));
+  ) && (isExported(node) || declarationNames(node).some((name) => namedExports.has(name))));
 }
 
 function publicMembers(node: ts.ClassDeclaration | ts.InterfaceDeclaration): readonly ts.ClassElement[] | readonly ts.TypeElement[] {
@@ -74,7 +86,7 @@ function publicMembers(node: ts.ClassDeclaration | ts.InterfaceDeclaration): rea
     && !(member.name && ts.isPrivateIdentifier(member.name)));
 }
 
-function nestedShapeMembers(node: ts.DeclarationStatement): ts.TypeElement[] {
+function nestedShapeMembers(node: AuditedDeclaration): ts.TypeElement[] {
   const members: ts.TypeElement[] = [];
   const visit = (child: ts.Node): void => {
     if (ts.isTypeLiteralNode(child)) members.push(...child.members);
@@ -90,10 +102,56 @@ function nestedShapeMembers(node: ts.DeclarationStatement): ts.TypeElement[] {
   return members;
 }
 
-function functionLikeDeclarations(node: ts.DeclarationStatement): Array<ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration> {
+function functionLikeDeclarations(node: AuditedDeclaration): Array<ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration> {
   if (ts.isFunctionDeclaration(node)) return [node];
   if (!ts.isClassDeclaration(node)) return [];
   return publicMembers(node).filter((member): member is ts.MethodDeclaration | ts.ConstructorDeclaration => ts.isMethodDeclaration(member) || ts.isConstructorDeclaration(member));
+}
+
+interface ShapeCallable {
+  documentationNode: ts.Node;
+  parameters: readonly ts.ParameterDeclaration[];
+}
+
+function variableCallables(node: AuditedDeclaration): ShapeCallable[] {
+  if (!ts.isVariableStatement(node)) return [];
+  return node.declarationList.declarations.flatMap((declaration) => {
+    if (declaration.initializer && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) {
+      return [{ documentationNode: node, parameters: declaration.initializer.parameters }];
+    }
+    if (declaration.type && ts.isFunctionTypeNode(declaration.type)) {
+      return [{ documentationNode: node, parameters: declaration.type.parameters }];
+    }
+    return [];
+  });
+}
+
+function shapeCallables(node: AuditedDeclaration): ShapeCallable[] {
+  const members = ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node)
+    ? [...publicMembers(node), ...nestedShapeMembers(node)]
+    : nestedShapeMembers(node);
+  const callables: ShapeCallable[] = [];
+  if (ts.isTypeAliasDeclaration(node) && ts.isFunctionTypeNode(node.type)) callables.push({ documentationNode: node, parameters: node.type.parameters });
+  for (const member of members) {
+    if (ts.isMethodSignature(member) || ts.isCallSignatureDeclaration(member) || ts.isConstructSignatureDeclaration(member)) {
+      callables.push({ documentationNode: member, parameters: member.parameters });
+    } else if ((ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)) && member.type && ts.isFunctionTypeNode(member.type)) {
+      callables.push({ documentationNode: member, parameters: member.type.parameters });
+    } else if (ts.isPropertyDeclaration(member) && member.initializer && (ts.isArrowFunction(member.initializer) || ts.isFunctionExpression(member.initializer))) {
+      callables.push({ documentationNode: member, parameters: member.initializer.parameters });
+    }
+  }
+  return callables;
+}
+
+function containsThrow(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (ts.isThrowStatement(child)) found = true;
+    else if (!found) ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return found;
 }
 
 function parameterName(parameter: ts.ParameterDeclaration, source: ts.SourceFile): string {
@@ -104,8 +162,31 @@ function escapeRegularExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function exampleDiagnostics(code: string): readonly ts.Diagnostic[] {
+  const file = join(repositoryRoot, '.zopia-jsdoc-example.ts');
+  const options: ts.CompilerOptions = {
+    allowImportingTsExtensions: true,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    noEmit: true,
+    paths: { zopia: ['./src/index.ts'] },
+    strict: true,
+    target: ts.ScriptTarget.ES2022,
+  };
+  const host = ts.createCompilerHost(options);
+  const readFile = host.readFile.bind(host);
+  const fileExists = host.fileExists.bind(host);
+  const getSourceFile = host.getSourceFile.bind(host);
+  host.fileExists = (candidate) => candidate === file || fileExists(candidate);
+  host.readFile = (candidate) => candidate === file ? code : readFile(candidate);
+  host.getSourceFile = (candidate, languageVersion, onError, shouldCreateNewSourceFile) => candidate === file
+    ? ts.createSourceFile(file, code, languageVersion, true, ts.ScriptKind.TS)
+    : getSourceFile(candidate, languageVersion, onError, shouldCreateNewSourceFile);
+  return ts.getPreEmitDiagnostics(ts.createProgram([file], options, host));
+}
+
 describe('public JSDoc contract', () => {
-  it('T-12: every exported declaration has a useful summary', () => {
+  it('S-75/T-12: every exported declaration has a useful summary', () => {
     const failures: string[] = [];
     for (const parsed of parsedSources) {
       for (const declaration of auditedDeclarations(parsed.source)) {
@@ -122,9 +203,9 @@ describe('public JSDoc contract', () => {
     const failures: string[] = [];
     for (const parsed of parsedSources) {
       for (const declaration of auditedDeclarations(parsed.source)) {
-        const members = ts.isClassDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)
+        const members: readonly ts.Node[] = ts.isClassDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)
           ? [...publicMembers(declaration), ...nestedShapeMembers(declaration)]
-          : nestedShapeMembers(declaration);
+          : ts.isEnumDeclaration(declaration) ? declaration.members : nestedShapeMembers(declaration);
         for (const member of members) {
           const comment = jsDoc(member, parsed.text);
           if (!comment || summary(comment).length < 8) {
@@ -140,19 +221,23 @@ describe('public JSDoc contract', () => {
     const failures: string[] = [];
     for (const parsed of parsedSources) {
       for (const declaration of auditedDeclarations(parsed.source)) {
-        for (const callable of functionLikeDeclarations(declaration)) {
-          const comment = jsDoc(callable, parsed.text) ?? '';
-          const subject = `${relative(repositoryRoot, parsed.file)}:${line(callable, parsed.source)} ${label(declaration, parsed.source)}`;
-          for (const parameter of callable.parameters) {
+        const inspect = (documentationNode: ts.Node, parameters: readonly ts.ParameterDeclaration[], returns: boolean, mayThrow: boolean): void => {
+          const comment = jsDoc(documentationNode, parsed.text) ?? '';
+          const subject = `${relative(repositoryRoot, parsed.file)}:${line(documentationNode, parsed.source)} ${label(declaration, parsed.source)}`;
+          for (const parameter of parameters) {
             const name = parameterName(parameter, parsed.source);
             const parameterTag = new RegExp(`@param\\s+${escapeRegularExpression(name)}\\s+\\S`);
             if (!parameterTag.test(comment)) failures.push(`${subject} missing specific @param ${name}`);
           }
-          if (!ts.isConstructorDeclaration(callable) && !/@returns\s+\S/.test(comment)) failures.push(`${subject} missing specific @returns`);
+          if (returns && !/@returns\s+\S/.test(comment)) failures.push(`${subject} missing specific @returns`);
+          if (mayThrow && !/@throws(?:\s+\{[^}]+\})?\s+\S/.test(comment)) failures.push(`${subject} missing specific @throws`);
           for (const throwsTag of comment.matchAll(/@throws(?:\s+\{[^}]+\})?\s*([^\r\n*]*)/g)) {
             if (!throwsTag[1].trim()) failures.push(`${subject} has an empty @throws`);
           }
-        }
+        };
+        for (const callable of functionLikeDeclarations(declaration)) inspect(callable, callable.parameters, !ts.isConstructorDeclaration(callable), containsThrow(callable));
+        for (const callable of variableCallables(declaration)) inspect(callable.documentationNode, callable.parameters, true, containsThrow(callable.documentationNode));
+        for (const callable of shapeCallables(declaration)) inspect(callable.documentationNode, callable.parameters, true, false);
       }
     }
     expect(failures).toEqual([]);
@@ -162,12 +247,15 @@ describe('public JSDoc contract', () => {
     const failures: string[] = [];
     for (const parsed of parsedSources) {
       for (const declaration of auditedDeclarations(parsed.source)) {
-        if (!ts.isInterfaceDeclaration(declaration) || !declaration.name.text.endsWith('Options')) continue;
-        for (const member of declaration.members) {
+        const [name] = declarationNames(declaration);
+        if (!name?.endsWith('Options')) continue;
+        const members = ts.isInterfaceDeclaration(declaration) ? [...declaration.members]
+          : ts.isTypeAliasDeclaration(declaration) ? nestedShapeMembers(declaration) : [];
+        for (const member of members) {
           if (!member.questionToken) continue;
           const comment = jsDoc(member, parsed.text) ?? '';
           if (!/@default\s+\S/.test(comment)) {
-            failures.push(`${relative(repositoryRoot, parsed.file)}:${line(member, parsed.source)} ${declaration.name.text}.${label(member, parsed.source)}`);
+            failures.push(`${relative(repositoryRoot, parsed.file)}:${line(member, parsed.source)} ${name}.${label(member, parsed.source)}`);
           }
         }
       }
@@ -175,7 +263,7 @@ describe('public JSDoc contract', () => {
     expect(failures).toEqual([]);
   });
 
-  it('R-133: TypeScript examples are syntactically executable modules', () => {
+  it('R-133: TypeScript examples are syntactically and semantically valid modules', () => {
     const failures: string[] = [];
     for (const parsed of parsedSources) {
       for (const declaration of auditedDeclarations(parsed.source)) {
@@ -187,18 +275,13 @@ describe('public JSDoc contract', () => {
         }
         for (const [index, match] of examples.entries()) {
           const code = match[1].split(/\r?\n/).map((entry) => entry.replace(/^\s*\*\s?/, '')).join('\n');
-          const result = ts.transpileModule(code, {
-            compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-            fileName: 'example.ts',
-            reportDiagnostics: true,
-          });
-          const diagnostics = result.diagnostics?.filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error) ?? [];
-          if (diagnostics.length) failures.push(`${relative(repositoryRoot, parsed.file)} ${label(declaration, parsed.source)} example ${index + 1}`);
+          const diagnostics = exampleDiagnostics(code).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+          if (diagnostics.length) failures.push(`${relative(repositoryRoot, parsed.file)} ${label(declaration, parsed.source)} example ${index + 1}: ${diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')).join('; ')}`);
         }
       }
     }
     expect(failures).toEqual([]);
-  });
+  }, 20_000);
 
   it('R-135: relative documentation links in @see tags resolve', () => {
     const failures: string[] = [];

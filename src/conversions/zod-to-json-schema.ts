@@ -17,7 +17,13 @@ export interface ZodToJsonSchemaOptions {
   $schema?: boolean;
   /** Convert the schema's accepted input or produced output type. @default 'output' */
   io?: 'input' | 'output';
-  /** Receive every structured warning produced by a lossy conversion. @default undefined */
+  /**
+   * Receive every structured warning produced by a lossy conversion.
+   *
+   * @param warning Normalized warning emitted in deterministic order.
+   * @returns Nothing.
+   * @default undefined
+   */
   onWarning?: (warning: ZopiaWarning) => void;
 }
 

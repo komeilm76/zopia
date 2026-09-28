@@ -87,7 +87,7 @@ describe('typed errors', () => {
     }
   });
 
-  it('uses typed errors at asynchronous public and CLI boundaries', async () => {
+  it('S-08: uses typed errors at asynchronous public and CLI boundaries', async () => {
     await expect(openApiToApiDocs({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: {} }, { mode: 'bad' } as any)).rejects.toMatchObject({
       name: 'ZopiaError',
       code: 'ZOPIA_CONFIG_INVALID',

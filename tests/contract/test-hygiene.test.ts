@@ -29,4 +29,39 @@ describe('test hygiene contract', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it('T-13/R-125: the executable suite contains no skipped or placeholder tests', async () => {
+    const forbiddenTokens = [
+      ['.', 'skip'].join(''),
+      ['.', 'todo'].join(''),
+    ];
+    const offenders: string[] = [];
+
+    for (const file of await testFiles()) {
+      const source = await readFile(file, 'utf8');
+      for (const token of forbiddenTokens) if (source.includes(token)) offenders.push(`${relative(testsRoot, file).replace(/\\/g, '/')}: ${token}`);
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('T-13/R-111: tests do not use network, wall-clock, locale, or random behavior', async () => {
+    const forbiddenTokens = [
+      ['fetch', '('].join(''),
+      ["node:", 'http'].join(''),
+      ["node:", 'net'].join(''),
+      ['Date', '.now'].join(''),
+      ['Math', '.random'].join(''),
+      ['set', 'Timeout'].join(''),
+      ['locale', 'Compare'].join(''),
+    ];
+    const offenders: string[] = [];
+
+    for (const file of await testFiles()) {
+      const source = await readFile(file, 'utf8');
+      for (const token of forbiddenTokens) if (source.includes(token)) offenders.push(`${relative(testsRoot, file).replace(/\\/g, '/')}: ${token}`);
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });

@@ -376,11 +376,11 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#' })]);
     expect(result.overlays).toEqual([{ at: '', set: { format } }]);
   });
-  it('emits compilable code for non-string enums', () => {
+  it('S-43: emits compilable code for non-string enums', () => {
     const result = jsonSchemaToZod({ enum: [1, 2, null] });
     expect(result.code).toBe('const schema = z.union([z.literal(1), z.literal(2), z.literal(null)]);\n');
   });
-  it('supports structured enum and const values by JSON equality', () => {
+  it('S-43: supports structured enum and const values by JSON equality', () => {
     const sourceEnum = { enum: [{ nested: { a: 1, b: 2 } }, [1, 2], 'active'] };
     const objectEnum = jsonSchemaToZod(sourceEnum);
     expect(objectEnum.schema.safeParse({ nested: { b: 2, a: 1 } }).success).toBe(true);
@@ -414,7 +414,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.overlays).toEqual([{ at: '', set: { oneOf: [{ type: 'string' }, { type: 'number' }] }, remove: ['anyOf'] }]);
     expect(result.code).toContain('// @zopia:warn ZOPIA_WARN_ONE_OF oneOf —');
   });
-  it('converts unions, nullable types, formats, and constraints', () => {
+  it('S-43: converts unions, nullable types, formats, and constraints', () => {
     const result = jsonSchemaToZod({ type: ['string', 'null'], format: 'email', minLength: 5 });
     expect(result.schema.safeParse(null).success).toBe(true);
     expect(result.schema.safeParse('a').success).toBe(false);
@@ -465,7 +465,7 @@ describe('jsonSchemaToZod', () => {
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'default' })).toThrow('Invalid rootName');
     expect(() => jsonSchemaToZod({ type: 'string' }, { rootName: 'arguments' })).toThrow('Invalid rootName');
   });
-  it('converts tuple arrays without requiring optional prefix positions', () => {
+  it('S-43: converts tuple arrays without requiring optional prefix positions', () => {
     const result = jsonSchemaToZod({ type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }] });
     expect(result.schema.safeParse([]).success).toBe(true);
     expect(result.schema.safeParse(['x']).success).toBe(true);
@@ -567,7 +567,7 @@ describe('jsonSchemaToZod', () => {
     expect(patterned.schema.safeParse({ 'x-id': 1 }).success).toBe(true);
     expect(patterned.schema.safeParse({ 'x-id': 'bad' }).success).toBe(false);
   });
-  it('preserves additionalProperties behavior', () => {
+  it('S-44: preserves additionalProperties behavior', () => {
     const defaultOpen = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'number' } } });
     expect(defaultOpen.schema.safeParse({ extra: true }).success).toBe(true);
     const strict = jsonSchemaToZod({ type: 'object', additionalProperties: false });
@@ -867,7 +867,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([]);
     expect(result.overlays).toEqual([]);
   });
-  it('uses discriminated unions when every oneOf member has a discriminator literal', () => {
+  it('S-45: uses discriminated unions when every oneOf member has a discriminator literal', () => {
     const source = {
       oneOf: [
         { type: 'object', properties: { kind: { const: 'cat' }, lives: { type: 'integer' } }, required: ['kind', 'lives'] },

@@ -6,9 +6,19 @@ import { formatZopiaWarning, type ZopiaWarning } from './warnings';
 
 /** Output channels used by the CLI command runner. */
 export interface ZopiaCliOutput {
-  /** Write generated command output without diagnostics. */
+  /**
+   * Write generated command output without diagnostics.
+   *
+   * @param content Command output to write to the standard-output channel.
+   * @returns Nothing.
+   */
   stdout(content: string): void;
-  /** Write one diagnostic line without contaminating generated output. */
+  /**
+   * Write one diagnostic line without contaminating generated output.
+   *
+   * @param content Diagnostic text to write to the standard-error channel.
+   * @returns Nothing.
+   */
   stderr(content: string): void;
 }
 

@@ -129,7 +129,7 @@ describe('openApiToApiDocs public API', () => {
     expect(changed.warnings).toContainEqual(expect.objectContaining({ code: 'ZOPIA_WARN_STALE_TREE', at: '.zopia-manifest.json' }));
   });
 
-  it('uses typed stable errors for input, configuration, and references', async () => {
+  it('S-34: uses typed stable errors for input, configuration, and references', async () => {
     const directory = await temporaryDirectory('zopia-public-');
     const malformed = join(directory, 'bad.json');
     await writeFile(malformed, '{', 'utf8');

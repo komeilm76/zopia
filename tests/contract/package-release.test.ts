@@ -24,6 +24,7 @@ interface PackageManifest {
   engines?: Record<string, string>;
   publishConfig?: { access?: string };
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   scripts?: Record<string, string>;
   bin?: Record<string, string>;
@@ -51,7 +52,7 @@ function dryRunPackage(): PackedPackage {
 }
 
 describe('package and release contract', () => {
-  it('R-191: release identity and public package metadata are complete and synchronized', () => {
+  it('S-76/R-191: release identity and public package metadata are complete and synchronized', () => {
     expect(manifest).toMatchObject({
       name: 'zopia',
       version: '0.1.0',
@@ -86,6 +87,32 @@ describe('package and release contract', () => {
     expect(packageLock.packages?.['']?.version).toBe(manifest.version);
     expect(changelog).toContain(`## [${manifest.version}] - 2026-09-27`);
     expect(readme).toContain(`v${manifest.version} release-ready`);
+  });
+
+  it('T-14/R-193: the pinned Bun gate owns every required release check', () => {
+    expect(manifest.devDependencies).toMatchObject({
+      '@vitest/coverage-v8': '4.1.11',
+      vitest: '4.1.11',
+    });
+    expect(manifest.devDependencies).not.toHaveProperty('vite-node');
+    expect(manifest.scripts).toMatchObject({
+      typecheck: 'tsc --noEmit',
+      test: 'vitest run',
+      coverage: 'vitest run --coverage && bun scripts/check-coverage.ts',
+      'golden:update': 'bun scripts/update-golden.ts',
+      'package:check': 'bun scripts/package-check.ts',
+      'release:check': 'bun run bun:gate',
+      prepublishOnly: 'bun run release:check',
+    });
+
+    const packageLock = JSON.parse(readFileSync(join(repositoryRoot, 'package-lock.json'), 'utf8')) as { packages?: Record<string, { version?: string }> };
+    expect(packageLock.packages?.['node_modules/vitest']?.version).toBe('4.1.11');
+    expect(packageLock.packages?.['node_modules/@vitest/coverage-v8']?.version).toBe('4.1.11');
+
+    const gate = readFileSync(join(repositoryRoot, 'scripts', 'bun-gate.ts'), 'utf8');
+    for (const step of ['Frozen Bun install', 'Strict TypeScript', 'Vitest suite', 'Coverage gates', 'CLI help', 'Published CLI binary wrapper', 'Bun generated-TypeScript import and reverse conversion', 'Packed npm artifact']) {
+      expect(gate).toContain(step);
+    }
   });
 
   it('R-192: the npm archive is allowlisted, executable, and free of development files', () => {

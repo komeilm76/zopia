@@ -29,7 +29,7 @@ function captureOutput(): { output: ZopiaCliOutput; stdout: string[]; stderr: st
 }
 
 describe('CLI command contract', () => {
-  it('R-933: prints generate warnings to stderr without writing generated content to stdout', async () => {
+  it('S-73/R-933: prints generate warnings to stderr without writing generated content to stdout', async () => {
     const directory = await temporaryDirectory();
     const source = join(directory, 'openapi.json');
     const outDir = join(directory, 'api-docs');
@@ -197,7 +197,7 @@ describe('CLI command contract', () => {
     ]);
   });
 
-  it('R-932: rejects malformed argument and output boundaries', async () => {
+  it('S-74/R-932: rejects malformed argument and output boundaries', async () => {
     const capture = captureOutput();
 
     await expect(runCli(['generate', 1] as unknown as string[], capture.output)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID', at: 'argv' });

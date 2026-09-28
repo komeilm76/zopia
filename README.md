@@ -63,8 +63,8 @@ artifact can be converted back, so nothing is ever lost.
 - 🧩 **Component options** — `insertComponents` and recursive endpoint component-reference imports are implemented; direct and mutual cyclic imports use lazy schemas
 - ⚡ **km-api native** — every `index.ts` builds its endpoint with `makeApiConfig()` from `km-api` (0.4.x)
 - 🔒 **Lossless round-trips** — a hidden manifest (`.zopia-manifest.json`) keeps every conversion reversible
-- 🧪 **Tested by design** — Vitest suite covering the full scenario matrix, run with Bun
-- 📖 **100% JSDoc** — every public symbol is documented; every decision is recorded
+- 🧪 **Tested by design** — pinned Vitest 4.1.11 suite covering the full identified scenario matrix, run with Bun
+- 📖 **100% JSDoc** — every public symbol and callable shape is contract-audited; every decision is recorded
 
 ## 📖 Quick look
 

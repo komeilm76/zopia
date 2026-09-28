@@ -42,11 +42,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/coverage-v8": "4.1.11",
     "km-api": "^0.4.1",
     "typescript": "^5.9.2",
-    "vite-node": "^2.1.9",
-    "vitest": "^2.1.9",
+    "vitest": "4.1.11",
     "zod": "^4.6.5"
   },
   "peerDependencies": {
@@ -57,12 +56,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage && vite-node scripts/check-coverage.ts",
+    "coverage": "vitest run --coverage && bun scripts/check-coverage.ts",
     "package:check": "bun scripts/package-check.ts",
     "release:check": "bun run bun:gate",
     "prepublishOnly": "bun run release:check",
     "bun:gate": "bun scripts/bun-gate.ts",
-    "golden:update": "vite-node scripts/update-golden.ts",
+    "golden:update": "bun scripts/update-golden.ts",
     "build": "tsc --noEmit"
   },
   "bin": {
