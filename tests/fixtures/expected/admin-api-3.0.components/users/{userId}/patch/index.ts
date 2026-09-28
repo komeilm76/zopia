@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { makeApiConfig } from 'km-api';
 import { CreateUserSchema, UserSchema } from '../../../components/index';
+import { ProblemResponse } from '../../../components/responses/index';
 
 export const updateUser = makeApiConfig({
   method: "PATCH",
@@ -16,7 +17,7 @@ export const updateUser = makeApiConfig({
   tags: ["#users"],
   examples: JSON.parse("{\"request\":{\"viewer\":{\"summary\":\"Viewer\",\"value\":{\"email\":\"v@example.test\"}}}}"),
   request: { body: CreateUserSchema,  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({  }), cookies: z.object({  }) },
-  response: { 200: UserSchema, "default": z.object({  }).passthrough() },
+  response: { 200: UserSchema, "default": ProblemResponse },
 });
 
 export default updateUser;

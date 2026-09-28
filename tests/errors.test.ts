@@ -98,7 +98,7 @@ describe('typed errors', () => {
       code: 'ZOPIA_CONFIG_INVALID',
       at: 'path',
     });
-    await expect(runCli(['reverse', 'docs', '--version', '2.0'])).rejects.toMatchObject({
+    await expect(runCli(['reverse', 'docs', '--version', '4.0'])).rejects.toMatchObject({
       name: 'ZopiaError',
       code: 'ZOPIA_CONFIG_INVALID',
       at: '--version',

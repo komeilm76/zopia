@@ -105,11 +105,11 @@ describe('manifest reverse conversion', () => {
   });
   it('rejects unsupported reverse output versions before importing generated code', async () => {
     const source = { $schema: 'zopia:manifest@1', source: { kind: 'openapi-3.1', title: 'Test', version: '1' }, apis: [] } as any;
-    expect(() => manifestToOpenApi(source, { version: '2.0' } as any)).toThrow("ZOPIA_CONFIG_INVALID: reverse version must be '3.0' or '3.1'");
+    expect(() => manifestToOpenApi(source, { version: '4.0' } as any)).toThrow("ZOPIA_CONFIG_INVALID: reverse version must be '2.0', '3.0', or '3.1'");
     const directory = await temporaryDirectory('zopia-');
     const manifestFile = join(directory, '.zopia-manifest.json');
     await writeFile(manifestFile, JSON.stringify(source), 'utf8');
-    await expect(manifestFileToOpenApi(manifestFile, { version: '2.0' } as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
+    await expect(manifestFileToOpenApi(manifestFile, { version: '4.0' } as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
     await expect(apiDocsToOpenApi(directory, null as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' });
   });
   it('S-65: reports a missing manifest distinctly from malformed manifest content', async () => {

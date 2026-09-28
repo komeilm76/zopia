@@ -123,10 +123,11 @@ approximation.
 > flags map to [Configuration](09-configuration.md#-cli--options-mapping).
 
 ```text
-zopia generate <spec.json|spec.yaml> <output-dir> [--mode directory|flat]
+zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat]
     [--insert-components] [--use-component-as-reference] [--no-manifest]
+    [--config path]
 zopia reverse <docs-dir|manifest.json> [--out openapi.json]
-    [--version 3.0|3.1]
+    [--version 2.0|3.0|3.1] [--config path]
 ```
 
 | 🚩 Command | 📝 What it does | 💡 Example |
@@ -138,10 +139,10 @@ zopia reverse <docs-dir|manifest.json> [--out openapi.json]
 
 | # | Contract |
 | --- | --- |
-| R-931 | Boolean flags are additive and default to `false` when absent; `--no-manifest` is the explicit inverse of the default-on manifest option. |
+| R-931 | Boolean flags are additive and default to `false` when absent; `--no-manifest` is the explicit inverse of the default-on manifest option. With a [project config file](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19), config values fill every option the flags leave unset, and every explicit flag still wins (D-19); the `<output-dir>` positional is required unless the config supplies `generate.outDir`. |
 | R-932 | Parsing is strict and completes before either engine runs: options may surround positional arguments, but unknown, command-incompatible, repeated, or valueless options and missing/extra positionals fail with `ZOPIA_CONFIG_INVALID` at the offending argument. |
 | R-933 | Data uses stdout (or the selected `--out` file); warnings and errors use stderr. Exit status is `0` success, `1` typed user/configuration failure, and `2` unexpected internal failure. |
-| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. |
+| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. `--config <path>` selects an explicit config file on both commands; loading, discovery, and validation rules live in [09-configuration](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19). |
 
 Both commands print warnings only to stderr as
 `Warning: ZOPIA_WARN_* <pointer>: <message>`. In particular, `zopia reverse`
@@ -149,10 +150,12 @@ keeps stdout as valid OpenAPI JSON even when warnings are present; `--out`
 writes only JSON to the selected file.
 
 > ⚠️ `zopia reverse` executes the TypeScript modules referenced by `apis[].file`
-> and non-null `components[].file` entries. Reverse only trusted generated trees.
-> File paths are restricted to the manifest directory (including after symlink
-> resolution), while edited runtime km-api metadata and endpoint/component Zod
-> schemas take precedence over their manifest snapshots.
+> and non-null `components[].file` entries. Reverse only trusted generated trees,
+> and only commit config files you trust — `zopia.config.ts` is executed
+> JavaScript under the same model. File paths are restricted to the manifest
+> directory (including after symlink resolution), while edited runtime km-api
+> metadata and endpoint/component Zod schemas take precedence over their
+> manifest snapshots.
 
 Exit codes: `0` success · `1` user error (bad input/options — message on
 stderr, hint included) · `2` internal error (should never happen — report it).

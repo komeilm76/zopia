@@ -47,3 +47,11 @@ export { extractOperationContracts, type OperationContracts } from './conversion
 export { resolveOpenApiLocalRef } from './conversions/openapi-ref';
 export { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, type ZopiaReverseOptions, type ZopiaReverseResult } from './conversions/manifest-to-openapi';
 export { type ZopiaManifest } from './conversions/manifest-writer';
+export {
+  defineConfig,
+  loadZopiaConfig,
+  type ZopiaConfigLoadOptions,
+  type ZopiaProjectConfig,
+  type ZopiaProjectGenerateConfig,
+  type ZopiaProjectReverseConfig,
+} from './config';

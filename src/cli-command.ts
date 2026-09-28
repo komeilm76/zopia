@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises';
+import { loadZopiaConfig, type ZopiaProjectConfig } from './config';
 import { asZopiaError, ZopiaError } from './errors';
 import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
 import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
@@ -24,37 +25,44 @@ export interface ZopiaCliOutput {
 
 interface GenerateArguments {
   input: string;
-  outputDirectory: string;
+  outputDirectory?: string;
   mode?: 'directory' | 'flat';
   insertComponents: boolean;
   useComponentAsReference: boolean;
   manifest: boolean;
+  config?: string;
 }
 
 interface ReverseArguments {
   input: string;
   outputFile?: string;
-  version: '3.0' | '3.1';
+  version?: '2.0' | '3.0' | '3.1';
+  config?: string;
 }
 
 const HELP_TEXT = `Usage:
-  zopia generate <spec.json|spec.yaml> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]
-  zopia reverse <docs-dir|manifest.json> [--out file] [--version 3.0|3.1]
+  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest] [--config path]
+  zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
 
-Global option:
+Global options:
   -h, --help                       Show this help.
+  --config path                    Use an explicit config file instead of discovering zopia.config.ts in the
+                                   working directory. CLI flags always override config values; config values
+                                   override built-in defaults. With no config value the output directory stays
+                                   a required positional argument for generate.
 
 Generate options:
-  --mode directory|flat            Select endpoint layout (default: directory).
+  --mode directory|flat            Select endpoint layout (default: config generate.mode, then directory).
   --insert-components              Emit component schema modules.
   --use-component-as-reference     Import emitted components; requires --insert-components.
-  --no-manifest                    Do not write .zopia-manifest.json.
+  --no-manifest                    Do not write .zopia-manifest.json (overrides config generate.manifest).
 
 Reverse options:
-  --out file                       Write JSON to a file instead of stdout.
-  --version 3.0|3.1                Select OpenAPI output (default: 3.1).
+  --out file                       Write JSON to a file instead of stdout (default: config reverse.out, then stdout).
+  --version 2.0|3.0|3.1            Select OpenAPI output (default: config reverse.version, then 3.1).
 
-Security: reverse executes generated TypeScript referenced by the manifest; use only trusted trees.
+Security: reverse executes generated TypeScript referenced by the manifest and the config file is executed
+JavaScript; use only trusted trees and trusted config files.
 `;
 
 const processOutput: ZopiaCliOutput = {
@@ -67,7 +75,7 @@ function invalid(message: string, at: string, hint: string): never {
 }
 
 function usage(): never {
-  invalid('usage: zopia generate <spec.json|spec.yaml> <output-dir> [options] | zopia reverse <docs-dir|manifest.json> [options]', 'argv', "run 'zopia --help' for command syntax");
+  invalid('usage: zopia generate <spec.json|spec.yaml> [output-dir] [options] | zopia reverse <docs-dir|manifest.json> [options]', 'argv', "run 'zopia --help' for command syntax");
 }
 
 function markOption(seen: Set<string>, option: string): void {
@@ -88,6 +96,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
   let insertComponents = false;
   let useComponentAsReference = false;
   let manifest = true;
+  let config: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -106,6 +115,10 @@ function parseGenerate(argv: string[]): GenerateArguments {
     } else if (argument === '--no-manifest') {
       markOption(seen, argument);
       manifest = false;
+    } else if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
     } else if (argument.startsWith('-')) {
       invalid(`unknown generate option: ${argument}`, argument, "run 'zopia generate --help' for supported options");
     } else {
@@ -113,16 +126,17 @@ function parseGenerate(argv: string[]): GenerateArguments {
     }
   }
 
-  if (positional.length < 2) invalid('generate requires <spec.json|spec.yaml> and <output-dir>', 'argv', 'provide both input and output paths');
+  if (positional.length < 1) invalid('generate requires <spec.json|spec.yaml>', 'argv', 'provide the input spec path');
   if (positional.length > 2) invalid(`unexpected generate argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
-  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest };
+  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, config };
 }
 
 function parseReverse(argv: string[]): ReverseArguments {
   const positional: string[] = [];
   const seen = new Set<string>();
   let outputFile: string | undefined;
-  let version: '3.0' | '3.1' = '3.1';
+  let version: '2.0' | '3.0' | '3.1' | undefined;
+  let config: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -133,8 +147,12 @@ function parseReverse(argv: string[]): ReverseArguments {
     } else if (argument === '--version') {
       markOption(seen, argument);
       const value = optionValue(argv, index, argument);
-      if (value !== '3.0' && value !== '3.1') invalid("invalid --version; expected '3.0' or '3.1'", argument, "use '--version 3.0' or '--version 3.1'");
+      if (value !== '2.0' && value !== '3.0' && value !== '3.1') invalid("invalid --version; expected '2.0', '3.0', or '3.1'", argument, "use '--version 2.0', '--version 3.0', or '--version 3.1'");
       version = value;
+      index += 1;
+    } else if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
       index += 1;
     } else if (argument.startsWith('-')) {
       invalid(`unknown reverse option: ${argument}`, argument, "run 'zopia reverse --help' for supported options");
@@ -145,7 +163,7 @@ function parseReverse(argv: string[]): ReverseArguments {
 
   if (positional.length < 1) invalid('reverse requires <docs-dir|manifest.json>', 'argv', 'provide a generated docs directory or manifest path');
   if (positional.length > 1) invalid(`unexpected reverse argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
-  return { input: positional[0], outputFile, version };
+  return { input: positional[0], outputFile, version, config };
 }
 
 function printWarnings(warnings: readonly ZopiaWarning[], output: ZopiaCliOutput): void {
@@ -173,12 +191,17 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
 
   if (command === 'generate') {
     const parsed = parseGenerate(commandArguments);
+    const project = await loadZopiaConfig({ file: parsed.config });
+    const generateDefaults = project?.generate;
+    const outputDirectory = parsed.outputDirectory ?? generateDefaults?.outDir;
+    if (outputDirectory === undefined) invalid('generate requires <spec.json|spec.yaml> and <output-dir>', 'argv', 'provide both input and output paths, or set generate.outDir in zopia.config.ts');
     const result = await openApiToApiDocs(parsed.input, {
-      outDir: parsed.outputDirectory,
-      mode: parsed.mode,
-      insertComponents: parsed.insertComponents,
-      useComponentAsReference: parsed.useComponentAsReference,
-      manifest: parsed.manifest,
+      outDir: outputDirectory,
+      mode: parsed.mode ?? generateDefaults?.mode,
+      insertComponents: parsed.insertComponents || (generateDefaults?.insertComponents ?? false),
+      useComponentAsReference: parsed.useComponentAsReference || (generateDefaults?.useComponentAsReference ?? false),
+      // `--no-manifest` is explicit and always wins over config defaults.
+      manifest: parsed.manifest && (generateDefaults?.manifest ?? true),
     });
     printWarnings(result.warnings, output);
     return;
@@ -186,12 +209,15 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
 
   if (command === 'reverse') {
     const parsed = parseReverse(commandArguments);
-    const result = await apiDocsToOpenApi(parsed.input, { version: parsed.version });
+    const project = await loadZopiaConfig({ file: parsed.config });
+    const reverseDefaults = project?.reverse;
+    const outputFile = parsed.outputFile ?? reverseDefaults?.out;
+    const result = await apiDocsToOpenApi(parsed.input, { version: parsed.version ?? reverseDefaults?.version ?? '3.1' });
     printWarnings(result.warnings, output);
     const content = `${JSON.stringify(result.openapi, null, 2)}\n`;
-    if (parsed.outputFile) {
-      try { await writeFile(parsed.outputFile, content, 'utf8'); }
-      catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write reverse output', { at: parsed.outputFile, hint: 'check the destination path and permissions' }); }
+    if (outputFile) {
+      try { await writeFile(outputFile, content, 'utf8'); }
+      catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write reverse output', { at: outputFile, hint: 'check the destination path and permissions' }); }
     } else output.stdout(content);
     return;
   }

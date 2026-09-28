@@ -2,6 +2,8 @@
 import { z } from 'zod';
 import { makeApiConfig } from 'km-api';
 import { UserSchema } from '../../../components/index';
+import { TraceIdParameter } from '../../../components/parameters/index';
+import { ProblemResponse } from '../../../components/responses/index';
 
 export const getUser = makeApiConfig({
   method: "GET",
@@ -15,8 +17,8 @@ export const getUser = makeApiConfig({
   description: "Returns one user",
   tags: ["#users"],
   examples: JSON.parse("{\"response\":{\"200\":{\"default\":{\"value\":{\"email\":\"admin@example.test\",\"id\":\"22ccbc6a-436b-4b1c-9e64-7440ce63a90e\",\"role\":\"admin\"}}}}}"),
-  request: { body: z.any(),  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({ ["X-Trace-Id"]: z.string().optional() }), cookies: z.object({  }) },
-  response: { 200: UserSchema, 404: z.object({  }).passthrough() },
+  request: { body: z.any(),  params: z.object({ ["userId"]: z.string().uuid() }), query: z.object({  }), headers: z.object({ ["X-Trace-Id"]: TraceIdParameter.optional() }), cookies: z.object({  }) },
+  response: { 200: UserSchema, 404: ProblemResponse },
 });
 
 export default getUser;

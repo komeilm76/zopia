@@ -120,9 +120,12 @@ describe('dedicated manifest writer', () => {
       parameters: source.components.parameters,
       responses: source.components.responses,
     });
-    expect(manifest.components.map(({ name, file }) => ({ name, file }))).toEqual([
+    expect(manifest.components.map(({ name, file, kind }) => kind === undefined ? { name, file } : { name, file, kind })).toEqual([
       { name: 'Alpha', file: 'components/Alpha/index.ts' },
       { name: 'Zed', file: 'components/Zed/index.ts' },
+      // Reusable parameters get their own component entries (D-18); the schema-less `Problem`
+      // response renders `z.void()` at use sites and intentionally has no manifest entry.
+      { name: 'Trace', file: 'components/parameters/Trace/index.ts', kind: 'parameter' },
     ]);
     expect(manifest.components[0].schema).toEqual(source.components.schemas.Alpha);
     expect(Array.isArray(manifest.components[0].overlay)).toBe(true);

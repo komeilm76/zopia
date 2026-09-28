@@ -15,6 +15,7 @@ release-blocking defect under the
 │   ├── index.ts                # 🚪 public named-export surface
 │   ├── cli.ts                  # ⌨️ process entry point
 │   ├── cli-command.ts          #    strict parser, help, output/exit contract
+│   ├── config.ts               # 🧾 zopia.config.ts discovery, trusted import, validation (D-19)
 │   ├── errors.ts               # 🛑 typed error catalogue
 │   ├── warnings.ts             # ⚠️ structured warning pipeline
 │   └── conversions/
@@ -216,10 +217,12 @@ flowchart LR
 > `z.lazy()`, while linear refs become direct references/imports. **Scope:**
 > graph nodes are schema components only. Reusable non-schema objects (Swagger
 > 2.0 global `parameters`/`responses`, OpenAPI 3
-> `components.parameters`/`responses`/`examples`) are resolved at use sites for
-> generated runtime configs; manifest snapshots and ref placements restore their
-> declarations and reusable identity on reverse conversion. Phase 2 may emit
-> them as standalone generated files.
+> `components.parameters`/`responses`) *also* get their own component modules in
+> components mode (v0.2.x — D-18): a module holds only the declaration's derived
+> schema, and in-source declarations plus use-site `$ref` placements restore
+> verbatim on reverse conversion while the declaration refreshes from the
+> current module. Bare `$ref` use sites import from the per-kind barrels; merged
+> `$ref`-sibling forms still resolve at use sites for generated runtime configs.
 
 ## 🧮 Schema reuse within generated files
 

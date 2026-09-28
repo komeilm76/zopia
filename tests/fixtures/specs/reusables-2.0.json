@@ -1,0 +1,49 @@
+{
+  "swagger": "2.0",
+  "info": { "title": "Reusable Legado", "version": "1.0.0", "description": "Swagger 2.0 reusable parameters and responses fixture" },
+  "host": "legacy.example.test",
+  "basePath": "/v1",
+  "schemes": ["https"],
+  "consumes": ["application/json", "multipart/form-data"],
+  "produces": ["application/json"],
+  "parameters": {
+    "Trace": { "name": "X-Trace", "in": "header", "required": false, "type": "string" },
+    "FilterBody": { "name": "body", "in": "body", "schema": { "type": "object", "properties": { "q": { "type": "string" } } } },
+    "Upload": { "name": "file", "in": "formData", "required": true, "type": "string", "format": "binary" }
+  },
+  "responses": {
+    "Problem": { "description": "something failed", "schema": { "type": "object", "properties": { "code": { "type": "integer" } } } },
+    "Empty": { "description": "nothing" }
+  },
+  "paths": {
+    "/reports": {
+      "post": {
+        "operationId": "createReport",
+        "summary": "Create a report",
+        "parameters": [
+          { "$ref": "#/parameters/Trace" },
+          { "$ref": "#/parameters/FilterBody" }
+        ],
+        "responses": {
+          "200": { "description": "created", "schema": { "type": "object" } },
+          "422": { "$ref": "#/responses/Problem" },
+          "204": { "$ref": "#/responses/Empty" }
+        }
+      },
+      "put": {
+        "operationId": "replaceReport",
+        "summary": "Replace a report file",
+        "consumes": ["multipart/form-data"],
+        "parameters": [
+          { "$ref": "#/parameters/Trace" },
+          { "$ref": "#/parameters/Upload" },
+          { "name": "note", "in": "formData", "type": "string" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/responses/Problem" },
+          "204": { "$ref": "#/responses/Empty" }
+        }
+      }
+    }
+  }
+}

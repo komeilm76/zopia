@@ -1,6 +1,7 @@
 import { ZopiaError } from '../errors';
 import type { OpenApiOperationIR } from './openapi-ir';
-import { resolveOpenApiLocalRef } from './openapi-ref';
+import type { OpenApiDocument } from './openapi';
+import { decodeJsonPointerSegment, resolveOpenApiLocalRef } from './openapi-ref';
 
 /** Normalized non-body operation parameter consumed by endpoint rendering. */
 export interface OperationParameter {
@@ -12,6 +13,8 @@ export interface OperationParameter {
   required: boolean;
   /** Resolved JSON Schema for the parameter value, when present. */
   schema?: unknown;
+  /** Reusable parameter component whose bare `$ref` declared this parameter (D-18); absent for inline or sibling-merged resolutions. */
+  reusable?: string;
 }
 
 /** Normalized request, parameter, and response contracts for one operation. */
@@ -26,6 +29,10 @@ export interface OperationContracts {
     schema?: unknown;
     /** Whether callers must provide a request body. */
     required: boolean;
+    /** Reusable parameter component whose bare `$ref` declared a Swagger `in: body` parameter (D-18). */
+    reusable?: string;
+    /** Reusable parameter component names for each bare-`$ref` formData property (D-18). */
+    formDataReusable?: Record<string, string>;
   };
   /** Response contracts in source-document order. */
   responses: Array<{
@@ -37,6 +44,8 @@ export interface OperationContracts {
     contentType?: string;
     /** Resolved response JSON Schema, when present. */
     schema?: unknown;
+    /** Reusable response component whose bare `$ref` declared this status (D-18); absent for inline or sibling-merged resolutions. */
+    reusable?: string;
   }>;
 }
 
@@ -85,12 +94,125 @@ function pathParameterNames(path: string): Set<string> {
   return new Set([...path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]));
 }
 
-function swaggerParameterSchema(parameter: Record<string, any>): Record<string, unknown> {
+/**
+ * Derive the effective schema of a Swagger 2.0 non-body/formData parameter.
+ *
+ * @param parameter Validated Swagger parameter object.
+ * @returns The parameter's top-level constraint keywords as a JSON Schema (`file` renders as `string`/`binary`).
+ */
+export function swaggerParameterSchema(parameter: Record<string, any>): Record<string, unknown> {
   return {
     type: parameter.type === 'file' ? 'string' : parameter.type,
     ...(parameter.type === 'file' ? { format: 'binary' } : {}),
     ...Object.fromEntries(Object.entries(parameter).filter(([key]) => SWAGGER_SCHEMA_KEYS.has(key))),
   };
+}
+
+/** Reusable non-schema component kinds emitted as standalone modules in components mode (D-18). */
+export type ReusableComponentKind = 'parameter' | 'response';
+
+/** Namespace table for reusable parameter/response references per source dialect (D-18). */
+const REUSABLE_REF_ROOTS = {
+  parameter: { openapi: '#/components/parameters/', swagger: '#/parameters/' },
+  response: { openapi: '#/components/responses/', swagger: '#/responses/' },
+} as const;
+
+/**
+ * Detect a bare reusable parameter/response reference (`{ "$ref": <namespace>/<name> }` with no sibling keys).
+ *
+ * Sibling-merged references resolve inline and therefore never receive a component import (D-18).
+ *
+ * @param raw Raw source node (parameter or response object, before local-reference resolution).
+ * @param kind Reusable namespace to match.
+ * @param swagger Whether the source dialect is Swagger 2.0.
+ * @returns The decoded component name when `raw` is a bare namespace reference, otherwise `undefined`.
+ */
+export function bareReusableReferenceName(raw: unknown, kind: ReusableComponentKind, swagger: boolean): string | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length !== 1 || entries[0][0] !== '$ref' || typeof entries[0][1] !== 'string') return undefined;
+  const prefix = REUSABLE_REF_ROOTS[kind][swagger ? 'swagger' : 'openapi'];
+  if (!entries[0][1].startsWith(prefix)) return undefined;
+  const suffix = entries[0][1].slice(prefix.length);
+  return suffix.includes('/') || suffix === '' ? undefined : decodeJsonPointerSegment(suffix, entries[0][1]);
+}
+
+/**
+ * Read the reusable parameter/response declaration maps of a normalized document.
+ *
+ * @param document Validated Swagger/OpenAPI document.
+ * @returns Declaration maps keyed by component name (empty when the dialect container is absent).
+ */
+export function reusableDeclarations(document: OpenApiDocument): Record<ReusableComponentKind, Record<string, unknown>> {
+  const swagger = document.swagger === '2.0';
+  return {
+    parameter: (swagger ? document.parameters : document.components?.parameters) ?? {},
+    response: (swagger ? document.responses : document.components?.responses) ?? {},
+  };
+}
+
+function resolveReusableDeclaration(document: OpenApiDocument, value: unknown, kind: ReusableComponentKind, name: string): Record<string, unknown> {
+  let current = value;
+  const seen = new Set<string>();
+  while (current && typeof current === 'object' && !Array.isArray(current) && typeof (current as Record<string, unknown>).$ref === 'string') {
+    const ref = (current as Record<string, unknown>).$ref as string;
+    if (seen.has(ref)) throw new ZopiaError('ZOPIA_REF_NOT_FOUND', `Circular reusable ${kind} $ref: ${ref}`, { at: `#/components/${kind}s/${name}`, hint: 'break the reusable reference cycle' });
+    seen.add(ref);
+    const resolved = resolveOpenApiLocalRef(document, ref);
+    if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid reusable ${kind}: ${name}`, { at: `#/components/${kind}s/${name}` });
+    current = { ...(resolved as Record<string, unknown>), ...Object.fromEntries(Object.entries(current as Record<string, unknown>).filter(([key]) => key !== '$ref')) };
+  }
+  if (!current || typeof current !== 'object' || Array.isArray(current)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid reusable ${kind}: ${name}`, { at: `#/components/${kind}s/${name}` });
+  return current as Record<string, unknown>;
+}
+
+/**
+ * Derive the JSON Schema rendered into a reusable parameter component module (D-18).
+ *
+ * @param document Validated Swagger/OpenAPI document (for reference chains).
+ * @param name Reusable parameter component name (used in diagnostics).
+ * @param declaration Raw declaration object; reference chains are resolved with sibling overrides.
+ * @returns The parameter's effective schema.
+ * @throws {@link ZopiaError} when the declaration has no derivable schema (`ZOPIA_SPEC_INVALID`).
+ */
+export function deriveReusableParameterSchema(document: OpenApiDocument, name: string, declaration: unknown): unknown {
+  const parameter = resolveReusableDeclaration(document, declaration, 'parameter', name);
+  const swagger = document.swagger === '2.0';
+  if (swagger) {
+    if (typeof parameter.name !== 'string' || !parameter.name || typeof parameter.in !== 'string' || !parameter.in) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid reusable parameter: ${name}`, { at: `#/parameters/${name}`, hint: 'declare name and in on the reusable parameter' });
+    if (parameter.in === 'body') {
+      if (parameter.schema === undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger body parameter: ${name}`, { at: `#/parameters/${name}` });
+      return parameter.schema;
+    }
+    if (!SWAGGER_PARAMETER_TYPES.has(parameter.type as string) && parameter.type !== 'file') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger parameter type: ${name}`, { at: `#/parameters/${name}` });
+    return swaggerParameterSchema(parameter);
+  }
+  if (typeof parameter.name !== 'string' || !parameter.name || !['path', 'query', 'header', 'cookie'].includes(String(parameter.in))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid reusable parameter: ${name}`, { at: `#/components/parameters/${name}`, hint: 'declare name and a supported in on the reusable parameter' });
+  if (parameter.schema !== undefined && parameter.content !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Parameter cannot define both schema and content: ${name}`, { at: `#/components/parameters/${name}` });
+  if (parameter.schema !== undefined) return parameter.schema;
+  if (parameter.content !== undefined) {
+    const media = firstContent(parameter.content);
+    if (media.schema === undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Parameter requires schema or content: ${name}`, { at: `#/components/parameters/${name}` });
+    return media.schema;
+  }
+  throw new ZopiaError('ZOPIA_SPEC_INVALID', `Parameter requires schema or content: ${name}`, { at: `#/components/parameters/${name}`, hint: 'add a schema or content field' });
+}
+
+/**
+ * Derive the JSON Schema rendered into a reusable response component module (D-18).
+ *
+ * @param document Validated Swagger/OpenAPI document (for reference chains).
+ * @param name Reusable response component name (used in diagnostics).
+ * @param declaration Raw declaration object; reference chains are resolved with sibling overrides.
+ * @returns The primary response schema, or `undefined` for schema-less responses (which render `z.void()`).
+ * @throws {@link ZopiaError} when the declaration is not an object (`ZOPIA_SPEC_INVALID`).
+ */
+export function deriveReusableResponseSchema(document: OpenApiDocument, name: string, declaration: unknown): unknown {
+  const response = resolveReusableDeclaration(document, declaration, 'response', name);
+  const swagger = document.swagger === '2.0';
+  if (swagger) return response.schema;
+  if (response.content !== undefined) return firstContent(response.content).schema;
+  return undefined;
 }
 
 function resolveRef(value: Record<string, any>, ir: OpenApiOperationIR, context: string): Record<string, any> {
@@ -122,6 +244,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     assertSwaggerMediaTypes(operation[field], field, `${ir.method} ${ir.path}`);
   }
   const resolvedParameters = ir.parameters.map((raw) => resolveRef(raw, ir, 'parameter'));
+  const rawReusableParameters = ir.parameters.map((raw) => bareReusableReferenceName(raw, 'parameter', swagger));
   if (!swagger) {
     const legacyParameter = resolvedParameters.find((parameter) => parameter.in === 'body' || parameter.in === 'formData');
     if (legacyParameter) throw new ZopiaError('ZOPIA_SPEC_INVALID', `OpenAPI 3 does not support ${legacyParameter.in} parameters: ${ir.method} ${ir.path}`);
@@ -132,7 +255,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const schemaShaped = resolvedParameters.find((parameter) => parameter.in !== 'body' && (parameter.schema !== undefined || parameter.content !== undefined));
     if (schemaShaped) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Swagger non-body parameter must use top-level type keywords: ${String(schemaShaped.name)}`);
   }
-  const parameters = resolvedParameters.filter((parameter) => parameter.in !== 'body' && parameter.in !== 'formData').map((parameter) => {
+  const parameters = resolvedParameters.flatMap((parameter, parameterIndex) => {
+    if (parameter.in === 'body' || parameter.in === 'formData') return [];
     if (!['path', 'query', 'header', 'cookie'].includes(parameter.in) || ir.document.swagger === '2.0' && parameter.in === 'cookie' || typeof parameter.name !== 'string' || !parameter.name) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid parameter: ${ir.method} ${ir.path}`);
     if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid parameter.required: ${parameter.name}`);
     if (parameter.in === 'path' && parameter.required !== true) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Path parameter must be required: ${parameter.name}`);
@@ -143,7 +267,8 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const swaggerSchema = ir.document.swagger === '2.0' && parameter.type ? swaggerParameterSchema(parameter) : undefined;
     const schema = parameter.schema ?? parameterContent?.schema ?? swaggerSchema;
     if (schema === undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Parameter requires schema or content: ${parameter.name}`);
-    return { name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema };
+    const reusable = rawReusableParameters[parameterIndex];
+    return [{ name: parameter.name, in: parameter.in, required: parameter.required === true || parameter.in === 'path', schema, ...(reusable === undefined ? {} : { reusable }) }];
   });
   const placeholders = pathParameterNames(ir.path);
   const pathParameters = new Set(parameters.filter((parameter) => parameter.in === 'path').map((parameter) => parameter.name));
@@ -152,23 +277,32 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
   const unrelatedPathParameter = [...pathParameters].find((name) => !placeholders.has(name));
   if (unrelatedPathParameter) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Path parameter is not present in the template: ${unrelatedPathParameter}`);
   let body = operation.requestBody;
+  let bodyReusable: string | undefined;
+  let formDataReusable: Record<string, string> | undefined;
   if (body === undefined && ir.document.swagger === '2.0') {
-    const bodyParameters = resolvedParameters.filter((parameter) => parameter.in === 'body');
-    const bodyParameter = bodyParameters[0];
-    const formParameters = resolvedParameters.filter((parameter) => parameter.in === 'formData');
-    if (bodyParameters.length > 1) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Swagger operation cannot define multiple body parameters: ${ir.method} ${ir.path}`);
+    const bodyEntries = [...resolvedParameters.entries()].filter(([, parameter]) => parameter.in === 'body');
+    const bodyParameter = bodyEntries[0]?.[1];
+    const formEntries = [...resolvedParameters.entries()].filter(([, parameter]) => parameter.in === 'formData');
+    const formParameters = formEntries.map(([, parameter]) => parameter);
+    if (bodyEntries.length > 1) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Swagger operation cannot define multiple body parameters: ${ir.method} ${ir.path}`);
     if (bodyParameter && formParameters.length) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Swagger operation cannot combine body and formData parameters: ${ir.method} ${ir.path}`);
     if (bodyParameter) {
       if (typeof bodyParameter !== 'object' || typeof bodyParameter.name !== 'string' || !bodyParameter.name || !bodyParameter.schema) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger body parameter: ${ir.method} ${ir.path}`);
       if (bodyParameter.required !== undefined && typeof bodyParameter.required !== 'boolean') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger body parameter required: ${ir.method} ${ir.path}`);
       const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
       body = { content: { [primarySwaggerMediaType(consumes) ?? 'application/json']: { schema: bodyParameter.schema } }, required: bodyParameter.required === true };
+      bodyReusable = rawReusableParameters[bodyEntries[0][0]];
     } else if (formParameters.length) {
       const properties: Record<string, any> = {}; const required: string[] = [];
       for (const parameter of formParameters) { const validTypes = new Set([...SWAGGER_PARAMETER_TYPES, 'file']); if (typeof parameter.name !== 'string' || !parameter.name || !validTypes.has(parameter.type) || (parameter.type === 'array' && !isValidSwaggerItems(parameter.items))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger formData parameter: ${ir.method} ${ir.path}`); if (parameter.required !== undefined && typeof parameter.required !== 'boolean') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid Swagger formData required: ${parameter.name}`); properties[parameter.name] = swaggerParameterSchema(parameter); if (parameter.required === true) required.push(parameter.name); }
       const consumes = Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(ir.document.consumes) ? ir.document.consumes : [];
       const contentType = consumes.find((value: unknown) => value === 'multipart/form-data' || value === 'application/x-www-form-urlencoded') ?? (formParameters.some((parameter: any) => parameter.type === 'file') ? 'multipart/form-data' : 'application/x-www-form-urlencoded');
       body = { content: { [contentType]: { schema: { type: 'object', properties, ...(required.length ? { required } : {}) } } }, required: required.length > 0 };
+      const reusables = Object.fromEntries(formEntries.flatMap(([index, parameter]) => {
+        const reusable = rawReusableParameters[index];
+        return reusable === undefined ? [] : [[String(parameter.name), reusable]];
+      }));
+      if (Object.keys(reusables).length) formDataReusable = reusables;
     }
   }
   const requestBody = body === undefined ? undefined : (() => {
@@ -178,7 +312,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     if (bodyObject.content === undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid requestBody.content: ${ir.method} ${ir.path}`);
     const media = firstContent(bodyObject.content);
     if (!media.contentType) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid requestBody.content: ${ir.method} ${ir.path}`);
-    return { ...media, contentType: media.contentType, required: bodyObject.required === true };
+    return { ...media, contentType: media.contentType, required: bodyObject.required === true, ...(bodyReusable === undefined ? {} : { reusable: bodyReusable }), ...(formDataReusable === undefined ? {} : { formDataReusable }) };
   })();
   const responses = operation.responses;
   if (!responses || typeof responses !== 'object' || Array.isArray(responses) || Object.keys(responses).length === 0) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid responses: ${ir.method} ${ir.path}`);
@@ -193,6 +327,7 @@ export function extractOperationContracts(ir: OpenApiOperationIR): OperationCont
     const schema = media.schema === undefined && response.schema !== undefined ? { schema: response.schema } : {};
     const swaggerProduces = swagger ? (Array.isArray(operation.produces) ? operation.produces : Array.isArray(ir.document.produces) ? ir.document.produces : []) : [];
     const contentType = media.contentType ?? primarySwaggerMediaType(swaggerProduces);
-    return { status, description: response.description, ...media, ...schema, ...(contentType ? { contentType } : {}) };
+    const reusable = bareReusableReferenceName(value, 'response', swagger);
+    return { status, description: response.description, ...media, ...schema, ...(contentType ? { contentType } : {}), ...(reusable === undefined ? {} : { reusable }) };
   }) };
 }

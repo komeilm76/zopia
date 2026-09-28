@@ -49,11 +49,17 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+const isManifestComponent = (value: unknown): value is { kind?: string; file?: unknown } => typeof value === 'object' && value !== null;
+
 function collectOwnedFiles(manifest: GeneratedZopiaManifest): string[] {
   const files = new Set<string>([ZOPIA_MANIFEST_FILE]);
   for (const api of manifest.apis) files.add(api.file);
   for (const component of manifest.components) if (component.file !== null) files.add(component.file);
-  if (manifest.options.insertComponents) files.add('components/index.ts');
+  if (manifest.options.insertComponents) {
+    files.add('components/index.ts');
+    if (manifest.components?.some((component) => isManifestComponent(component) && component.kind === 'parameter' && typeof component.file === 'string' && component.file)) files.add('components/parameters/index.ts');
+    if (manifest.components?.some((component) => isManifestComponent(component) && component.kind === 'response' && typeof component.file === 'string' && component.file)) files.add('components/responses/index.ts');
+  }
   return [...files].sort(compareText);
 }
 

@@ -126,6 +126,7 @@ Vitest source tree so a newly documented scenario cannot remain unimplemented:
 | S-62 | reverse of S-22 (flat) → same result as S-61 (mode-independence) | D-06 |
 | S-63 | reverse with `insertComponents + refs` on → `components.schemas` + `$ref`s restored | R-821…R-823 |
 | S-64 | `version: '3.0'` vs `'3.1'` output diff | D-09 |
+| S-84 | `version: '2.0'` dialect downgrade — host/basePath/schemes decomposition, `x-nullable`, body/formData parameters, global `parameters`/`responses` tables, security-scheme mapping, deterministic downgrade warnings, native-Swagger identity | D-20 |
 | S-65 | missing manifest / renamed file / broken export → typed errors | R-651/R-652 |
 | S-66 | metadata restoration — titles, examples, servers, tag descriptions, security schemes, multi-content types come back verbatim | R-656/R-657 + honest-limits table |
 | S-67 | idempotence — `reverse(generate(spec))` then `generate(…)` ⇒ identical tree, including source-order-sensitive method/path collisions and empty Path Items (T-11) | R-409 |
@@ -142,6 +143,9 @@ Vitest source tree so a newly documented scenario cannot remain unimplemented:
 | S-78 | YAML parser (D-16) — core-schema scalars, nested block/flow collections, quoted escapes, literal/folded block scalars with chomping/indent indicators, anchors/aliases/`<<` merge keys, directives/markers, deterministic failure matrix, recursion guard | D-16/R-1006 |
 | S-79 | external `$ref` bundling (D-17) — same-folder YAML/JSON chains resolve inline with clone-on-splice, sibling-key merges, self-file refs, literal/example shielding, and read-once caching; API/CLI generated trees are byte-identical to inline twins, reverse emits the bundled single file, and manifest staleness reacts to sibling-file edits | D-17/P-1 |
 | S-80 | external `$ref` failure matrix (D-17) — URL/`../`/absolute/subdirectory/drive/unknown-extension targets keep `ZOPIA_REF_EXTERNAL`; unreadable, unparsable (JSON/YAML), missing-pointer, bad-fragment, circular, >512-deep, and sibling-on-scalar targets fail with typed codes located at the referencing pointer | D-17/R-404 |
+| S-81 | reusable parameters & responses generation (D-18) — declarations become `components/parameters/<Name>/index.ts` / `components/responses/<Name>/index.ts` modules with `<Name>Parameter` / `<Name>Response` exports and kind barrels; bare-`$ref` use sites import through the barrel while sibling-merged `$ref`s inline; cross-schema/ref-chain derivations, body/formData slots, manifest `kind` entries, schema-less response exclusion, and invalid-container/collision errors | D-18/P-1 |
+| S-82 | reusable parameters & responses round-trip (D-18) — both fixtures (`reusables-3.1.json`, `reusables-2.0.json`) reproduce byte-exactly after canonicalization; edited modules refresh their declarations on reverse (Swagger 2.0 constraints and 3.x content forms) while every use-site `$ref` restores verbatim from manifest placements and declaration chains stay chains | D-18/R-716 |
+| S-83 | `zopia.config.ts` project defaults (D-19) — working-directory discovery + explicit `--config` paths, default/named `config` exports, structural validation with key-located `ZOPIA_CONFIG_INVALID`, precedence CLI > config > defaults (`--no-manifest` always wins), optional `<output-dir>` from `generate.outDir`, and reverse `version`/`out` defaults | D-19/R-940 |
 
 ## 🔄 Round-trip property tests
 

@@ -1,3 +1,4 @@
+import { deriveReusableParameterSchema, deriveReusableResponseSchema, reusableDeclarations } from './openapi-contracts';
 import { asZopiaError, ZopiaError } from '../errors';
 import { createHash } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
@@ -74,6 +75,8 @@ export interface ZopiaManifestResponseOverlay {
 export interface ZopiaManifestComponent {
   /** Exact source component name. */
   name: string;
+  /** Component kind: schema module, reusable parameter module, or reusable response module (D-18). Absent means `schema` (legacy manifests). */
+  kind?: 'schema' | 'parameter' | 'response';
   /** Emitted module path, or `null` when components were not emitted. Optional only for legacy reader compatibility. */
   file?: string | null;
   /** Complete original component schema. */
@@ -140,6 +143,8 @@ export interface ZopiaManifest {
   swaggerConsumes?: string[];
   /** Swagger response media types. */
   swaggerProduces?: string[];
+  /** Internal marker set when the manifest was dialect-downgraded from OpenAPI 3.x to Swagger 2.0 during reverse conversion; never persisted. */
+  dialectDowngraded?: true;
   /** Swagger reusable parameters. */
   swaggerParameters?: Record<string, unknown>;
   /** Swagger reusable responses. */
@@ -410,6 +415,17 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     schema: cloneJson(schema),
     overlay: cloneJson(sortDerivedRecords(manifestSchemaOverlays(schema))),
   }));
+  if (options.insertComponents) {
+    const declared = reusableDeclarations(source);
+    for (const [kind, map, derive] of [['parameter', declared.parameter, deriveReusableParameterSchema], ['response', declared.response, deriveReusableResponseSchema]] as const) {
+      components.push(...Object.entries(map).sort(([left], [right]) => compareText(left, right)).flatMap(([name, declaration]) => {
+        const schema = derive(source, name, declaration);
+        // Schema-less responses render `z.void()` at use sites and carry no reusable schema (D-18).
+        if (kind === 'response' && schema === undefined) return [];
+        return [{ name, kind, file: `components/${kind}s/${name}/index.ts`, schema: cloneJson(schema), overlay: cloneJson(sortDerivedRecords(manifestSchemaOverlays(schema))) }];
+      }));
+    }
+  }
   const apis: GeneratedZopiaManifestApi[] = sortedPlans.map((plan) => ({
     file: plan.file,
     path: plan.path,
@@ -540,16 +556,20 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   if (manifest.defaultSecurity !== undefined) validateSecurityRequirements(manifest.defaultSecurity, 'default security');
   if (!Array.isArray(manifest.apis)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest APIs');
   if (!Array.isArray(manifest.components)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest components');
-  if (!manifest.schemaComponentsPresent && manifest.components.length > 0) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Schema components require a declared source container');
+  if (!manifest.schemaComponentsPresent && manifest.components.some((component) => isRecord(component) && (!component.kind || component.kind === 'schema'))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Schema components require a declared source container');
 
   const componentNames = new Set<string>();
   const files = new Set<string>();
   for (const component of manifest.components) {
-    if (!isRecord(component) || typeof component.name !== 'string' || !component.name || componentNames.has(component.name)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${String((component as any)?.name)}`);
-    validateKeys(component, ['name', 'file', 'schema', 'overlay'], 'component');
-    componentNames.add(component.name);
+    const kind = isRecord(component) ? component.kind : undefined;
+    if (!isRecord(component) || kind !== undefined && kind !== 'schema' && kind !== 'parameter' && kind !== 'response' || typeof component.name !== 'string' || !component.name) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${String((component as any)?.name)}`);
+    const identity = `${kind === 'parameter' || kind === 'response' ? kind : 'schema'}:${component.name}`;
+    if (componentNames.has(identity)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${component.name}`);
+    validateKeys(component, ['name', 'kind', 'file', 'schema', 'overlay'], 'component');
+    componentNames.add(identity);
     if (!Object.prototype.hasOwnProperty.call(component, 'schema')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Missing zopia manifest component schema: ${component.name}`);
-    const expectedFile = manifest.options.insertComponents ? `components/${component.name}/index.ts` : null;
+    const kindDirectory = kind === 'parameter' ? 'components/parameters' : kind === 'response' ? 'components/responses' : 'components';
+    const expectedFile = manifest.options.insertComponents ? `${kindDirectory}/${component.name}/index.ts` : null;
     if ((manifest.options.insertComponents && component.name.includes('/')) || component.file !== expectedFile || (component.file !== null && !isPortableManifestPath(component.file))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest component file: ${String(component.file)}`);
     if (component.file !== null) {
       const fileKey = component.file.toLowerCase();

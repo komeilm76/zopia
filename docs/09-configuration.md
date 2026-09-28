@@ -4,10 +4,34 @@ The complete option reference. Every option is **explicit, typed, and
 validated** — invalid combinations fail fast with `ZOPIA_CONFIG_INVALID`
 (they are never silently coerced).
 
-> 📌 **Rule R-901** — in Phase 1, options are passed **programmatically**
-> (or as CLI flags — see [Usage](10-usage.md#-cli)). A project config file
-> (`zopia.config.ts`) is reserved for Phase 2; the option names below are
-> already the future config shape.
+> 📌 **Rule R-901** — options may come from three sources with one fixed
+> precedence: **explicit CLI flags win over config-file values, and
+> config-file values win over built-in defaults.** A project config file
+> (`zopia.config.ts`, D-19) is discovered next to the working directory; the
+> option names below are exactly its shape.
+
+## 🧾 `zopia.config.ts` — project defaults (v0.2.x, D-19)
+
+```ts
+import { defineConfig } from 'zopia';
+
+export default defineConfig({
+  generate: {
+    mode: 'directory',
+    insertComponents: true,
+    useComponentAsReference: true,
+    outDir: 'api_docs',
+  },
+  reverse: { version: '3.1', out: 'openapi.json' },
+});
+```
+
+| # | Rule |
+| --- | --- |
+| R-940 | The CLI discovers `zopia.config.ts`, then `zopia.config.mts`, next to the **working directory** (`process.cwd()`); `--config <path>` selects an explicit file instead (bare paths resolve from the working directory) and a missing explicit file fails with `ZOPIA_CONFIG_INVALID`. Library users call `loadZopiaConfig({ cwd?, file? })` for the same discovery. |
+| R-941 | The config module accepts a `default` export or a named `config` export (default wins). Its shape is exactly `{ generate?: …, reverse?: … }` with the option keys below; unknown keys, non-`Options` nesting, and mistyped values fail with `ZOPIA_CONFIG_INVALID` located at the offending key (`generate.mode`, `reverse.version`, …). |
+| R-942 | Precedence is stable: **CLI flag > config value > built-in default.** `--no-manifest` overrides `generate.manifest: true`; omitted generate flags adopt `generate.*` booleans; `generate.outDir`/`reverse.out`/`reverse.version` apply only when the positional/flag is absent. Without `generate.outDir` the `<output-dir>` positional stays required for `zopia generate`. |
+| R-943 | The config file is **executed JavaScript** under the same trust model as reverse conversion — only trusted projects should carry one; evaluation failures surface as `ZOPIA_CONFIG_INVALID` with the module's error chained. |
 
 ## 📄 `ZopiaGenerateOptions` — engine ③ (`openApiToApiDocs`)
 
@@ -35,7 +59,7 @@ interface ZopiaGenerateOptions {
 | --- | --- | --- | --- |
 | `outDir` | `string` | `'api_docs'` | relative or absolute; created if missing; **never deleted recursively without this exact dir** (safety R-406) |
 | `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](07-api-docs.md) |
-| `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` |
+| `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` (schemas plus reusable `components/parameters/**` / `components/responses/**` modules, v0.2.x — D-18) |
 | `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
 
@@ -52,8 +76,8 @@ interface ZopiaGenerateOptions {
 
 ```ts
 interface ZopiaReverseOptions {
-  /** 🏷️ Spec version to emit. @default '3.1' (D-09) */
-  version?: '3.0' | '3.1';
+  /** 🏷️ Spec version to emit. @default '3.1' (D-09, D-20) */
+  version?: '2.0' | '3.0' | '3.1';
   /** ⚠️ Receive every normalized reverse-conversion warning. */
   onWarning?: (warning: ZopiaWarning) => void;
 }
@@ -97,7 +121,7 @@ See [Conversions → Engine ①](06-conversions.md)
 ```text
 zopia generate <spec.json> <output-dir> [--mode <directory|flat>]
     [--insert-components] [--use-component-as-reference] [--no-manifest]
-zopia reverse  <docs-dir>  [--out <file.json>] [--version <3.0|3.1>]
+zopia reverse  <docs-dir>  [--out <file.json>] [--version <2.0|3.0|3.1>]
 ```
 
 | 🚩 Flag | ⚙️ Option |

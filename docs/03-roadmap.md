@@ -109,11 +109,25 @@ The v0.1.0 release satisfies all of the following:
 
 - 📝 **YAML input** — ✅ accept `swagger.yaml` / `openapi.yaml` (D-13 lifts → D-16)
 - 🔗 **External `$ref`s** — ✅ resolve references to other files in the same folder (D-17)
-- 🧩 **Reusable parameters & responses** — emitted as their own component files
-  (v0.1.0 resolves them for endpoint code and preserves/restores their reusable
-  declarations through the manifest; km-api has no standalone-parameter concept)
-- 🧾 **`zopia.config.ts`** — project-level config file (CLI flags stay available)
-- 📤 **OpenAPI 2.0 output** from engine ④ (`version: '2.0'`) for legacy targets
+- 🧩 **Reusable parameters & responses** — ✅ emitted as their own component
+  files `components/parameters/<Name>/index.ts` and
+  `components/responses/<Name>/index.ts` with `<Name>Parameter` / `<Name>Response`
+  exports, kind barrels, manifest `kind` entries, and a reverse conversion that
+  refreshes declarations from the modules while restoring every use-site `$ref`
+  verbatim (D-18; km-api has no standalone-parameter concept, so modules hold the
+  derived schema only — name/location/`required` remain operation data)
+- 🧾 **`zopia.config.ts`** — ✅ project-level config file with working-directory
+  discovery, explicit `--config` paths, validated `{ generate, reverse }` defaults,
+  and stable precedence CLI flag > config value > built-in default (D-19);
+  CLI flags stay available
+- 📤 **OpenAPI 2.0 output** — ✅ engine ④ accepts `version: '2.0'` (CLI
+  `--version 2.0`, config `reverse.version`) and downgrades 3.x-sourced
+  manifests into Swagger 2.0 documents: `nullable` becomes `x-nullable`,
+  `requestBody` becomes `body`/`formData` parameters, `components` becomes
+  top-level `definitions`/`parameters`/`responses`, `servers` decomposes into
+  `host`/`basePath`/`schemes`, and unrepresentable 3.x features (webhooks,
+  `jsonSchemaDialect`, cookie params, `links`, multi-flow OAuth2, …) drop with
+  deterministic `ZOPIA_WARN_DIALECT_DOWNGRADE` warnings (D-20)
 - 🧪 More JSON Schema keywords — `patternProperties`, `if/then/else`,
   `minProperties/maxProperties`, `propertyNames`, `contains`
   (Phase 1: documented approximation + warning, D-12)
