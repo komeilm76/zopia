@@ -52,4 +52,4 @@ to its governing document and automated release-gate coverage — see
 - ~~📝 YAML spec input~~ → shipped in v0.2.x (D-16; `.yaml`/`.yml` files and inline YAML text reach the same normalized model as JSON)
 - 🔗 External (multi-file) `$ref`s → [Roadmap Phase 2](03-roadmap.md)
 - 🧩 Reusable **parameters / responses** as emitted components (Phase 1 emits `components.schemas` only) → [Roadmap Phase 2](03-roadmap.md)
-- 🖥️ `zopia validate` (spec linting) and incremental regeneration → [Roadmap Phase 3](03-roadmap.md)
+- ~~🖥️ `zopia validate` (spec linting)~~ → shipped in v0.3.x (S-89; [Roadmap Phase 3](03-roadmap.md)); incremental regeneration remains deferred

@@ -128,12 +128,14 @@ zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat]
     [--watch] [--config path]
 zopia reverse <docs-dir|manifest.json> [--out openapi.json]
     [--version 2.0|3.0|3.1] [--config path]
+zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
 ```
 
 | 🚩 Command | 📝 What it does | 💡 Example |
 | --- | --- | --- |
 | `zopia generate` | generates the endpoint tree and manifest; `--watch` keeps it running and regenerates whenever the spec file changes (survives atomic editor saves; Ctrl+C stops) | `zopia generate swagger.json api_docs`, `zopia generate swagger.yaml api_docs --watch` |
 | `zopia reverse` | imports the manifest's endpoint and emitted component modules, then writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
+| `zopia validate` | lints a spec (broken refs, name collisions, cross-namespace duplicate operationIds, unreachable components) or checks a generated tree (manifest validity, reverse dry-run, km-api peer drift); prints sorted diagnostics and a summary line to stdout | `zopia validate openapi.yaml`, `zopia validate api_docs` |
 
 ### 📏 CLI contract
 
@@ -142,12 +144,17 @@ zopia reverse <docs-dir|manifest.json> [--out openapi.json]
 | R-931 | Boolean flags are additive and default to `false` when absent; `--no-manifest` is the explicit inverse of the default-on manifest option; `--watch` (S-88) is generate-only and requires a spec **file path** — it watches the spec's parent directory so atomic editor saves (`write-temp` + rename) still trigger a regeneration, coalesces change bursts, prints per-run errors to stderr while continuing, and never writes a partial tree beyond the failing run's first output. With a [project config file](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19), config values fill every option the flags leave unset, and every explicit flag still wins (D-19); the `<output-dir>` positional is required unless the config supplies `generate.outDir`. |
 | R-932 | Parsing is strict and completes before either engine runs: options may surround positional arguments, but unknown, command-incompatible, repeated, or valueless options and missing/extra positionals fail with `ZOPIA_CONFIG_INVALID` at the offending argument. |
 | R-933 | Data uses stdout (or the selected `--out` file); warnings and errors use stderr. Exit status is `0` success, `1` typed user/configuration failure, and `2` unexpected internal failure. |
-| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. `--config <path>` selects an explicit config file on both commands; loading, discovery, and validation rules live in [09-configuration](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19). |
+| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. `--config <path>` selects an explicit config file on every command; loading, discovery, and validation rules live in [09-configuration](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19). `zopia validate` has no configurable knobs yet — a named config file only needs to load. |
 
 Both commands print warnings only to stderr as
 `Warning: ZOPIA_WARN_* <pointer>: <message>`. In particular, `zopia reverse`
 keeps stdout as valid OpenAPI JSON even when warnings are present; `--out`
-writes only JSON to the selected file.
+writes only JSON to the selected file. `zopia validate` instead prints every
+diagnostic to **stdout** (`Error|Warning: <CODE> <pointer>: <message>`) followed
+by one summary line, keeping stderr for the typed failure tail; exit status is
+`1` exactly when an error-severity diagnostic exists (S-89). The same coverage
+is available programmatically as `validateZopia(input)` returning
+`{ ok, kind, target, diagnostics }`.
 
 > ⚠️ `zopia reverse` executes the TypeScript modules referenced by `apis[].file`
 > and non-null `components[].file` entries. Reverse only trusted generated trees,

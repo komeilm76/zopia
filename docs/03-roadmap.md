@@ -152,8 +152,15 @@ The v0.1.0 release satisfies all of the following:
 
 ## 🌌 Phase 3 — Ecosystem (v0.3+)
 
-- 🧹 **`zopia validate`** — lint/validate specs and generated trees (broken
-  refs, name collisions, unreachable components, km-api version drift)
+- 🧹 **`zopia validate`** — ✅ CLI command + `validateZopia()` API lint specs
+  and generated trees (S-89): specs are checked for dialect validity, broken
+  local `$ref`s, endpoint-planning failures (name collisions, cross-namespace
+  duplicate operationIds), and components unreachable from any operation
+  (transitive; Swagger `definitions` included). Generated trees are checked for
+  manifest presence/validity, a successful reverse dry-run, and km-api peer
+  drift. Findings are deterministic sorted diagnostics with stable
+  `ZOPIA_VALIDATE_*` lint codes; the CLI prints them on stdout and exits `1`
+  when any error-severity finding exists
 - ♻️ **Incremental regeneration** — only re-emit files whose inputs changed;
   merge-safe custom layer for manual edits (a `custom` companion file per endpoint)
 - 🔍 **Diff tool** — `zopia diff old.json new.json` → human-readable changes

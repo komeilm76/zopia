@@ -18,6 +18,7 @@ release-blocking defect under the
 │   ├── config.ts               # 🧾 zopia.config.ts discovery, trusted import, validation (D-19)
 │   ├── errors.ts               # 🛑 typed error catalogue
 │   ├── warnings.ts             # ⚠️ structured warning pipeline
+│   ├── validation.ts           # 🧹 zopia validate lint batteries (specs + generated trees, S-89)
 │   └── conversions/
 │       ├── zod-to-json-schema.ts       # ① Zod → JSON Schema
 │       ├── json-schema-to-zod.ts       # ② JSON Schema → Zod

@@ -4,7 +4,7 @@ import { asZopiaError, ZopiaError } from '../errors';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { deriveReusableParameterSchema, deriveReusableResponseSchema, extractOperationContracts, reusableDeclarations } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
-import { planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './api-docs-plan';
+import { assertUniqueOperationIdsAcrossScopes, planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './api-docs-plan';
 import { isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
 import { createZopiaManifest, hashOpenApiDocument, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
@@ -436,11 +436,7 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   // OpenAPI requires operationId to be unique document-wide; $ref aliases can make the
   // same id appear in both the path and webhook namespaces even though each collector
   // dedupes only its own list — reject before producing a tree ④ can never reverse.
-  const pathOperationIds = new Map(plans.map((plan) => [plan.operationId, plan.path]));
-  for (const webhookPlan of webhookPlans) {
-    const owner = pathOperationIds.get(webhookPlan.operationId);
-    if (owner !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId across paths and webhooks: ${webhookPlan.operationId}`, { at: `#/webhooks/${webhookPlan.path.replace(/~/g, '~0').replace(/\//g, '~1')}`, hint: `rename one operationId (also used by path ${owner})` });
-  }
+  assertUniqueOperationIdsAcrossScopes(plans, webhookPlans);
   const previous = await inspectZopiaManifestStaleness(options.outputDir, {
     sourceSha256: hashOpenApiDocument(source),
     mode,

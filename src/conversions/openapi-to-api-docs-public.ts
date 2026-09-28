@@ -121,14 +121,14 @@ function parseYamlSpec(text: string, source: string | undefined): OpenApiDocumen
 }
 
 /** The parsed input document plus the spec file it was read from (when any). */
-interface ReadInputResult {
+export interface ReadOpenApiSourceInputResult {
   /** Parsed Swagger/OpenAPI document. */
   document: OpenApiDocument;
   /** Input spec file path; external `$ref`s resolve against its folder (D-17). */
   sourceFile?: string;
 }
 
-async function readInput(input: string | Record<string, unknown>): Promise<ReadInputResult> {
+async function readInput(input: string | Record<string, unknown>): Promise<ReadOpenApiSourceInputResult> {
   if (input && typeof input === 'object' && !Array.isArray(input)) return { document: input };
   if (typeof input !== 'string' || input.trim() === '') {
     throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a Swagger/OpenAPI object, JSON/YAML text, or a .json/.yaml/.yml file path', { at: '#', hint: 'pass a Swagger/OpenAPI document object, document text, or file path' });
@@ -317,6 +317,30 @@ function mapGenerationError(error: unknown): ZopiaError {
   const message = error instanceof ZopiaError ? error.message.slice(`${error.code}: `.length) : error instanceof Error ? error.message : String(error);
   if (message.includes('path-item $ref') || message.includes('path item $ref')) return new ZopiaError('ZOPIA_SPEC_PATH_REF', message, { hint: 'path-item references must be valid local references', cause: error });
   return new ZopiaError('ZOPIA_SPEC_INVALID', message, { hint: 'fix the invalid Swagger/OpenAPI document', cause: error });
+}
+
+/**
+ * Read a Swagger/OpenAPI document from an in-memory object, JSON/YAML text, or a
+ * `.json`/`.yaml`/`.yml` path — the same acceptance rules as {@link openApiToApiDocs}.
+ *
+ * @param input Swagger/OpenAPI object, JSON/YAML text, or readable JSON/YAML file path.
+ * @returns Parsed document plus the spec file path when the input named one.
+ * @throws {@link ZopiaError} `ZOPIA_SPEC_INVALID*` when the input cannot be read or parsed.
+ */
+export function readOpenApiSourceInput(input: string | Record<string, unknown>): Promise<ReadOpenApiSourceInputResult> {
+  return readInput(input);
+}
+
+/**
+ * Validate every local `$ref` inside a normalized document against the rule that
+ * references must resolve — the same scan engine ③ runs before planning.
+ *
+ * @param document Normalized Swagger/OpenAPI document to scan.
+ * @returns Nothing.
+ * @throws {@link ZopiaError} `ZOPIA_REF_NOT_FOUND`/`ZOPIA_REF_EXTERNAL`/`ZOPIA_SPEC_INVALID` located at the offending reference.
+ */
+export function validateOpenApiReferences(document: OpenApiDocument): void {
+  validateReferences(document);
 }
 
 /**

@@ -122,6 +122,7 @@ See [Conversions → Engine ①](06-conversions.md)
 zopia generate <spec.json> <output-dir> [--mode <directory|flat>]
     [--insert-components] [--use-component-as-reference] [--no-manifest] [--watch]
 zopia reverse  <docs-dir>  [--out <file.json>] [--version <2.0|3.0|3.1>]
+zopia validate <spec|docs-dir>   (no options yet; `--config path` accepted for parity)
 ```
 
 | 🚩 Flag | ⚙️ Option |

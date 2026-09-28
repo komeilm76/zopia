@@ -5,6 +5,7 @@ import { loadZopiaConfig, type ZopiaProjectConfig } from './config';
 import { asZopiaError, ZopiaError } from './errors';
 import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
 import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
+import { validateZopia, type ZopiaValidationResult } from './validation';
 import { formatZopiaWarning, type ZopiaWarning } from './warnings';
 
 /** Output channels used by the CLI command runner. */
@@ -43,9 +44,15 @@ interface ReverseArguments {
   config?: string;
 }
 
+interface ValidateArguments {
+  input: string;
+  config?: string;
+}
+
 const HELP_TEXT = `Usage:
   zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest] [--watch] [--config path]
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
+  zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
 
 Global options:
   -h, --help                       Show this help.
@@ -64,6 +71,12 @@ Generate options:
 Reverse options:
   --out file                       Write JSON to a file instead of stdout (default: config reverse.out, then stdout).
   --version 2.0|3.0|3.1            Select OpenAPI output (default: config reverse.version, then 3.1).
+
+Validate options:
+  (none)                           Checks a spec for broken refs, name collisions, and unreachable components,
+                                   or a generated tree for manifest problems, reverse dry-run failures, and km-api
+                                   drift. Diagnostics print to stdout; exit status is 1 when any error-severity
+                                   diagnostic was found.
 
 Security: reverse executes generated TypeScript referenced by the manifest and the config file is executed
 JavaScript; use only trusted trees and trusted config files.
@@ -176,6 +189,38 @@ function parseReverse(argv: string[]): ReverseArguments {
 
 function printWarnings(warnings: readonly ZopiaWarning[], output: ZopiaCliOutput): void {
   for (const warning of warnings) output.stderr(`Warning: ${formatZopiaWarning(warning)}`);
+}
+
+function parseValidate(argv: string[]): ValidateArguments {
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let config: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument.startsWith('-')) {
+      invalid(`unknown validate option: ${argument}`, argument, "run 'zopia validate --help' for supported options");
+    } else {
+      positional.push(argument);
+    }
+  }
+
+  if (positional.length < 1) invalid('validate requires <spec.json|spec.yaml|docs-dir>', 'argv', 'provide the spec path or generated docs directory');
+  if (positional.length > 1) invalid(`unexpected validate argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
+  return { input: positional[0], config };
+}
+
+function printValidation(result: ZopiaValidationResult, output: ZopiaCliOutput): void {
+  for (const issue of result.diagnostics) {
+    output.stdout(`${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.code}${issue.at ? ` ${issue.at}` : ''}: ${issue.message}\n`);
+  }
+  const errors = result.diagnostics.filter((issue) => issue.severity === 'error').length;
+  const warnings = result.diagnostics.length - errors;
+  output.stdout(`zopia validate ${result.kind} ${result.target}: ${errors === 0 ? 'ok' : 'failed'} (${errors} errors, ${warnings} warnings)\n`);
 }
 
 /**
@@ -296,6 +341,19 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     return;
   }
 
+  if (command === 'validate') {
+    const parsed = parseValidate(commandArguments);
+    // `--config` is accepted for grammar parity and future validate defaults (D-19);
+    // validation currently has no configurable knobs, so the project file only needs
+    // to load successfully when explicitly named.
+    await loadZopiaConfig({ file: parsed.config });
+    const result = await validateZopia(parsed.input);
+    printValidation(result, output);
+    const errors = result.diagnostics.filter((issue) => issue.severity === 'error').length;
+    if (errors > 0) invalid(`zopia validate failed with ${errors} error${errors === 1 ? '' : 's'}`, parsed.input, 'resolve the reported error diagnostics');
+    return;
+  }
+
   if (command === 'reverse') {
     const parsed = parseReverse(commandArguments);
     const project = await loadZopiaConfig({ file: parsed.config });
@@ -311,7 +369,7 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     return;
   }
 
-  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', or 'zopia --help'");
+  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', 'zopia validate', or 'zopia --help'");
 }
 
 /**

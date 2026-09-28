@@ -3,6 +3,26 @@ import { collectOpenApiOperations, collectOpenApiWebhookOperations, type OpenApi
 import { normalizeOpenApiDocument } from './openapi';
 import { endpointFilePath, isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
 
+/**
+ * Enforce document-wide `operationId` uniqueness across the path and webhook namespaces.
+ *
+ * Each collector dedupes only its own namespace, but OpenAPI requires the id to be
+ * unique across the whole document — a `$ref` alias can surface the same explicit id
+ * in both. Generation and validation share this guard.
+ *
+ * @param plans Path endpoint plans from {@link planApiDocsFiles}.
+ * @param webhookPlans Webhook endpoint plans from {@link planWebhookDocsFiles}.
+ * @returns Nothing.
+ * @throws {@link ZopiaError} `ZOPIA_SPEC_INVALID` when both scopes mint the same id.
+ */
+export function assertUniqueOperationIdsAcrossScopes(plans: readonly ApiDocsFilePlan[], webhookPlans: readonly ApiDocsFilePlan[]): void {
+  const pathOperationIds = new Map(plans.map((plan) => [plan.operationId, plan.path]));
+  for (const webhookPlan of webhookPlans) {
+    const owner = pathOperationIds.get(webhookPlan.operationId);
+    if (owner !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId across paths and webhooks: ${webhookPlan.operationId}`, { at: `#/webhooks/${webhookPlan.path.replace(/~/g, '~0').replace(/\//g, '~1')}`, hint: `rename one operationId (also used by path ${owner})` });
+  }
+}
+
 /** One normalized operation paired with its collision-safe output path. */
 export interface ApiDocsFilePlan extends OpenApiOperation {
   /** Portable endpoint-module path relative to the generation root. */

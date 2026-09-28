@@ -27,6 +27,9 @@ export {
 } from './conversions/openapi';
 export {
   openApiToApiDocs,
+  readOpenApiSourceInput,
+  validateOpenApiReferences,
+  type ReadOpenApiSourceInputResult,
   type ZopiaGenerateOptions,
   type ZopiaGeneratedFile,
   type ZopiaGenerateResult,
@@ -40,7 +43,7 @@ export {
   type OpenApiOperation,
 } from './conversions/openapi-to-api-docs';
 export { endpointFilePath, type ApiDocsMode } from './conversions/api-docs-layout';
-export { planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './conversions/api-docs-plan';
+export { assertUniqueOperationIdsAcrossScopes, planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './conversions/api-docs-plan';
 export { generateApiDocsFiles, type GeneratedApiDocsFile, type GenerateApiDocsOptions } from './conversions/api-docs-generate';
 export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
 export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
@@ -56,3 +59,11 @@ export {
   type ZopiaProjectGenerateConfig,
   type ZopiaProjectReverseConfig,
 } from './config';
+export {
+  validateZopia,
+  ZOPIA_VALIDATION_CODES,
+  type ZopiaValidateOptions,
+  type ZopiaValidationCode,
+  type ZopiaValidationIssue,
+  type ZopiaValidationResult,
+} from './validation';
