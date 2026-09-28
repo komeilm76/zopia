@@ -54,6 +54,7 @@ const isManifestComponent = (value: unknown): value is { kind?: string; file?: u
 function collectOwnedFiles(manifest: GeneratedZopiaManifest): string[] {
   const files = new Set<string>([ZOPIA_MANIFEST_FILE]);
   for (const api of manifest.apis) files.add(api.file);
+  for (const webhook of manifest.webhooks ?? []) files.add(webhook.file);
   for (const component of manifest.components) if (component.file !== null) files.add(component.file);
   if (manifest.options.insertComponents) {
     files.add('components/index.ts');

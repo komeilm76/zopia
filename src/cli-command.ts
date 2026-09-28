@@ -1,4 +1,6 @@
+import { watch } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 import { loadZopiaConfig, type ZopiaProjectConfig } from './config';
 import { asZopiaError, ZopiaError } from './errors';
 import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
@@ -31,6 +33,7 @@ interface GenerateArguments {
   useComponentAsReference: boolean;
   manifest: boolean;
   config?: string;
+  watch: boolean;
 }
 
 interface ReverseArguments {
@@ -41,7 +44,7 @@ interface ReverseArguments {
 }
 
 const HELP_TEXT = `Usage:
-  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest] [--config path]
+  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest] [--watch] [--config path]
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
 
 Global options:
@@ -56,6 +59,7 @@ Generate options:
   --insert-components              Emit component schema modules.
   --use-component-as-reference     Import emitted components; requires --insert-components.
   --no-manifest                    Do not write .zopia-manifest.json (overrides config generate.manifest).
+  --watch                          Regenerate whenever the spec file changes (Ctrl+C to stop).
 
 Reverse options:
   --out file                       Write JSON to a file instead of stdout (default: config reverse.out, then stdout).
@@ -97,6 +101,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
   let useComponentAsReference = false;
   let manifest = true;
   let config: string | undefined;
+  let watchMode = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -119,6 +124,9 @@ function parseGenerate(argv: string[]): GenerateArguments {
       markOption(seen, argument);
       config = optionValue(argv, index, argument);
       index += 1;
+    } else if (argument === '--watch') {
+      markOption(seen, argument);
+      watchMode = true;
     } else if (argument.startsWith('-')) {
       invalid(`unknown generate option: ${argument}`, argument, "run 'zopia generate --help' for supported options");
     } else {
@@ -128,7 +136,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
 
   if (positional.length < 1) invalid('generate requires <spec.json|spec.yaml>', 'argv', 'provide the input spec path');
   if (positional.length > 2) invalid(`unexpected generate argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
-  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, config };
+  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, config, watch: watchMode };
 }
 
 function parseReverse(argv: string[]): ReverseArguments {
@@ -171,6 +179,82 @@ function printWarnings(warnings: readonly ZopiaWarning[], output: ZopiaCliOutput
 }
 
 /**
+ * Repeat engine ③ whenever the spec file changes.
+ *
+ * The initial run always executes once (surfacing the exact same errors as
+ * non-watch generate). Subsequent runs are coalesced: bursts within 50 ms are
+ * collapsed, and a change observed while a run is executing is re-run once the
+ * active run settles. Warnings land on stderr in deterministic order; run
+ * failures print the error and keep watching (spec edits are the natural fix).
+ *
+ * @param input Spec path to watch (JSON or YAML).
+ * @param options Resolved generate options shared by every run.
+ * @param output Destinations for generated output and diagnostics.
+ * @param signal Optional abort signal that stops watching and settles the returned promise (CLI usage passes none).
+ * @returns A promise that never resolves while watching (it resolves only if the watcher stops after a fatal error or abort).
+ * @throws {@link ZopiaError} when the watched spec cannot be resolved to a file.
+ */
+export async function runGenerateWatch(input: string, options: Parameters<typeof openApiToApiDocs>[1], output: ZopiaCliOutput = processOutput, signal?: AbortSignal): Promise<never> {
+  if (!input || typeof input !== 'string') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'watch mode requires a spec file path', { at: 'input', hint: 'pass a JSON or YAML spec path to `zopia generate --watch`' });
+  const run = async (): Promise<void> => {
+    try {
+      const result = await openApiToApiDocs(input, options);
+      printWarnings(result.warnings, output);
+    } catch (error) {
+      const typed = asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'watch run failed', { at: input });
+      output.stderr(`Error: ${typed.message}`);
+    }
+  };
+  await run();
+  let running = false;
+  let queued = false;
+  const trigger = (): void => {
+    if (running) {
+      queued = true;
+      return;
+    }
+    running = true;
+    void run().finally(() => {
+      running = false;
+      if (queued) {
+        queued = false;
+        trigger();
+      }
+    });
+  };
+  let debounce: ReturnType<typeof setTimeout> | undefined;
+  // Watch the parent directory and filter on the spec basename: editors saving
+  // atomically (write-temp + rename) replace the inode a naive file watcher is
+  // bound to, which would silently end regeneration on Linux.
+  const directory = dirname(input);
+  const name = basename(input);
+  const watcher = watch(directory, (eventType, filename) => {
+    if (filename !== null && filename.toString() !== name) return;
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(trigger, 50);
+  });
+  watcher.on('error', (error) => {
+    output.stderr(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    watcher.close();
+  });
+  return new Promise<never>((resolve) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      if (debounce) clearTimeout(debounce);
+      watcher.close();
+      resolve(undefined as never);
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      if (debounce) clearTimeout(debounce);
+      watcher.close();
+      resolve(undefined as never);
+    }, { once: true });
+  });
+}
+
+/**
  * Run one zopia CLI command with independently routable output channels.
  *
  * @param argv Command arguments after the executable name.
@@ -195,14 +279,19 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     const generateDefaults = project?.generate;
     const outputDirectory = parsed.outputDirectory ?? generateDefaults?.outDir;
     if (outputDirectory === undefined) invalid('generate requires <spec.json|spec.yaml> and <output-dir>', 'argv', 'provide both input and output paths, or set generate.outDir in zopia.config.ts');
-    const result = await openApiToApiDocs(parsed.input, {
+    const options = {
       outDir: outputDirectory,
       mode: parsed.mode ?? generateDefaults?.mode,
       insertComponents: parsed.insertComponents || (generateDefaults?.insertComponents ?? false),
       useComponentAsReference: parsed.useComponentAsReference || (generateDefaults?.useComponentAsReference ?? false),
       // `--no-manifest` is explicit and always wins over config defaults.
       manifest: parsed.manifest && (generateDefaults?.manifest ?? true),
-    });
+    };
+    if (parsed.watch) {
+      await runGenerateWatch(parsed.input, options, output);
+      return;
+    }
+    const result = await openApiToApiDocs(parsed.input, options);
     printWarnings(result.warnings, output);
     return;
   }

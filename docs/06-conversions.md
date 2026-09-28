@@ -349,7 +349,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 | the `default` response & non-standard codes (`419`, `499`, `512`, …) | emitted verbatim as the `default` / numeric response keys (km-api ≥ 0.4.1 accepts both) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, `deprecated`, `example`) | no home in Zod/km-api → overlay entries on the operation subtree pointers (R-635) |
 | response `headers` | no home in km-api → `apis[].responseOverlay` entries (re-emitted verbatim, R-654c) |
-| 3.1 `webhooks` object | not emitted as endpoint files + `ZOPIA_WARN_WEBHOOKS`; preserved in the manifest and restored for 3.1 output (endpoint generation is Phase 2) |
+| 3.1 `webhooks` object | webhook operations emit endpoint files under `webhooks/<name>/<method>/index.ts` (D-23) with the same component/`$ref` handling as path endpoints; operation-less webhook maps stay manifest-only with `ZOPIA_WARN_WEBHOOKS` |
 | path item that is a local `$ref` | resolve the local JSON Pointer (including chained references); external, missing, malformed, and circular references are rejected |
 | `deprecated: true` | `deprecated: true` |
 
@@ -446,7 +446,7 @@ interface ZopiaManifest {
 }
 ```
 
-`manifestFileToOpenApi()` imports each trusted `apis[].file` and every emitted `components[].file` relative to the manifest. Runtime km-api metadata and edited request/response Zod schemas override their manifest snapshots; request-side schemas use Engine ① input semantics, response-side schemas use output semantics, and imported component references remain `$ref`s. A manifest `$ref` never replaces a different component selected in the runtime schema. Passing `version: '3.0' | '3.1'` selects both the document envelope and Engine ① schema target; Swagger source operations and reusable objects are normalized to the selected OpenAPI 3 dialect. Passing `version: '2.0'` (D-20) downgrades 3.x-sourced manifests through the source-dialect Swagger reconstruction path: `nullable` spellings become `x-nullable`, `requestBody` becomes `body`/`formData` parameters, `components.schemas` becomes `definitions`, reusable parameters/responses move to the top-level `parameters`/`responses` maps, `servers[0]` decomposes into `host`/`basePath`/`schemes`, and unrepresentable 3.x features drop with deterministic `ZOPIA_WARN_DIALECT_DOWNGRADE`/`ZOPIA_WARN_WEBHOOKS` warnings. `apiDocsToOpenApi()` supplies the documented 3.1 default, while the low-level manifest helpers preserve the source dialect when options are omitted for snapshot/backward compatibility. `manifestToOpenApi()` remains synchronous and never imports files.
+`manifestFileToOpenApi()` imports each trusted `apis[].file`, each `webhooks[].file`, and every emitted `components[].file` relative to the manifest. Runtime km-api metadata and edited request/response Zod schemas override their manifest snapshots; request-side schemas use Engine ① input semantics, response-side schemas use output semantics, and imported component references remain `$ref`s. A manifest `$ref` never replaces a different component selected in the runtime schema. Passing `version: '3.0' | '3.1'` selects both the document envelope and Engine ① schema target; Swagger source operations and reusable objects are normalized to the selected OpenAPI 3 dialect. Passing `version: '2.0'` (D-20) downgrades 3.x-sourced manifests through the source-dialect Swagger reconstruction path: `nullable` spellings become `x-nullable`, `requestBody` becomes `body`/`formData` parameters, `components.schemas` becomes `definitions`, reusable parameters/responses move to the top-level `parameters`/`responses` maps, `servers[0]` decomposes into `host`/`basePath`/`schemes`, and unrepresentable 3.x features drop with deterministic `ZOPIA_WARN_DIALECT_DOWNGRADE`/`ZOPIA_WARN_WEBHOOKS` warnings. `apiDocsToOpenApi()` supplies the documented 3.1 default, while the low-level manifest helpers preserve the source dialect when options are omitted for snapshot/backward compatibility. `manifestToOpenApi()` remains synchronous and never imports files.
 
 | # | Step | Rules |
 | --- | --- | --- |
@@ -484,7 +484,7 @@ tested as a property for every fixture
 | keyword-level losses (`uniqueItems`, `discriminator`, `time`/`url` formats, boolean exclusive bounds, custom formats) | overlay `set`/`remove` → restored verbatim (R-635) |
 | structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate in Phase 1 (documented in the generated comment) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, …) & response `headers` — no home in km-api (R-642) | overlay / `apis[].responseOverlay` → restored verbatim |
-| 3.1 `webhooks` | no endpoint files + `ZOPIA_WARN_WEBHOOKS`; manifest-preserved and restored for 3.1 reverse output |
+| 3.1 `webhooks` | runtime-refreshed from the generated `webhooks/` endpoint files and reassembled in exact `webhookOrder` order for 3.1 output (D-23); omitted with `ZOPIA_WARN_WEBHOOKS` for 3.0/2.0 output |
 | server `variables` | no endpoint-code representation + `ZOPIA_WARN_SERVER_VARIABLES`; preserved and restored through the manifest |
 
 ## 🔗 Next

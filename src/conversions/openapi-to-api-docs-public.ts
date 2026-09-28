@@ -6,6 +6,7 @@ import type { ApiDocsMode } from './api-docs-layout';
 import { bundleExternalOpenApiRefs } from './openapi-external-ref';
 import { extractOperationContracts } from './openapi-contracts';
 import { buildOpenApiOperationIR } from './openapi-ir';
+import { collectOpenApiWebhookOperations } from './openapi-to-api-docs';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 import { parseYaml } from './yaml';
@@ -249,7 +250,8 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
   if (Array.isArray(document.servers)) document.servers.forEach((server: any, index: number) => {
     if (server && typeof server === 'object' && server.variables !== undefined) push({ code: 'ZOPIA_WARN_SERVER_VARIABLES', at: `#/servers/${index}/variables`, message: 'server variables are preserved in the manifest but are not represented in generated endpoint code' });
   });
-  if (document.webhooks !== undefined) push({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks are preserved in the manifest but are not emitted as endpoint files' });
+
+  if (document.webhooks !== undefined && collectOpenApiWebhookOperations(document).length === 0) push({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks declare no operations and are preserved verbatim in the manifest' });
 
   if (document.swagger !== '2.0' && document.components !== undefined && (!document.components || typeof document.components !== 'object' || Array.isArray(document.components))) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI components: expected an object');
   const schemas = document.swagger === '2.0' ? document.definitions : document.components?.schemas;

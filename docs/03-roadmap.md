@@ -135,11 +135,20 @@ The v0.1.0 release satisfies all of the following:
   frozen overlay (D-22); every other listed keyword keeps its runtime-refinement
   + frozen-overlay round-trip (`patternProperties`, `if/then/else`,
   `minProperties/maxProperties`, non-native `propertyNames` forms, `contains`) (Phase 1: documented approximation + warning, D-12)
-- 🪝 **3.1 webhook endpoint generation** — v0.1.0 preserves webhooks in the
-  manifest and restores them for 3.1 output with `ZOPIA_WARN_WEBHOOKS`, but does
-  not generate endpoint files for them (valid local path-item `$ref`s already
-  resolve and round-trip in v0.1.0)
-- 👀 **Watch mode** — `zopia generate --watch` for spec-driven development
+- 🪝 **3.1 webhook endpoint generation** — ✅ `document.webhooks` operations now
+  generate real endpoint files under `webhooks/<name>/<method>/index.ts`
+  alongside path operations (D-23). The manifest records `webhooks[]` entries
+  with the same reference/overlay/security metadata as path endpoints plus
+  `webhookOrder` and a `webhooksOverlay` (item-level metadata, `x-` names, and
+  operation-less items stay verbatim), so engine ④ reassembles webhooks in exact
+  source order for 3.1 output and omits them with source-located
+  `ZOPIA_WARN_WEBHOOKS` warnings for 3.0/2.0 output. Operation-less webhook maps
+  keep the Phase 1 manifest-only behavior (no endpoint files, forward warning)
+- 👀 **Watch mode** — ✅ `zopia generate --watch` regenerates whenever the spec
+  file changes (S-88): an immediate initial run, 50 ms-coalesced re-runs that
+  serialize against in-flight generation, run errors printed to stderr while
+  watching continues, and abort/cleanup on exit. Uses `fs.watch` with the
+  existing stale-tree/prune pipeline, so spec edits refresh owned files in place
 
 ## 🌌 Phase 3 — Ecosystem (v0.3+)
 

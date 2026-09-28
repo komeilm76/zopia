@@ -1,5 +1,5 @@
 import { ZopiaError } from '../errors';
-import { collectOpenApiOperations, type OpenApiOperation } from './openapi-to-api-docs';
+import { collectOpenApiOperations, collectOpenApiWebhookOperations, type OpenApiOperation } from './openapi-to-api-docs';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 
 /** Validated operation-level intermediate representation used by Engine ③. */
@@ -51,7 +51,7 @@ function tags(value: unknown): string[] {
  */
 export function buildOpenApiOperationIR(input: OpenApiDocument | string): OpenApiOperationIR[] {
   const { document } = normalizeOpenApiDocument(input);
-  return collectOpenApiOperations(document).map((entry) => {
+  return [...collectOpenApiOperations(document), ...collectOpenApiWebhookOperations(document)].map((entry) => {
     const operation = entry.operation;
     if (operation.summary !== undefined && typeof operation.summary !== 'string') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid summary: ${entry.method.toUpperCase()} ${entry.path}`);
     if (operation.description !== undefined && typeof operation.description !== 'string') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid description: ${entry.method.toUpperCase()} ${entry.path}`);
