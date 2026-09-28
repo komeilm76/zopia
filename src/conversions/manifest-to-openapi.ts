@@ -616,6 +616,11 @@ function rewriteOverlaysVersion(overlay: unknown, sourceKind: string, version: O
   });
 }
 
+/** Whether a path-item `$ref` points into a container removed by the target dialect. */
+function isDroppedDialectRef(ref: unknown): ref is string {
+  return typeof ref === 'string' && (ref.startsWith('#/components/pathItems/') || ref.startsWith('#/webhooks/'));
+}
+
 function manifestToSwaggerDialect(manifest: ZopiaManifest, warnings?: ZopiaWarningCollector): ZopiaManifest {
   const sourceKind = manifest.source.kind;
   if ((manifest.webhooks?.length ?? 0) > 0 || manifest.documentOverlay?.webhooks !== undefined) warnings?.add({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks are omitted because OpenAPI 2.0 cannot represent them' });
@@ -672,11 +677,14 @@ function manifestToSwaggerDialect(manifest: ZopiaManifest, warnings?: ZopiaWarni
     })),
   };
   const swaggerResponses = Object.fromEntries(Object.entries(isRecord(overlay.responses) ? overlay.responses : {}).map(([name, response]) => [name, openApiResponseToSwagger(response, sourceKind, `#/components/responses/${pointerToken(name)}`, warnings)]));
+  // Expand path-item $refs whose targets have no 2.0 home (components.pathItems
+  // and webhooks are both omitted) so the output never dangles.
+  const expandPaths = new Set(Object.entries(manifest.pathsOverlay ?? {}).filter(([, metadata]) => isRecord(metadata) && isDroppedDialectRef(metadata.$ref)).map(([path]) => path));
   const apis = manifest.apis.map((api) => {
     const apiAt = `#/paths/${pointerToken(api.path)}/${api.method}`;
     const sourceOperation = api.sourceOperation === undefined ? undefined : openApiOperationToSwagger(api.sourceOperation, manifest, warnings, apiAt);
     const responseOverlay = sourceOperation === undefined ? api.responseOverlay : Object.entries(sourceOperation.responses ?? {}).flatMap(([status, response]) => isRecord(response) && response.headers !== undefined ? [{ status, headers: response.headers }] : []);
-    return { ...api, sourceOperation, refs: sourceOperation === undefined ? api.refs : collectManifestRefs(sourceOperation), overlay: rewriteOverlaysVersion(api.overlay, sourceKind, '2.0'), responseOverlay };
+    return { ...api, ...(expandPaths.has(api.path) && api.pathItemRef === true ? { pathItemRef: false } : {}), sourceOperation, refs: sourceOperation === undefined ? api.refs : collectManifestRefs(sourceOperation), overlay: rewriteOverlaysVersion(api.overlay, sourceKind, '2.0'), responseOverlay };
   });
   const consumes = new Set<string>();
   const produces = new Set<string>();
@@ -703,12 +711,14 @@ function manifestToSwaggerDialect(manifest: ZopiaManifest, warnings?: ZopiaWarni
   }));
   const pathsOverlay = manifest.pathsOverlay === undefined ? undefined : Object.fromEntries(Object.entries(manifest.pathsOverlay).map(([path, metadata]) => {
     if (!isRecord(metadata)) return [path, metadata];
-    const rewritten: Record<string, unknown> = { ...Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== 'parameters')) };
+    const rewritten: Record<string, unknown> = { ...Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== 'parameters' && !(key === '$ref' && expandPaths.has(path)))) };
     if (Array.isArray(metadata.parameters)) {
       const parameters = metadata.parameters.map((parameter, index) => openApiParameterToSwagger(parameter, sourceKind, `#/paths/${pointerToken(path)}/parameters/${index}`, warnings)).filter((parameter): parameter is Record<string, any> => parameter !== undefined);
       if (parameters.length) rewritten.parameters = parameters;
     }
-    return [path, Object.keys(rewritten).length ? rewritten : metadata];
+    // An expanded `$ref` entry must not fall back to the un-stripped metadata when
+    // stripping emptied the overlay — an empty object restores just the inline operation.
+    return [path, Object.keys(rewritten).length || expandPaths.has(path) ? rewritten : metadata];
   }));
   return {
     ...manifest,
@@ -751,10 +761,15 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: OpenApiRever
   const documentOverlay = version === '3.0' ? Object.fromEntries(Object.entries(manifest.documentOverlay ?? {}).filter(([key]) => key !== 'webhooks' && key !== 'jsonSchemaDialect')) : manifest.documentOverlay;
   if (sourceKind !== 'swagger-2.0') {
     const rewrittenComponents = manifest.componentsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.componentsOverlay, sourceKind, version) as Record<string, unknown>;
-    const dropPathItemRefs = version === '3.0' && sourceKind === 'openapi-3.1' && isRecord(rewrittenComponents?.pathItems);
     const componentsOverlay = version === '3.0' && rewrittenComponents ? Object.fromEntries(Object.entries(rewrittenComponents).filter(([key]) => key !== 'pathItems')) : rewrittenComponents;
     const rewrittenPaths = manifest.pathsOverlay === undefined ? undefined : rewriteOperationSchemas(manifest.pathsOverlay, sourceKind, version) as Record<string, unknown>;
-    const pathsOverlay = dropPathItemRefs && rewrittenPaths ? Object.fromEntries(Object.entries(rewrittenPaths).map(([path, metadata]) => [path, isRecord(metadata) ? Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== '$ref')) : metadata])) : rewrittenPaths;
+    // A path-item $ref into a container OpenAPI 3.0 drops (`components.pathItems`,
+    // or the whole `webhooks` section) must expand in place; refs into surviving
+    // containers (for example another path) stay verbatim for fidelity.
+    const expandPaths = new Set(version === '3.0' && sourceKind === 'openapi-3.1'
+      ? Object.entries(manifest.pathsOverlay ?? {}).filter(([, metadata]) => isRecord(metadata) && isDroppedDialectRef(metadata.$ref)).map(([path]) => path)
+      : []);
+    const pathsOverlay = rewrittenPaths ? Object.fromEntries(Object.entries(rewrittenPaths).map(([path, metadata]) => [path, isRecord(metadata) && expandPaths.has(path) ? Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== '$ref')) : metadata])) : rewrittenPaths;
     const dropWebhooks = version === '3.0' && sourceKind === 'openapi-3.1';
     return {
       ...manifest,
@@ -765,7 +780,7 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: OpenApiRever
       componentsOverlay,
       apis: manifest.apis.map((api) => ({
         ...api,
-        ...(dropPathItemRefs && api.pathItemRef === true ? { pathItemRef: false } : {}),
+        ...(expandPaths.has(api.path) && api.pathItemRef === true ? { pathItemRef: false } : {}),
         sourceOperation: api.sourceOperation === undefined ? undefined : rewriteOperationSchemas(api.sourceOperation, sourceKind, version) as Record<string, any>,
         overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version),
       })),

@@ -153,4 +153,45 @@ describe('warnings pipeline', () => {
       'ZOPIA_WARN_WEBHOOKS',
     ]);
   });
+
+  it('expands a path-item $ref into a dropped components.pathItems container for 2.0 output', () => {
+    const warnings: ZopiaWarning[] = [];
+    const output = manifestToOpenApi({
+      $schema: 'zopia:manifest@1',
+      source: { kind: 'openapi-3.1', title: 'Downgrade', version: '1' },
+      pathsOverlay: { '/pets': { $ref: '#/components/pathItems/PetPaths' } },
+      componentsOverlay: { pathItems: { PetPaths: { get: { operationId: 'listPets', responses: { '200': { description: 'ok' } } } } } },
+      apis: [
+        { file: 'health/get/index.ts', method: 'get', operationId: 'ok', path: '/health', refs: [], overlay: [], responseOverlay: [], sourceOperation: { operationId: 'ok', responses: { '200': { description: 'ok' } } } },
+        { file: 'pets/get/index.ts', method: 'get', operationId: 'listPets', path: '/pets', pathItemRef: true, refs: [], overlay: [], responseOverlay: [], sourceOperation: { operationId: 'listPets', responses: { '200': { description: 'ok' } } } },
+      ],
+    }, { version: '2.0', onWarning: (warning) => warnings.push(warning) }) as any;
+
+    // Regression (round 3): the ref target has no Swagger 2.0 home, so the operation
+    // must expand in place instead of leaving a dangling reference.
+    expect(output.paths['/pets']).toEqual({ get: { operationId: 'listPets', responses: { '200': { description: 'ok' } } } });
+    expect(warnings).toContainEqual(expect.objectContaining({ code: 'ZOPIA_WARN_DIALECT_DOWNGRADE', at: '#/components/pathItems' }));
+  });
+
+  it('expands a path-item $ref into a dropped webhooks section for 3.0 output', () => {
+    const warnings: ZopiaWarning[] = [];
+    const output = manifestToOpenApi({
+      $schema: 'zopia:manifest@1',
+      source: { kind: 'openapi-3.1', title: 'Downgrade', version: '1' },
+      pathsOverlay: { '/fromHook': { $ref: '#/webhooks/hooked' } },
+      webhooks: [{ file: 'webhooks/hooked/post/index.ts', method: 'post', operationId: 'hookOp', name: 'hooked', refs: [], overlay: [], responseOverlay: [], sourceOperation: { operationId: 'hookOp', responses: { '200': { description: 'ok' } } } }],
+      webhookOrder: ['hooked'],
+      webhooksOverlay: { hooked: {} },
+      apis: [
+        { file: 'health/get/index.ts', method: 'get', operationId: 'ok', path: '/health', refs: [], overlay: [], responseOverlay: [], sourceOperation: { operationId: 'ok', responses: { '200': { description: 'ok' } } } },
+        { file: 'fromHook/post/index.ts', method: 'post', operationId: 'hookOpAlias', path: '/fromHook', pathItemRef: true, refs: [], overlay: [], responseOverlay: [], sourceOperation: { operationId: 'hookOpAlias', responses: { '200': { description: 'ok' } } } },
+      ],
+    }, { version: '3.0', onWarning: (warning) => warnings.push(warning) }) as any;
+
+    // Regression (round 3): webhooks are omitted from 3.0 — an aliased path must not
+    // keep a reference into the removed section (legacy manifests may still carry one).
+    expect(output.paths['/fromHook']).toEqual({ post: { operationId: 'hookOpAlias', responses: { '200': { description: 'ok' } } } });
+    expect(output.webhooks).toBeUndefined();
+    expect(warnings).toContainEqual(expect.objectContaining({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks' }));
+  });
 });

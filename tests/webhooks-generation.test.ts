@@ -156,6 +156,23 @@ describe('OpenAPI 3.1 webhook endpoint generation (D-23, S-87)', () => {
     expect(reversed.webhooks['x-empty']).toEqual({});
   });
 
+  it('rejects duplicate operationIds across path and webhook operations during ③', async () => {
+    const document = hookDocument({
+      paths: {
+        '/pets': { get: { operationId: 'listPets', responses: { '200': { description: 'ok' } } } },
+        '/fromHook': { $ref: '#/webhooks/newPet' },
+      },
+    });
+    const outputDir = await temporaryDirectory('zopia-d23-dup-');
+    let code: string | undefined;
+    let at: string | undefined;
+    try { await generateApiDocsFiles(document as any, { outputDir }); } catch (error: any) { code = error?.code; at = error?.at; }
+    // The path aliases the webhook item through $ref, so both collectors mint the same
+    // explicit operationId (newPet) — OpenAPI requires document-wide uniqueness.
+    expect(code).toBe('ZOPIA_SPEC_INVALID');
+    expect(at).toBe('#/webhooks/newPet');
+  });
+
   it('throws typed errors for malformed webhook items (null, number, string, array)', async () => {
     for (const bad of [null, 42, 'text', []]) {
       const document = hookDocument({ webhooks: { bad } as any });
@@ -199,9 +216,12 @@ describe('OpenAPI 3.1 webhook endpoint generation (D-23, S-87)', () => {
   });
 
   it('rejects duplicate operationIds across path and webhook operations during ④', async () => {
-    const document = hookDocument();
-    (document.webhooks as any).newPet.post.operationId = 'listPets';
-    const [outputDir] = (await generateTree(document)).split('::');
+    const [outputDir] = (await generateTree(hookDocument())).split('::');
+    // ③ rejects this in the source document; for hand-edited trees the reverse must
+    // still guard it — make the generated webhook module collide with the path id.
+    const modulePath = join(outputDir, 'webhooks/newpet/post/index.ts');
+    const source = await readFile(modulePath, 'utf8');
+    await writeFile(modulePath, source.replace('operationId: "newPet"', 'operationId: "listPets"'), 'utf8');
     await expect(manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json'))).rejects.toThrow('Duplicate reconstructed operationId: listPets');
   });
 

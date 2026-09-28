@@ -433,6 +433,14 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   if (retainManifest) reservedFiles.push(ZOPIA_MANIFEST_FILE);
   const plans = avoidReservedFileCollisions(planApiDocsFiles(source, mode), reservedFiles);
   const webhookPlans = avoidReservedFileCollisions(planWebhookDocsFiles(source, mode), [...reservedFiles, ...plans.map((plan) => plan.file)]);
+  // OpenAPI requires operationId to be unique document-wide; $ref aliases can make the
+  // same id appear in both the path and webhook namespaces even though each collector
+  // dedupes only its own list — reject before producing a tree ④ can never reverse.
+  const pathOperationIds = new Map(plans.map((plan) => [plan.operationId, plan.path]));
+  for (const webhookPlan of webhookPlans) {
+    const owner = pathOperationIds.get(webhookPlan.operationId);
+    if (owner !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId across paths and webhooks: ${webhookPlan.operationId}`, { at: `#/webhooks/${webhookPlan.path.replace(/~/g, '~0').replace(/\//g, '~1')}`, hint: `rename one operationId (also used by path ${owner})` });
+  }
   const previous = await inspectZopiaManifestStaleness(options.outputDir, {
     sourceSha256: hashOpenApiDocument(source),
     mode,
