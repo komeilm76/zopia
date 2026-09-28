@@ -38,6 +38,9 @@ implementation; it now describes the implemented v0.1.0 behavior and deferred sc
       ([rules](06-conversions.md))
 - [x] 🧱 Component options — `insertComponents`, `useComponentAsReference`,
       nested references, and direct/mutual cycles ([rules](08-components.md))
+- [x] 📝 **YAML input** — owned deterministic YAML 1.2 core-schema parser,
+      `.yaml`/`.yml` paths and inline YAML text, anchors/aliases/merge keys,
+      stable `ZOPIA_SPEC_INVALID_YAML` ([rules](06-conversions.md#engine-③--openapi--api-docs), D-16)
 - [x] 📦 Manifest writer/reader — `.zopia-manifest.json` (D-06)
 - [x] ⚠️ **Warnings pipeline** — stable typed codes, exact JSON Pointer locations,
       deterministic collection/callbacks, generated-code markers, and CLI stderr

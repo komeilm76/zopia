@@ -40,7 +40,8 @@ const { code, schema: back, warnings, overlays } = jsonSchemaToZod(jsonSchema);
 // → warnings: structured diagnostics; overlays: exact reverse-conversion restorations
 
 // ── ③ OpenAPI → api docs ───────────────────────────────────
-const result = await openApiToApiDocs('swagger.json', {
+// input: object · JSON/YAML text · .json/.yaml/.yml path (v0.2.x, D-16)
+const result = await openApiToApiDocs('swagger.yaml', {
   mode: 'directory',            // 📂 or 'flat'
   insertComponents: false,      // 🧱 default
   useComponentAsReference: false, // 🔗 default
@@ -122,7 +123,7 @@ approximation.
 > flags map to [Configuration](09-configuration.md#-cli--options-mapping).
 
 ```text
-zopia generate <spec.json> <output-dir> [--mode directory|flat]
+zopia generate <spec.json|spec.yaml> <output-dir> [--mode directory|flat]
     [--insert-components] [--use-component-as-reference] [--no-manifest]
 zopia reverse <docs-dir|manifest.json> [--out openapi.json]
     [--version 3.0|3.1]

@@ -138,6 +138,8 @@ Vitest source tree so a newly documented scenario cannot remain unimplemented:
 | S-74 | CLI contract — every flag maps to its API option; options may surround positionals; missing/extra arguments, unknown/cross-command/duplicate/valueless flags fail before engine work; help includes the trusted-tree warning; exit statuses distinguish typed and unexpected failures | R-931…R-934 |
 | S-75 | JSDoc AST audit — every directly or named-only exported declaration and exposed public/nested-shape member has a useful summary; all callable forms require specific parameters/returns, optional configuration defaults are stated, TypeScript examples semantically typecheck against the source API, and relative `@see` links resolve | T-12/R-131…R-135/R-1003 |
 | S-76 | Package/release contract — version and public metadata stay synchronized; Vitest/coverage versions and Bun scripts stay pinned; the npm archive is allowlisted and executable; `prepublishOnly` runs the complete release gate; the exact tarball installs offline and passes package-root import plus generate/reverse CLI smoke tests | R-191…R-193 |
+| S-77 | YAML input — `.yaml`/`.yml` paths, inline YAML text, extension-less YAML fallback, and JSON-inside-YAML flow text enter engine ③; byte-identical trees vs JSON twins, reverse round-trips, CLI parity, stable YAML-side error codes | D-16/R-404 |
+| S-78 | YAML parser (D-16) — core-schema scalars, nested block/flow collections, quoted escapes, literal/folded block scalars with chomping/indent indicators, anchors/aliases/`<<` merge keys, directives/markers, deterministic failure matrix, recursion guard | D-16/R-1006 |
 
 ## 🔄 Round-trip property tests
 
@@ -182,7 +184,9 @@ pipelines (including `z.never()`) converge on the same canonical schema. Every t
 tests/fixtures/
 ├── specs/
 │   ├── admin-api-3.0.json        # ⭐ the canonical Admin API (docs/07)
+│   ├── admin-api-3.0.yaml        # 📝 YAML twin — parses/generates byte-identically (S-77)
 │   ├── admin-api-2.0.json        # same API as Swagger 2.0
+│   ├── admin-api-2.0.yaml        # 📝 YAML twin (S-77)
 │   ├── petstore-mini-3.1.json    # 3.1 keywords (const, prefixItems, …)
 │   ├── cycle-comment.json        # 🌀 self-referential component
 │   ├── nested-refs.json          # 🧩 component → component → component

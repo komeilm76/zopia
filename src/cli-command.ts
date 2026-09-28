@@ -38,7 +38,7 @@ interface ReverseArguments {
 }
 
 const HELP_TEXT = `Usage:
-  zopia generate <spec.json> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]
+  zopia generate <spec.json|spec.yaml> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 3.0|3.1]
 
 Global option:
@@ -67,7 +67,7 @@ function invalid(message: string, at: string, hint: string): never {
 }
 
 function usage(): never {
-  invalid('usage: zopia generate <spec.json> <output-dir> [options] | zopia reverse <docs-dir|manifest.json> [options]', 'argv', "run 'zopia --help' for command syntax");
+  invalid('usage: zopia generate <spec.json|spec.yaml> <output-dir> [options] | zopia reverse <docs-dir|manifest.json> [options]', 'argv', "run 'zopia --help' for command syntax");
 }
 
 function markOption(seen: Set<string>, option: string): void {
@@ -113,7 +113,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
     }
   }
 
-  if (positional.length < 2) invalid('generate requires <spec.json> and <output-dir>', 'argv', 'provide both input and output paths');
+  if (positional.length < 2) invalid('generate requires <spec.json|spec.yaml> and <output-dir>', 'argv', 'provide both input and output paths');
   if (positional.length > 2) invalid(`unexpected generate argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
   return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest };
 }

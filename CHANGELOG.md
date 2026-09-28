@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+- 📝 YAML input for engine ③ (D-13 lifts, D-16): `openApiToApiDocs` and the CLI accept `.yaml`/`.yml` spec paths, inline YAML text, and extension-less YAML files through a new owned, deterministic YAML 1.2 core-schema parser (`src/conversions/yaml.ts`). It supports block/flow collections, plain/single/double-quoted scalars, literal/folded block scalars with chomping and indent indicators, comments, anchors/aliases/`<<` merge keys, `%YAML 1.x` directives and single-document `---`/`...` markers, and parses to exactly the values an equivalent JSON document yields.
+- 🚨 `ZOPIA_SPEC_INVALID_YAML` (MINOR error-code addition, R-142): every YAML syntax/structure rejection — tab indentation, duplicate keys, undefined aliases, custom tags, multiple documents, complex `?` keys, non-JSON numbers (`.inf`/`.nan`), and more — fails with a line-located typed error; unreadable or malformed `.yaml`/`.yml` files report the YAML code with the file path in `at`.
+
+### 🐛 Fixed
+- 📝 YAML parser hardening after adversarial review: bare `-` sequence items followed by sibling dashes no longer nest the siblings (each item is `null`); `-` stays a plain scalar in mapping-value position (`k: -`); `#` lines indented as block-scalar content are preserved instead of silently dropped; comments inside multi-line flow collections no longer corrupt quote/depth tracking, and dedented flow closers are accepted; flow collections accept trailing commas; a bare `': '` inside a flow plain scalar terminates it so missing commas fail; block-scalar headers reject junk that is not a comment; multi-line plain continuations that look like a mapping/sequence entry fail instead of folding; content after the `...` marker fails; alias resolutions clone anchored values so downstream walkers never see shared identity.
+
 ## [0.1.0] - 2026-09-28
 
 ### ✨ Added

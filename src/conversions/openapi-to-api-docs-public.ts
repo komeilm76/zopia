@@ -7,6 +7,7 @@ import { extractOperationContracts } from './openapi-contracts';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
+import { parseYaml } from './yaml';
 import { jsonSchemaToZod, type JsonSchema } from './json-schema-to-zod';
 import { hashOpenApiDocument, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { formatManifestStaleness, inspectZopiaManifestStaleness } from './manifest-staleness';
@@ -83,26 +84,62 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
   };
 }
 
-async function readInput(input: string | Record<string, unknown>): Promise<OpenApiDocument> {
-  if (input && typeof input === 'object' && !Array.isArray(input)) return input;
-  if (typeof input !== 'string' || input.trim() === '') {
-    throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a JSON object, JSON text, or .json file path', { at: '#', hint: 'pass a Swagger/OpenAPI JSON object or file' });
-  }
-  let text = input;
-  const trimmed = input.trimStart();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    try { text = await readFile(input, 'utf8'); }
-    catch (error) {
-      throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `unable to read JSON input: ${input}`, { at: input, hint: 'check that the JSON file exists and is readable', cause: error });
-    }
-  }
+const YAML_PATH_PATTERN = /\.ya?ml$/i;
+
+/** Detect inline YAML text: multi-line strings that are not JSON, or a single-line mapping entry. */
+function isInlineYamlText(text: string): boolean {
+  if (text.includes('\n')) return true;
+  const firstLine = text.trimStart();
+  return /^---(?:\s|$)/.test(firstLine) || /^[^:#{}[\],&*!|>%@`][^:]*:(?:\s|$)/.test(firstLine);
+}
+
+function asSpecDocument(parsed: unknown, at: string | undefined): OpenApiDocument {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a Swagger/OpenAPI document object', { at: at ?? '#', hint: 'provide a Swagger/OpenAPI document object' });
+  return parsed as OpenApiDocument;
+}
+
+function parseJsonSpec(text: string, source: string | undefined): OpenApiDocument {
   let parsed: unknown;
   try { parsed = JSON.parse(text) as unknown; }
   catch (error) {
-    throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `invalid JSON: ${error instanceof Error ? error.message : String(error)}`, { at: typeof input === 'string' && text !== input ? input : undefined, hint: 'fix the JSON syntax', cause: error });
+    throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `invalid JSON: ${error instanceof Error ? error.message : String(error)}`, { at: source, hint: 'fix the JSON syntax', cause: error });
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a JSON object', { at: '#', hint: 'provide a Swagger/OpenAPI document object' });
-  return parsed as OpenApiDocument;
+  return asSpecDocument(parsed, source);
+}
+
+function parseYamlSpec(text: string, source: string | undefined): OpenApiDocument {
+  try { return asSpecDocument(parseYaml(text), source); }
+  catch (error) {
+    if (source !== undefined && error instanceof ZopiaError && error.code === 'ZOPIA_SPEC_INVALID_YAML') {
+      const message = error.message.slice(`${error.code}: `.length);
+      throw new ZopiaError('ZOPIA_SPEC_INVALID_YAML', message, { at: source, hint: error.hint, cause: error });
+    }
+    throw error;
+  }
+}
+
+async function readInput(input: string | Record<string, unknown>): Promise<OpenApiDocument> {
+  if (input && typeof input === 'object' && !Array.isArray(input)) return input;
+  if (typeof input !== 'string' || input.trim() === '') {
+    throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a Swagger/OpenAPI object, JSON/YAML text, or a .json/.yaml/.yml file path', { at: '#', hint: 'pass a Swagger/OpenAPI document object, document text, or file path' });
+  }
+  const trimmed = input.trimStart();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return parseJsonSpec(input, undefined);
+  if (isInlineYamlText(input)) return parseYamlSpec(input, undefined);
+  const yamlPath = YAML_PATH_PATTERN.test(input);
+  let text: string;
+  try { text = await readFile(input, 'utf8'); }
+  catch (error) {
+    const code = yamlPath ? 'ZOPIA_SPEC_INVALID_YAML' : 'ZOPIA_SPEC_INVALID_JSON';
+    throw new ZopiaError(code, `unable to read ${yamlPath ? 'YAML' : 'JSON'} input: ${input}`, { at: input, hint: 'check that the spec file exists and is readable', cause: error });
+  }
+  if (yamlPath) return parseYamlSpec(text, input);
+  if (/\.json$/i.test(input)) return parseJsonSpec(text, input);
+  try { return parseJsonSpec(text, input); }
+  catch (error) {
+    if (error instanceof ZopiaError && error.code === 'ZOPIA_SPEC_INVALID_JSON') return parseYamlSpec(text, input);
+    throw error;
+  }
 }
 
 function normalizePublic(document: OpenApiDocument): OpenApiDocument {
@@ -274,10 +311,11 @@ function mapGenerationError(error: unknown): ZopiaError {
 /**
  * Generate a reversible api-docs tree from Swagger 2.0 or OpenAPI 3.0/3.1.
  *
- * Accepts an in-memory JSON object, JSON text, or a `.json` file path. See R-641
- * for primary-media selection and R-408 for structured warning behavior.
+ * Accepts an in-memory document object, JSON text, YAML text, or a readable
+ * `.json`/`.yaml`/`.yml` file path (D-16). See R-641 for primary-media
+ * selection and R-408 for structured warning behavior.
  *
- * @param input Swagger/OpenAPI object, JSON text, or readable JSON file path.
+ * @param input Swagger/OpenAPI object, JSON/YAML text, or readable JSON/YAML file path.
  * @param options Output directory, layout, component, reference, and manifest controls.
  * @returns Sorted written-file metadata, structured warnings, and the optional manifest path.
  * @throws {ZopiaError} `ZOPIA_CONFIG_INVALID` for invalid options and `ZOPIA_SPEC_*` or `ZOPIA_REF_*` for invalid input.

@@ -253,12 +253,32 @@ const schema = z.object({
 ## Engine ③ — OpenAPI → api docs
 
 ```ts
-/** 📄 Generate the api_docs tree from a spec (JSON object, JSON text, or file path). */
+/** 📄 Generate the api_docs tree from a spec (object, JSON/YAML text, or .json/.yaml/.yml file path). */
 function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult>;
 ```
 
 Pipeline (see [Architecture → The pipeline](04-architecture.md#-the-pipeline)):
 **detect → normalize (v2 | v3) → refs → render (directory | flat) → manifest**.
+
+**Input parsing (v0.2.x, D-16):** text starting with `{`/`[` is parsed as
+JSON; otherwise an unreadable-path-looking string is read as a file, and the
+extension picks the parser (`.json` → JSON, `.yaml`/`.yml` → YAML, anything
+else → JSON with YAML fallback). Multi-line non-JSON text and single-line
+mapping entries (`swagger: "2.0"`, …) are parsed as inline YAML. YAML is a
+deterministic, owned YAML 1.2 core-schema parser (`src/conversions/yaml.ts`):
+block/flow collections (comments, blank lines, and dedented closers inside
+multi-line flow; optional trailing commas), plain/single/double-quoted scalars,
+literal/folded block scalars (`#` lines indented as deeply as the content are
+literal content; shallower ones are ignorable comments), comments,
+anchors/aliases (resolutions clone the anchored value), `<<` merge keys,
+`%YAML 1.x` directives, and single-document `---`/`...` markers are
+supported; tab indentation, duplicate keys, undefined aliases, custom tags,
+multiple documents, complex `?` keys, content after the `...` marker,
+block-scalar header junk, structure-looking plain continuations (`k: word`
+followed by a deeper `a: b`/`- x` line), bare `key: value` pairs inside
+flow sequences, and `.inf`/`.nan` are rejected. Parsed YAML produces the same plain values as
+an equivalent JSON document, so every downstream rule in this document is
+identical for both input formats.
 
 ### 🔍 Step 1 — detect
 
@@ -269,7 +289,7 @@ Pipeline (see [Architecture → The pipeline](04-architecture.md#-the-pipeline))
 | `openapi === '3.1.x'` | `openapi-3.1` |
 | anything else | 🛑 `ZOPIA_SPEC_UNSUPPORTED_VERSION` |
 
-Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INVALID_JSON`. `swagger` and `openapi` are mutually exclusive, and root keys must belong to the selected dialect or be `x-…` extensions. Path Item keys must be supported lowercase HTTP methods, dialect-appropriate fixed fields, or `x-…` extensions; typos and unsupported fields fail instead of disappearing from the generated tree.
+Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INVALID_JSON`; invalid YAML → `ZOPIA_SPEC_INVALID_YAML`. `swagger` and `openapi` are mutually exclusive, and root keys must belong to the selected dialect or be `x-…` extensions. Path Item keys must be supported lowercase HTTP methods, dialect-appropriate fixed fields, or `x-…` extensions; typos and unsupported fields fail instead of disappearing from the generated tree.
 
 ### 🔧 Step 2 — normalize (the dialect tables)
 

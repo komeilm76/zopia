@@ -122,7 +122,7 @@ describe('CLI command contract', () => {
     await runCli(['--help'], capture.output);
 
     expect(capture.stdout).toHaveLength(1);
-    expect(capture.stdout[0]).toContain('zopia generate <spec.json> <output-dir>');
+    expect(capture.stdout[0]).toContain('zopia generate <spec.json|spec.yaml> <output-dir>');
     expect(capture.stdout[0]).toContain('zopia reverse <docs-dir|manifest.json>');
     expect(capture.stdout[0]).toContain('--use-component-as-reference');
     expect(capture.stdout[0]).toContain('Security: reverse executes generated TypeScript');
@@ -236,6 +236,6 @@ describe('CLI command contract', () => {
     await import('../src/cli');
 
     expect(process.exitCode).toBe(0);
-    expect(write).toHaveBeenCalledWith(expect.stringContaining('zopia generate <spec.json> <output-dir>'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('zopia generate <spec.json|spec.yaml> <output-dir>'));
   });
 });

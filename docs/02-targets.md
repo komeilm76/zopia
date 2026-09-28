@@ -49,7 +49,7 @@ to its governing document and automated release-gate coverage — see
 > 📌 The reverse-conversion *capability* (T-4/T-10/T-11) **is** in the first
 > phase — it is part of the four targets above. What is deferred:
 
-- 📝 YAML spec input → [Roadmap Phase 2](03-roadmap.md)
+- ~~📝 YAML spec input~~ → shipped in v0.2.x (D-16; `.yaml`/`.yml` files and inline YAML text reach the same normalized model as JSON)
 - 🔗 External (multi-file) `$ref`s → [Roadmap Phase 2](03-roadmap.md)
 - 🧩 Reusable **parameters / responses** as emitted components (Phase 1 emits `components.schemas` only) → [Roadmap Phase 2](03-roadmap.md)
 - 🖥️ `zopia validate` (spec linting) and incremental regeneration → [Roadmap Phase 3](03-roadmap.md)

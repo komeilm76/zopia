@@ -71,8 +71,10 @@ Being explicit about what zopia **does not do** keeps the scope honest:
 - ✍️ It is **not a spec editor** — it never edits your original spec file.
 - 🧮 It does **not execute user code** except through the documented,
   trusted-input contract of engine ④ (see [Standards → Safety](12-standards.md#-safety)).
-- 📝 **YAML input** is out of Phase 1 — specs are JSON (`swagger.json` /
-  `openapi.json`). YAML arrives in Phase 2 (D-13).
+- 📝 **YAML input** — v0.1.0 accepted JSON only; v0.2.x lifts that limit
+  (D-16): JSON/YAML objects, JSON/YAML text, and `spec.json` / `spec.yaml` /
+  `spec.yml` all enter the same normalized model through zopia's owned
+  deterministic YAML parser.
 
 ## 💎 Core principles
 

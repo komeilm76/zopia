@@ -20,6 +20,7 @@ release-blocking defect under the
 │   └── conversions/
 │       ├── zod-to-json-schema.ts       # ① Zod → JSON Schema
 │       ├── json-schema-to-zod.ts       # ② JSON Schema → Zod
+│       ├── yaml.ts                     #    owned YAML 1.2 core-schema parser (D-16)
 │       ├── openapi.ts                  #    dialect/envelope normalization
 │       ├── openapi-ref.ts              #    local JSON Pointer resolution
 │       ├── openapi-to-api-docs.ts      #    operation collection
@@ -43,6 +44,12 @@ release-blocking defect under the
 (D-15). Generated endpoint files and the golden typecheck use that published
 surface directly; there is no vendored copy or package swap remaining.
 
+YAML input (v0.2.x, D-16) is parsed by the owned, deterministic parser in
+`src/conversions/yaml.ts` (YAML 1.2 core-schema scalars, block/flow
+collections, quoted and block scalars, anchors/aliases/`<<` merge keys,
+single-document streams). It stays pure (P-3) and adds no runtime dependency
+(D-11); every rejection is a typed `ZOPIA_SPEC_INVALID_YAML`.
+
 > 📏 Production modules use `kebab-case.ts`; `src/index.ts` is the package-root
 > re-export surface. Focused and integration tests live under `tests/`, with
 > dedicated `tests/contract/` and `tests/roundtrip/` suites. See
@@ -58,7 +65,7 @@ collection. Process arguments/output remain in the CLI.
 ```mermaid
 flowchart TB
   subgraph IN ["③ OpenAPI → api docs"]
-    A["object · JSON text · .json path"] --> B["normalizeOpenApiDocument()"]
+    A["object · JSON/YAML text · .json/.yaml path"] --> B["normalizeOpenApiDocument()"]
     B --> C["collectOpenApiOperations()"]
     C --> D["buildOpenApiOperationIR() + extractOperationContracts()"]
     D --> E["planApiDocsFiles()"]
@@ -245,6 +252,7 @@ export class ZopiaError extends Error {
 | `ZOPIA_SCHEMA_INVALID` | engines ①/② | the Zod or JSON Schema input cannot be converted | "provide a valid Zod or JSON Schema value" |
 | `ZOPIA_SPEC_INVALID` | OpenAPI validation | the parsed document violates the supported Swagger/OpenAPI shape | "fix the invalid Swagger/OpenAPI document" |
 | `ZOPIA_SPEC_INVALID_JSON` | JSON entry points | source text is unreadable or not valid JSON | "provide readable, valid JSON" |
+| `ZOPIA_SPEC_INVALID_YAML` | YAML entry points | source text is unreadable, malformed/unsupported YAML, or holds a non-JSON value | "provide readable, valid YAML" |
 | `ZOPIA_SPEC_MISSING_PATHS` | normalizers | the document has no object-valued `paths` | "add a paths object" |
 | `ZOPIA_SPEC_PATH_REF` | operation collection | a path-item reference is invalid or circular | "use a valid local path-item reference" |
 | `ZOPIA_SPEC_UNSUPPORTED_VERSION` | normalization | neither Swagger 2.0 nor OpenAPI 3.0/3.1 is selected | "use Swagger 2.0, OpenAPI 3.0, or OpenAPI 3.1" |
