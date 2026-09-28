@@ -114,7 +114,7 @@ describe('OpenAPI 3.1 webhook endpoint generation (D-23, S-87)', () => {
     expect(reversed.webhooks.newPet.post.operationId).toBe('postNewPet');
   });
 
-  it('collects webhook items linked through local $refs', async () => {
+  it('restores pure $ref webhook items verbatim when their generated op is unchanged', async () => {
     const document = hookDocument({
       webhooks: {
         routed: { $ref: '#/components/pathItems/PetHooks' },
@@ -134,9 +134,38 @@ describe('OpenAPI 3.1 webhook endpoint generation (D-23, S-87)', () => {
     });
     const [outputDir, fileList] = (await generateTree(document)).split('::');
     expect(fileList).toContain('webhooks/routed/post/index.ts');
+    const [outputDirLiteral] = [outputDir];
+    const manifest = JSON.parse(await readFile(join(outputDirLiteral, '.zopia-manifest.json'), 'utf8'));
+    expect(manifest.webhooks[0].webhookItemRef).toBe(true);
+    const reversed = await manifestFileToOpenApi(join(outputDirLiteral, '.zopia-manifest.json')) as any;
+    // Task: pure-$ref items restore their source shape exactly (mirrors pathItemRef on paths).
+    expect(reversed.webhooks.routed).toEqual({ $ref: '#/components/pathItems/PetHooks' });
+    expect(reversed.components.pathItems.PetHooks.post.operationId).toBe('routedPet');
+  });
+
+  it('preserves x- webhook entries with empty items through the order list', async () => {
+    const document = hookDocument({
+      webhooks: {
+        event: { post: { operationId: 'eventHook', responses: { '200': { description: 'ack' } } } },
+        'x-empty': {},
+      },
+    });
+    const [outputDir] = (await generateTree(document)).split('::');
     const reversed = await manifestFileToOpenApi(join(outputDir, '.zopia-manifest.json')) as any;
-    expect(reversed.webhooks.routed.post.operationId).toBe('routedPet');
-    expect(reversed.webhooks.routed.post.requestBody.content['application/json'].schema).toEqual({ type: 'string' });
+    expect(Object.keys(reversed.webhooks)).toEqual(['event', 'x-empty']);
+    expect(reversed.webhooks['x-empty']).toEqual({});
+  });
+
+  it('throws typed errors for malformed webhook items (null, number, string, array)', async () => {
+    for (const bad of [null, 42, 'text', []]) {
+      const document = hookDocument({ webhooks: { bad } as any });
+      const outputDir = await temporaryDirectory('zopia-d23-bad-');
+      let code: string | undefined;
+      let message = '';
+      try { await generateApiDocsFiles(document as any, { outputDir }); } catch (error: any) { code = error?.code; message = String(error?.message ?? error); }
+      expect(code).toBe('ZOPIA_SPEC_INVALID');
+      expect(message).toContain('webhook item');
+    }
   });
 
   it('omits webhooks from 3.0 output with a targeted warning', async () => {

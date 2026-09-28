@@ -1770,7 +1770,11 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
     const overlayItems = isRecord((manifest as { webhooksOverlay?: unknown }).webhooksOverlay) ? (manifest as { webhooksOverlay?: Record<string, unknown> }).webhooksOverlay as Record<string, unknown> : {};
     for (const name of orderedNames) {
       if (name.startsWith('x-')) {
-        if (name in overlayItems) document.webhooks[name] = isRecord(overlayItems[name]) ? { ...(overlayItems[name] as Record<string, unknown>) } : overlayItems[name];
+        // Extension entries keep their verbatim value; an empty extension item (an x-
+        // name present in the order but absent from the overlay) must still restore.
+        document.webhooks[name] = isRecord(overlayItems[name])
+          ? { ...(overlayItems[name] as Record<string, unknown>) }
+          : overlayItems[name] ?? {};
         continue;
       }
       const entries = webhookEntries
@@ -1825,6 +1829,7 @@ function reconstructOpenApi(manifest: ZopiaManifest, endpointConfigs = new Map<n
             message: `auth is YES but the manifest has no security requirement; using ${fallback.name}`,
           });
         }
+        if (webhook.webhookItemRef === true && reconstructed.method === webhook.method && sameSchema(reconstructed.operation, sourceOperation)) continue;
         if (Object.prototype.hasOwnProperty.call(item, webhook.method)) throw new ZopiaError(runtime ? 'ZOPIA_DOCS_IMPORT_FAILED' : 'ZOPIA_MANIFEST_INVALID', `${runtime ? 'Duplicate reconstructed webhook endpoint' : 'Duplicate manifest webhook API'}: ${webhook.name} ${webhook.method}`, { at: runtime ? webhook.file : `#/webhooks/${webhookIndex}` });
         item[webhook.method] = reconstructed.operation;
       }

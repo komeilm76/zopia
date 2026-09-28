@@ -142,6 +142,7 @@ export function collectOpenApiWebhookOperations(document: OpenApiDocument): Open
   for (const name of Object.keys(webhooks as Record<string, unknown>)) {
     if (name.startsWith('x-')) continue;
     let resolvedItem: any = (webhooks as Record<string, any>)[name];
+    if (!resolvedItem || typeof resolvedItem !== 'object' || Array.isArray(resolvedItem)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI webhook item: ${name}`);
     const seenRefs = new Set<string>();
     while ('$ref' in resolvedItem) {
       if (typeof resolvedItem.$ref !== 'string' || !resolvedItem.$ref) throw new ZopiaError('ZOPIA_SPEC_PATH_REF', `Invalid webhook-item $ref: ${name}`);
@@ -151,7 +152,6 @@ export function collectOpenApiWebhookOperations(document: OpenApiDocument): Open
       if (!target || typeof target !== 'object' || Array.isArray(target)) throw new ZopiaError('ZOPIA_SPEC_PATH_REF', `Invalid webhook-item $ref: ${resolvedItem.$ref}`);
       resolvedItem = { ...target, ...Object.fromEntries(Object.entries(resolvedItem as Record<string, unknown>).filter(([key]) => key !== '$ref')) };
     }
-    if (!resolvedItem || typeof resolvedItem !== 'object' || Array.isArray(resolvedItem)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid OpenAPI webhook item: ${name}`);
     for (const method of OPENAPI_METHODS) {
       const operation = resolvedItem[method];
       if (operation === undefined) continue;

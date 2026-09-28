@@ -119,6 +119,8 @@ export interface ZopiaManifestWebhookApi {
   method: string;
   /** Explicit or deterministically derived operation ID. */
   operationId?: string;
+  /** Whether the operation was inherited exclusively through a webhook-item `$ref`. */
+  webhookItemRef?: boolean;
   /** Complete original operation object. */
   sourceOperation?: Record<string, unknown>;
   /** Source reference placements. Readers also accept legacy representations. */
@@ -495,6 +497,7 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     method: plan.method,
     operationId: plan.operationId,
     sourceOperation: cloneJson(plan.operation),
+    ...(isRecord(source.webhooks?.[plan.path]) && typeof source.webhooks[plan.path].$ref === 'string' && !Object.prototype.hasOwnProperty.call(source.webhooks[plan.path], plan.method) ? { webhookItemRef: true } : {}),
     refs: sortDerivedRecords(collectRefs(plan.operation)),
     overlay: cloneJson(sortDerivedRecords([
       ...collectOperationSchemaOverlays(plan.operation, swagger),
@@ -695,7 +698,8 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
     for (const webhook of manifest.webhooks) {
       if (!isRecord(webhook) || typeof webhook.file !== 'string' || !isPortableManifestPath(webhook.file) || typeof webhook.name !== 'string' || !webhook.name || webhook.name.startsWith('x-') || typeof webhook.method !== 'string' || !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(webhook.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook API: ${String((webhook as any)?.name)} ${String((webhook as any)?.method)}`);
       if (!manifest.webhookOrder.includes(webhook.name)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Missing zopia manifest webhook-order entry: ${webhook.name}`);
-      validateKeys(webhook, ['file', 'name', 'method', 'operationId', 'sourceOperation', 'refs', 'overlay', 'responseOverlay', 'security'], 'webhook API');
+      validateKeys(webhook, ['file', 'name', 'method', 'operationId', 'sourceOperation', 'webhookItemRef', 'refs', 'overlay', 'responseOverlay', 'security'], 'webhook API');
+      if (webhook.webhookItemRef !== undefined && typeof webhook.webhookItemRef !== 'boolean') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook-item reference flag: ${webhook.file}`);
       if (typeof webhook.operationId !== 'string' || !webhook.operationId) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook operation ID: ${webhook.file}`);
       // Paths and webhooks are separate OpenAPI namespaces; a webhook named like a
       // path template must not trip the path collision check (`operations`). Their
