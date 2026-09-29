@@ -13,6 +13,8 @@ import { parseYaml } from './yaml';
 import { jsonSchemaToZod, type JsonSchema } from './json-schema-to-zod';
 import { hashOpenApiDocument, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { formatManifestStaleness, inspectZopiaManifestStaleness } from './manifest-staleness';
+import { join } from 'node:path';
+import { planPresetBuckets, ZOPIA_GENERATE_PRESETS, type ZopiaGeneratePreset, type ZopiaPresetTree } from './api-docs-presets';
 
 /** Options for generating an api-docs tree from Swagger or OpenAPI. */
 export interface ZopiaGenerateOptions {
@@ -28,6 +30,8 @@ export interface ZopiaGenerateOptions {
   manifest?: boolean;
   /** Write merge-safe per-endpoint `custom` companion modules and export them. @default false */
   custom?: boolean;
+  /** Split generation into per-bucket sub-trees: `multi-tag` (per primary tag) or `multi-server` (per effective first server). @default undefined */
+  preset?: ZopiaGeneratePreset;
 }
 
 /** One file written by Engine ③, relative to its output directory. */
@@ -46,6 +50,8 @@ export interface ZopiaGenerateResult {
   warnings: ZopiaWarning[];
   /** Manifest path relative to `outDir`, absent when `manifest` is false. */
   manifestPath?: string;
+  /** Generated preset sub-trees, present only when a preset split actually happened. */
+  trees?: ZopiaPresetTree[];
 }
 
 interface ValidatedOptions {
@@ -55,6 +61,7 @@ interface ValidatedOptions {
   useComponentAsReference: boolean;
   manifest: boolean;
   custom: boolean;
+  preset?: ZopiaGeneratePreset;
 }
 
 const escapePointer = (value: string | number): string => String(value).replace(/~/g, '~0').replace(/\//g, '~1');
@@ -65,7 +72,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'generate options must be an object', { hint: 'pass an options object or omit it' });
   }
   const value = options ?? {};
-  const known = new Set(['outDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom']);
+  const known = new Set(['outDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom', 'preset']);
   const unknown = Object.keys(value).find((key) => !known.has(key));
   if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown generate option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
   if (value.outDir !== undefined && (typeof value.outDir !== 'string' || value.outDir.trim() === '' || value.outDir.includes('\0'))) {
@@ -80,6 +87,9 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
   if (value.useComponentAsReference === true && value.insertComponents !== true) {
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
   }
+  if (value.preset !== undefined && !ZOPIA_GENERATE_PRESETS.includes(value.preset)) {
+    throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported generate preset: ${String(value.preset)}`, { at: 'preset', hint: `use ${ZOPIA_GENERATE_PRESETS.join(' or ')}` });
+  }
   return {
     outDir: value.outDir ?? 'api_docs',
     mode: value.mode ?? 'directory',
@@ -87,6 +97,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
     useComponentAsReference: value.useComponentAsReference ?? false,
     manifest: value.manifest ?? true,
     custom: value.custom ?? false,
+    ...(value.preset === undefined ? {} : { preset: value.preset }),
   };
 }
 
@@ -377,6 +388,26 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
   const bundled = inputDocument.sourceFile ? await bundleExternalOpenApiRefs(inputDocument.document, inputDocument.sourceFile) : inputDocument.document;
   const document = normalizePublic(bundled);
   validateReferences(document);
+
+  if (config.preset !== undefined) {
+    const buckets = planPresetBuckets(document, config.preset);
+    if (buckets !== undefined) {
+      const presetWarnings: ZopiaWarning[] = [];
+      for (const bucket of buckets) presetWarnings.push(...bucket.warnings);
+      const trees: ZopiaPresetTree[] = [];
+      const presetFiles: ZopiaGeneratedFile[] = [];
+      for (const bucket of buckets) {
+        const generatedTree = await openApiToApiDocs(bucket.document, { ...options, preset: undefined, outDir: join(config.outDir, bucket.directory) });
+        trees.push({ name: bucket.name, directory: bucket.directory, ...(generatedTree.manifestPath === undefined ? {} : { manifestPath: `${bucket.directory}/${generatedTree.manifestPath}` }) });
+        for (const file of generatedTree.files) presetFiles.push({ ...file, path: `${bucket.directory}/${file.path}` });
+        // Descriptions stay verbatim; locations gain the bucket directory prefix so downstream tooling can navigate directly.
+        for (const warning of generatedTree.warnings) presetWarnings.push(warning.at === undefined ? warning : { ...warning, at: `${bucket.directory}/${warning.at}` });
+      }
+      presetFiles.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+      const collector = new ZopiaWarningCollector(); collector.addAll(presetWarnings);
+      return { files: presetFiles, warnings: collector.toArray(), trees };
+    }
+  }
 
   let hash: string;
   try { hash = hashOpenApiDocument(document); }

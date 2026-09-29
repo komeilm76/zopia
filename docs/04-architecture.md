@@ -35,6 +35,7 @@ release-blocking defect under the
 │       ├── api-docs-facade.ts          #    ergonomic access-path helper
 │       ├── api-docs-generate.ts        # ③ rendering + guarded writes
 │       ├── openapi-to-api-docs-public.ts # public Engine ③ wrapper
+│       ├── api-docs-presets.ts         #    split-generation bucket planner (S-92)
 │       ├── manifest-writer.ts          #    canonical manifest contract
 │       ├── manifest-staleness.ts       #    drift/ownership cleanup
 │       ├── manifest-to-openapi.ts      # ④ trusted import + reconstruction

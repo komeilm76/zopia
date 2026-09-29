@@ -25,6 +25,8 @@ export interface ZopiaProjectGenerateConfig {
   manifest?: boolean;
   /** Write merge-safe `custom` companion modules when `--custom` is absent. */
   custom?: boolean;
+  /** Split generation: per-primary-tag or per-effective-server sub-trees when `--preset` is absent. */
+  preset?: 'multi-tag' | 'multi-server';
   /** Output directory used when the positional `<output-dir>` is omitted. */
   outDir?: string;
 }
@@ -106,7 +108,7 @@ function validateProjectConfig(candidate: unknown, file: string): ZopiaProjectCo
   const config: ZopiaProjectConfig = {};
   if (candidate.generate !== undefined) {
     if (!isRecord(candidate.generate)) invalidConfig('generate config must be an object', 'generate', 'provide generate conversion defaults');
-    validateUnknownKeys(candidate.generate, ['mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom', 'outDir'], 'generate');
+    validateUnknownKeys(candidate.generate, ['mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom', 'preset', 'outDir'], 'generate');
     const mode = candidate.generate.mode;
     if (mode !== undefined && mode !== 'directory' && mode !== 'flat') invalidConfig("generate.mode must be 'directory' or 'flat'", 'generate.mode', "use '--mode directory' or '--mode flat'");
     const booleans: Partial<Pick<ZopiaProjectGenerateConfig, 'insertComponents' | 'useComponentAsReference' | 'manifest' | 'custom'>> = {};
@@ -114,9 +116,12 @@ function validateProjectConfig(candidate: unknown, file: string): ZopiaProjectCo
       const value = validateBooleanOption(candidate.generate[key], `generate.${key}`);
       if (value !== undefined) booleans[key] = value;
     }
+    const preset = candidate.generate.preset;
+    if (preset !== undefined && preset !== 'multi-tag' && preset !== 'multi-server') invalidConfig("generate.preset must be 'multi-tag' or 'multi-server'", 'generate.preset', "use '--preset multi-tag' or '--preset multi-server'");
     config.generate = {
       ...(mode === undefined ? {} : { mode }),
       ...booleans,
+      ...(preset === undefined ? {} : { preset }),
       ...(candidate.generate.outDir === undefined ? {} : { outDir: validateStringOption(candidate.generate.outDir, 'generate.outDir') }),
     };
   }

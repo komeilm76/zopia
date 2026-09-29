@@ -35,6 +35,7 @@ interface GenerateArguments {
   useComponentAsReference: boolean;
   manifest: boolean;
   custom: boolean;
+  preset?: 'multi-tag' | 'multi-server';
   config?: string;
   watch: boolean;
 }
@@ -58,7 +59,7 @@ interface DiffArguments {
 }
 
 const HELP_TEXT = `Usage:
-  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest] [--watch] [--config path]
+  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest] [--preset multi-tag|multi-server] [--watch] [--config path]
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
   zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
   zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
@@ -75,6 +76,9 @@ Generate options:
   --insert-components              Emit component schema modules.
   --use-component-as-reference     Import emitted components; requires --insert-components.
   --custom                         Write merge-safe custom companion modules per endpoint and export them.
+  --preset multi-tag|multi-server  Split generation into per-bucket sub-trees: one tree per primary tag,
+                                   or one per effective first server (falls through when there is nothing
+                                   to split; each sub-tree keeps its own manifest).
   --no-manifest                    Do not write .zopia-manifest.json (overrides config generate.manifest).
   --watch                          Regenerate whenever the spec file changes (Ctrl+C to stop).
 
@@ -130,6 +134,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
   let useComponentAsReference = false;
   let manifest = true;
   let custom = false;
+  let preset: 'multi-tag' | 'multi-server' | undefined;
   let config: string | undefined;
   let watchMode = false;
 
@@ -153,6 +158,12 @@ function parseGenerate(argv: string[]): GenerateArguments {
     } else if (argument === '--custom') {
       markOption(seen, argument);
       custom = true;
+    } else if (argument === '--preset') {
+      markOption(seen, argument);
+      const value = optionValue(argv, index, argument);
+      if (value !== 'multi-tag' && value !== 'multi-server') invalid('invalid --preset; expected multi-tag or multi-server', argument, "use '--preset multi-tag' or '--preset multi-server'");
+      preset = value;
+      index += 1;
     } else if (argument === '--config') {
       markOption(seen, argument);
       config = optionValue(argv, index, argument);
@@ -169,7 +180,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
 
   if (positional.length < 1) invalid('generate requires <spec.json|spec.yaml>', 'argv', 'provide the input spec path');
   if (positional.length > 2) invalid(`unexpected generate argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
-  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, custom, config, watch: watchMode };
+  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, custom, preset, config, watch: watchMode };
 }
 
 function parseReverse(argv: string[]): ReverseArguments {
@@ -384,6 +395,7 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
       // `--no-manifest` is explicit and always wins over config defaults.
       manifest: parsed.manifest && (generateDefaults?.manifest ?? true),
       custom: parsed.custom || (generateDefaults?.custom ?? false),
+      preset: parsed.preset ?? generateDefaults?.preset,
     };
     if (parsed.watch) {
       await runGenerateWatch(parsed.input, options, output);
@@ -391,6 +403,7 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     }
     const result = await openApiToApiDocs(parsed.input, options);
     printWarnings(result.warnings, output);
+    if (result.trees) output.stdout(`zopia generate ${parsed.input}: ${result.trees.length} preset trees in ${outputDirectory} (${result.trees.map((tree) => tree.directory).join(', ')})\n`);
     return;
   }
 

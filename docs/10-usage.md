@@ -123,7 +123,7 @@ approximation.
 > flags map to [Configuration](09-configuration.md#-cli--options-mapping).
 
 ```text
-zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat]
+zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--preset multi-tag|multi-server]
     [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest]
     [--watch] [--config path]
 zopia reverse <docs-dir|manifest.json> [--out openapi.json]

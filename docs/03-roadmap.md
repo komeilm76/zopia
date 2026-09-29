@@ -172,7 +172,15 @@ The v0.1.0 release satisfies all of the following:
   document fields, and `x-` extensions; key order is ignored; deterministic
   `+`/`-`/`~` human-readable lines with a summary; differences are data on
   stdout, so the CLI exits `0` for changed pairs
-- 🧩 **Presets** — monorepo / multi-server / multi-tag layouts
+- 🧩 **Presets** — ✅ split-generation layouts (S-92): `--preset multi-tag`
+  routes each operation by its primary tag, `--preset multi-server` by the
+  effective first server (repeatedly), producing one independently
+  reverse-convertible api-docs sub-tree per bucket; untagged/default-server
+  operations land in `untagged`/`https-default-server`-style buckets; nothing
+  to split → the normal single tree. Programmatic `preset` option plus
+  `generate.preset` configuration; `planPresetBuckets()` exposes the pure
+  deterministic planner (collision-safe slugs, `ZOPIA_WARN_PRESET_PRIMARY_TAG`
+  on multi-tagged operations) and results report `trees[]`
 - 🧑‍💻 **VS Code extension** — navigate spec ↔ generated code both ways
 
 ## 🧮 Versioning

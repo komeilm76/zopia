@@ -56,6 +56,17 @@ interface ZopiaGenerateOptions {
 
   /** 🧩 Write merge-safe custom.ts companions per endpoint. @default false (D-24) */
   custom?: boolean;
+
+  /** 🧰 Split generation into per-bucket sub-trees: `multi-tag` (per primary tag)
+   *  or `multi-server` (per effective first server). @default undefined (S-92) */
+  preset?: 'multi-tag' | 'multi-server';
+}
+
+interface ZopiaGenerateResult {
+  files: GeneratedFile[];
+  warnings: ZopiaWarning[];
+  manifestPath?: string; // absent when manifest: false or a preset split ran
+  trees?: ZopiaPresetTree[]; // {name, directory, manifestPath?} per routed bucket (S-92)
 }
 ```
 
@@ -67,6 +78,7 @@ interface ZopiaGenerateOptions {
 | `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
 | `custom` | `boolean` | `false` | D-24 — every endpoint/webhook module exports `export * as custom from './custom';` and a sibling `custom.ts` is scaffolded once and never overwritten; CLI flag `--custom`, config key `generate.custom` |
+| `preset` | `'multi-tag' \| 'multi-server'` | `undefined` | S-92 — splits generation into one api-docs sub-tree per routed bucket: `multi-tag` routes each operation by its primary tag (`tags[0]`, warning `ZOPIA_WARN_PRESET_PRIMARY_TAG` when several), `multi-server` by the effective first server (operation → path item → document). Untagged/default-server operations land in `untagged` / `https-default-server`-style buckets; the result gains `trees[]` and every bucket is an independently reverse-convertible tree with its own manifest. Collision-safe lowercase slugs; **nothing to split → the normal single tree** and no `trees[]` |
 
 ### ✅ Validation rules
 
@@ -76,6 +88,7 @@ interface ZopiaGenerateOptions {
 | R-912 | `mode` outside `'directory' \| 'flat'` | `ZOPIA_CONFIG_INVALID` |
 | R-913 | `outDir` empty string | `ZOPIA_CONFIG_INVALID` |
 | R-914 | unknown option keys or non-boolean boolean flags | `ZOPIA_CONFIG_INVALID` |
+| R-915 | `preset` outside `'multi-tag' \| 'multi-server'` (options or `generate.preset`) | `ZOPIA_CONFIG_INVALID` |
 
 ## 📄 `ZopiaReverseOptions` — engine ④ (`apiDocsToOpenApi`)
 
@@ -138,6 +151,7 @@ zopia diff <old-spec> <new-spec>          (no options yet; `--config path` accep
 | `--insert-components` | `insertComponents: true` |
 | `--use-component-as-reference` | `useComponentAsReference: true` |
 | `--custom` | `custom: true` |
+| `--preset <multi-tag\|multi-server>` | `preset` |
 | `--no-manifest` | `manifest: false` |
 | `--watch` | no config equivalent — CLI-only; watches the spec file's parent directory (survives atomic editor saves) and regenerates on change |
 | `--out <file.json>` (reverse) | output file path |

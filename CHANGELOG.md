@@ -5,6 +5,22 @@ All notable changes to **zopia** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### ✨ Added
+
+- 🧰 **Split-generation presets (S-92).** `openApiToApiDocs` gains a `preset`
+  option — `multi-tag` routes each operation by its primary tag and
+  `multi-server` by the effective first server (operation → path item →
+  document) — generating one independently reverse-convertible api-docs
+  sub-tree per bucket under collision-safe lowercase slug directories
+  (`untagged`, `https-api.example.com`, `pet-store`, `pet-store-2`, …). The
+  pure planner is exported as `planPresetBuckets()`; results report
+  `trees[]` (`{ name, directory, manifestPath? }`) and multi-tagged
+  operations emit `ZOPIA_WARN_PRESET_PRIMARY_TAG`. When a spec has nothing to
+  split (no tags / one effective server) zopia falls through to the normal
+  single tree. CLI `--preset multi-tag|multi-server` prints
+  `zopia generate <input>: N preset trees in <outDir> (…)`, and
+  `generate.preset` configures project defaults.
+
 > 📌 **Convention** — every commit that changes behaviour, the public API, or the
 > documentation adds an entry under `Unreleased`. When a release is cut, the
 > `Unreleased` section is renamed to the new version with its date.
