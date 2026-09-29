@@ -188,12 +188,22 @@ async function writeGeneratedFile(root: string, file: string, content: string, p
 
 const CUSTOM_SCAFFOLD = '/**\n * Hand-written companion for the generated endpoint module in `./index`.\n * zopia writes this scaffold once and never overwrites it — edits survive regeneration.\n */\nexport {};\n';
 
-/** Writes a companion `custom.ts` scaffold exactly once; anything already at the path is kept untouched. */
+/** Sibling `custom.ts` path of one planned endpoint module. */
+function customCompanionFile(planFile: string): string {
+  if (!planFile.endsWith('/index.ts')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `unsafe custom companion target: ${planFile}`, { at: planFile, hint: 'generated endpoint modules must live in their own directory' });
+  return `${planFile.slice(0, -'index.ts'.length)}custom.ts`;
+}
+
+/** Writes a companion `custom.ts` scaffold exactly once; existing files and symlinks at the path are kept untouched. */
 async function writeCustomScaffold(root: string, file: string): Promise<void> {
   const absolutePath = resolve(root, ...file.split('/'));
   if (!isInside(root, absolutePath) || absolutePath === root) throw outputPathError(file);
-  try { await lstat(absolutePath); return; }
-  catch (error) { if (!isMissingPath(error)) throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect custom companion file', { at: file, hint: 'check output-directory permissions and file types' }); }
+  try {
+    const metadata = await lstat(absolutePath);
+    // A directory at the companion path would shadow the `./custom` import of the sibling module.
+    if (metadata.isDirectory()) throw outputPathError(file);
+    return;
+  } catch (error) { if (!isMissingPath(error)) throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect custom companion file', { at: file, hint: 'check output-directory permissions and file types' }); }
   try { await writeFile(absolutePath, CUSTOM_SCAFFOLD, { encoding: 'utf8', flag: 'wx' }); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') return;
@@ -541,12 +551,12 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   for (const { plan, content } of renderedEndpoints) {
     const absolutePath = await writeGeneratedFile(root, plan.file, content, previouslyOwned);
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
-    if (emitCustom) await writeCustomScaffold(root, `${plan.file.slice(0, -'index.ts'.length)}custom.ts`);
+    if (emitCustom) await writeCustomScaffold(root, customCompanionFile(plan.file));
   }
   for (const { plan, content } of renderedWebhooks) {
     const absolutePath = await writeGeneratedFile(root, plan.file, content, previouslyOwned);
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
-    if (emitCustom) await writeCustomScaffold(root, `${plan.file.slice(0, -'index.ts'.length)}custom.ts`);
+    if (emitCustom) await writeCustomScaffold(root, customCompanionFile(plan.file));
   }
   if (manifest) {
     const manifestPath = await writeZopiaManifest(root, manifest);

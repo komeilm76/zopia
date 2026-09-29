@@ -1,6 +1,6 @@
 import { useTemporaryDirectories } from './test-temporary-directories';
 import { describe, expect, it } from 'vitest';
-import { lstat, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { generateApiDocsFiles, openApiToApiDocs, ZopiaError } from '../src';
 import { runCli, type ZopiaCliOutput } from '../src/cli-command';
@@ -89,6 +89,45 @@ describe('merge-safe custom companions and incremental regeneration (D-24, S-90)
     const outputDir = await temporaryDirectory();
     await generateApiDocsFiles(spec as any, { outputDir, mode: 'flat', custom: true });
     expect((await readdir(join(outputDir, 'ping/get'))).sort()).toEqual(['custom.ts', 'index.ts']);
+  });
+
+  it('S-90: a directory at the companion path is a typed error, not a silently broken import', async () => {
+    const outputDir = await temporaryDirectory();
+    await mkdir(join(outputDir, 'ping/get/custom.ts'), { recursive: true });
+    try {
+      await generateApiDocsFiles(spec as any, { outputDir, custom: true });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ZopiaError);
+      expect((error as ZopiaError).code).toBe('ZOPIA_FS_OUTSIDE_OUTDIR');
+      expect((error as ZopiaError).at).toBe('ping/get/custom.ts');
+    }
+  });
+
+  it('S-90: path segments shaped like custom.ts collide safely through planner renaming', async () => {
+    const nested = {
+      openapi: '3.1.0',
+      info: { title: 'nested', version: '1' },
+      paths: {
+        '/a': { get: { operationId: 'aGet', responses: { '200': { description: 'ok' } } } },
+        '/a/get/custom.ts': { get: { operationId: 'customGet', responses: { '200': { description: 'ok' } } } },
+      },
+    };
+    for (const mode of ['directory', 'flat'] as const) {
+      const outputDir = await temporaryDirectory();
+      const files = await generateApiDocsFiles(nested as any, { outputDir, mode, custom: true });
+      const endpointFiles = files.map((file) => file.file).filter((file) => file.endsWith('/index.ts'));
+      expect(endpointFiles).toHaveLength(2);
+      for (const endpointFile of endpointFiles) {
+        const directory = endpointFile.slice(0, -'index.ts'.length);
+        const module = await readFile(join(outputDir, ...endpointFile.split('/')), 'utf8');
+        expect(module).toContain(wiredExport);
+        const companion = join(outputDir, ...`${directory}custom.ts`.split('/'));
+        const metadata = await lstat(companion);
+        expect(metadata.isFile()).toBe(true);
+        expect(await readFile(companion, 'utf8')).toContain('export {};');
+      }
+    }
   });
 
   it('S-90: rejects non-boolean custom options at every layer', async () => {
