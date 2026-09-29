@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
 ### 🐛 Fixed
 - 🧭 Item-level navigation pointers (round 8): the navigation core's documented `#/paths/<path>` (every method of the item) and `#/webhooks/<name>` shapes silently failed with an "unsupported spec pointer" error — item-level pointers now enumerate every routed operation of the item plus its custom companions in deterministic file order, and unknown items keep their typed `ZOPIA_CONFIG_INVALID` failure (`spec pointer has no generated module`).
 - 🧰 Preset routing holes (round 7): op-less path/webhook items — shared `parameters` blocks, `summary`/item `x-` metadata, `x-` webhook-map entries' namesakes — silently disappeared from **every** preset bucket (documented as traveling verbatim like components and `x-` map entries; they now ride with every bucket), and an explicit empty `servers: []` override on an operation or path item was treated as *inherit the parent servers* instead of the specification-mandated default server `/` (an unlucky set could silently collapse the whole multi-server split into a fallthrough); the nearest explicit `servers` array is now decisive, empty or not. The presets added entry from the previous commit was also seated in a floating `### ✨ Added` block **outside** `## [Unreleased]` and has been moved into it.

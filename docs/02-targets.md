@@ -5,7 +5,7 @@ to its governing document and automated release-gate coverage — see
 [Testing → Scenario matrix](11-testing.md).
 
 > ✅ **Complete** = implemented, documented, and covered by the release gate.
-> Deferred work is listed explicitly under [Roadmap → Phase 2](03-roadmap.md#-phase-2--breadth-v02x).
+> Deferred work is listed explicitly under [Roadmap → Phase 2](03-roadmap.md#-phase-2--breadth-v02x-).
 
 ## 🔄 Conversion targets
 

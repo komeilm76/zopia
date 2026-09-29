@@ -105,7 +105,7 @@ The v0.1.0 release satisfies all of the following:
    uses `km-api: ^0.4.1` from npm; no Git submodule or unpublished commit remains.
    The dependency remains installed and type-checkable in every release gate.
 
-## 🧰 Phase 2 — Breadth (v0.2.x)
+## 🧰 Phase 2 — Breadth (v0.2.x) ✅
 
 - 📝 **YAML input** — ✅ accept `swagger.yaml` / `openapi.yaml` (D-13 lifts → D-16)
 - 🔗 **External `$ref`s** — ✅ resolve references to other files in the same folder (D-17)
@@ -150,7 +150,7 @@ The v0.1.0 release satisfies all of the following:
   watching continues, and abort/cleanup on exit. Uses `fs.watch` with the
   existing stale-tree/prune pipeline, so spec edits refresh owned files in place
 
-## 🌌 Phase 3 — Ecosystem (v0.3+)
+## 🌌 Phase 3 — Ecosystem (v0.3+) ✅
 
 - 🧹 **`zopia validate`** — ✅ CLI command + `validateZopia()` API lint specs
   and generated trees (S-89): specs are checked for dialect validity, broken
