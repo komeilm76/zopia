@@ -181,7 +181,13 @@ The v0.1.0 release satisfies all of the following:
   `generate.preset` configuration; `planPresetBuckets()` exposes the pure
   deterministic planner (collision-safe slugs, `ZOPIA_WARN_PRESET_PRIMARY_TAG`
   on multi-tagged operations) and results report `trees[]`
-- 🧑‍💻 **VS Code extension** — navigate spec ↔ generated code both ways
+- 🧑‍💻 **VS Code extension** — ✅ navigate spec ↔ generated code both ways
+  (S-93): manifest-driven navigation core (`loadNavigationIndex`,
+  `specToLocations`/`treeToSpecLocation`, one-pass JSON
+  `specPointersToLines`/`specPointerAtLine` cursor resolution, YAML
+  operationId fallback) plus the `zopia navigate` CLI (`--to-code` /
+  `--to-spec`) and a plain-JS extension package under `editors/vscode/`
+  resolving the workspace's own zopia install
 
 ## 🧮 Versioning
 

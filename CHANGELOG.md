@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🛡️ Custom companion hardening (round 5): a **directory** at a companion's `custom.ts` path (which would shadow the sibling module's `./custom` import) now fails with a typed `ZOPIA_FS_OUTSIDE_OUTDIR` instead of silently emitting a broken tree; companion paths are derived through a dedicated helper that rejects endpoint modules not living in their own directory; path segments literally named `custom.ts` keep working both layouts through planner renaming and now have scaffold coverage asserting every generated module's companion is a real file.
 
 ### ✨ Added
+- 🧭 **Spec ↔ code navigation + VS Code extension (Phase 3, S-93).** New
+  manifest-driven navigation core in zopia: `loadNavigationIndex()` /
+  `navigationIndexFromManifest()` build a deterministic index of any
+  generated tree (or preset bucket root) answering both directions —
+  `specToLocations()` (pointer → endpoint/webhook/component files plus
+  `custom.ts` companions when enabled) and `treeToSpecLocation()` (file →
+  pointer, including component barrels and the manifest itself). Editor
+  integrations get a dependency-free single-pass JSON scanner:
+  `specPointersToLines()` / `specPointerToLine()` (exact declaration
+  lines, RFC-6901 escaping, minified documents), `specPointerAtLine()`
+  (cursor rule), and `pointerForOperationId()` (YAML fallback). New CLI
+  `zopia navigate <docs-dir> --to-code <pointer> | --to-spec <file>` prints
+  one stable line per location; unmatched queries fail with typed
+  `ZOPIA_CONFIG_INVALID`/`ZOPIA_DOCS_MISSING_MANIFEST`. The VS Code
+  extension ships under `editors/vscode/` as a zero-build CommonJS package
+  resolving the workspace's own zopia install: `Zopia: Open generated code`
+  (spec cursor → module) and `Zopia: Open spec location` (tree file →
+  spec declaration line, exact for JSON, `operationId`-marker fallback for
+  YAML).
 - 🧰 **Split-generation presets (S-92).** `openApiToApiDocs` gains a `preset`
   option — `multi-tag` routes each operation by its primary tag and
   `multi-server` by the effective first server (operation → path item →

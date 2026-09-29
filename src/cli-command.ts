@@ -7,6 +7,7 @@ import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
 import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
 import { validateZopia, type ZopiaValidationResult } from './validation';
 import { diffOpenApiSpecs, type ZopiaDiffResult } from './diff';
+import { loadNavigationIndex } from './api-docs-navigation';
 import { formatZopiaWarning, type ZopiaWarning } from './warnings';
 
 /** Output channels used by the CLI command runner. */
@@ -63,6 +64,7 @@ const HELP_TEXT = `Usage:
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
   zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
   zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
+  zopia navigate <docs-dir> (--to-code <spec-pointer> | --to-spec <tree-file>) [--config path]
 
 Global options:
   -h, --help                       Show this help.
@@ -80,6 +82,11 @@ Generate options:
                                    or one per effective first server (falls through when there is nothing
                                    to split; each sub-tree keeps its own manifest).
   --no-manifest                    Do not write .zopia-manifest.json (overrides config generate.manifest).
+  zopia navigate                   Jump table between a generated tree and its source spec:
+                                   --to-code <pointer> prints the generated file(s) implementing
+                                   '#/paths/~1pets/get' style pointers; --to-spec <file> prints the
+                                   source pointer owning a tree-relative file (both directions are
+                                   manifest-driven, including custom companions and components).
   --watch                          Regenerate whenever the spec file changes (Ctrl+C to stop).
 
 Reverse options:
@@ -243,6 +250,48 @@ function parseValidate(argv: string[]): ValidateArguments {
   if (positional.length < 1) invalid('validate requires <spec.json|spec.yaml|docs-dir>', 'argv', 'provide the spec path or generated docs directory');
   if (positional.length > 1) invalid(`unexpected validate argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
   return { input: positional[0], config };
+}
+
+interface NavigateArguments {
+  tree: string;
+  toCode?: string;
+  toSpec?: string;
+  config?: string;
+}
+
+function parseNavigate(argv: string[]): NavigateArguments {
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let config: string | undefined;
+  let toCode: string | undefined;
+  let toSpec: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument === '--to-code') {
+      markOption(seen, argument);
+      toCode = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument === '--to-spec') {
+      markOption(seen, argument);
+      toSpec = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument.startsWith('-')) {
+      invalid(`unknown navigate option: ${argument}`, argument, "run 'zopia navigate --help' for supported options");
+    } else {
+      positional.push(argument);
+    }
+  }
+
+  if (positional.length < 1) invalid('navigate requires <docs-dir>', 'argv', 'provide the generated tree root (or preset bucket root) to navigate');
+  if (positional.length > 1) invalid(`unexpected navigate argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
+  if (toCode === undefined && toSpec === undefined) invalid('navigate requires --to-code or --to-spec', 'argv', "use --to-code '#/paths/~1pets/get' to find files or --to-spec pets/get/index.ts to find the pointer");
+  if (toCode !== undefined && toSpec !== undefined) invalid('navigate accepts either --to-code or --to-spec, not both', toSpec, 'pick one direction per invocation');
+  return { tree: positional[0], ...(toCode === undefined ? {} : { toCode }), ...(toSpec === undefined ? {} : { toSpec }), ...(config === undefined ? {} : { config }) };
 }
 
 function parseDiff(argv: string[]): DiffArguments {
@@ -420,6 +469,21 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     return;
   }
 
+  if (command === 'navigate') {
+    const parsed = parseNavigate(commandArguments);
+    // `--config` is accepted for grammar parity (D-19) — navigate has no
+    // configurable knobs; the project file only needs to load when explicitly named.
+    await loadZopiaConfig({ file: parsed.config });
+    const index = await loadNavigationIndex(parsed.tree);
+    if (parsed.toCode !== undefined) {
+      for (const location of index.specToLocations(parsed.toCode)) output.stdout(`zopia navigate ${parsed.tree} --to-code ${parsed.toCode}: ${location.file} (${location.label})\n`);
+    } else {
+      const location = index.treeToSpecLocation(parsed.toSpec as string);
+      output.stdout(`zopia navigate ${parsed.tree} --to-spec ${parsed.toSpec as string}: ${location.pointer} (${location.label})\n`);
+    }
+    return;
+  }
+
   if (command === 'diff') {
     const parsed = parseDiff(commandArguments);
     // `--config` is accepted for grammar parity (D-19) — diff currently has no
@@ -445,7 +509,7 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     return;
   }
 
-  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', 'zopia validate', 'zopia diff', or 'zopia --help'");
+  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', 'zopia validate', 'zopia diff', 'zopia navigate', or 'zopia --help'");
 }
 
 /**

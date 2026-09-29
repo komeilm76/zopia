@@ -130,6 +130,7 @@ zopia reverse <docs-dir|manifest.json> [--out openapi.json]
     [--version 2.0|3.0|3.1] [--config path]
 zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
 zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
+zopia navigate <docs-dir> (--to-code <spec-pointer> | --to-spec <tree-file>) [--config path]
 ```
 
 | 🚩 Command | 📝 What it does | 💡 Example |
@@ -138,6 +139,7 @@ zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
 | `zopia reverse` | imports the manifest's endpoint and emitted component modules, then writes the reconstructed OpenAPI document to stdout or `--out` | `zopia reverse api_docs/.zopia-manifest.json --out openapi.json` |
 | `zopia validate` | lints a spec (broken refs, name collisions, cross-namespace duplicate operationIds, unreachable components) or checks a generated tree (manifest validity, reverse dry-run, km-api peer drift); prints sorted diagnostics and a summary line to stdout | `zopia validate openapi.yaml`, `zopia validate api_docs` |
 | `zopia diff` | compares two specs semantically (dialect, info, endpoints with parameter/request-body/response details, webhooks, schema components and named registries (security schemes, reusable parameters/responses, request bodies…), path-item and webhook-item metadata, document fields, `x-` extensions) — key order is ignored and JSON/YAML inputs mix freely; prints `+`/`-`/`~` lines plus a summary to stdout; differences are data, so a changed pair still exits `0` | `zopia diff v1.json v2.yaml` |
+| `zopia navigate` | manifest-driven jump table between a generated tree and its source spec (S-93): `--to-code '#/paths/~1pets/get'` prints the generated file(s) implementing the pointer (endpoints, webhooks, components, plus custom companions when enabled); `--to-spec pets/get/index.ts` prints the owning pointer — both directions print one stable line per location and exit non-zero with `ZOPIA_CONFIG_INVALID` for unmatched pointers/files or `ZOPIA_DOCS_MISSING_MANIFEST` for generation-less roots | `zopia navigate api_docs --to-spec pets/get/index.ts` |
 
 ### 📏 CLI contract
 
@@ -146,7 +148,7 @@ zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
 | R-931 | Boolean flags are additive and default to `false` when absent; `--custom` enables the merge-safe companion layer ([07 → R-744](07-api-docs.md#-regeneration--manual-edits-phase-1-policy)); `--no-manifest` is the explicit inverse of the default-on manifest option; `--watch` (S-88) is generate-only and requires a spec **file path** — it watches the spec's parent directory so atomic editor saves (`write-temp` + rename) still trigger a regeneration, coalesces change bursts, prints per-run errors to stderr while continuing, and never writes a partial tree beyond the failing run's first output. With a [project config file](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19), config values fill every option the flags leave unset, and every explicit flag still wins (D-19); the `<output-dir>` positional is required unless the config supplies `generate.outDir`. |
 | R-932 | Parsing is strict and completes before either engine runs: options may surround positional arguments, but unknown, command-incompatible, repeated, or valueless options and missing/extra positionals fail with `ZOPIA_CONFIG_INVALID` at the offending argument. |
 | R-933 | Data uses stdout (or the selected `--out` file); warnings and errors use stderr. Exit status is `0` success, `1` typed user/configuration failure, and `2` unexpected internal failure. |
-| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. `--config <path>` selects an explicit config file on every command; loading, discovery, and validation rules live in [09-configuration](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19). `zopia validate` and `zopia diff` have no configurable knobs yet — a named config file only needs to load. |
+| R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. `--config <path>` selects an explicit config file on every command; loading, discovery, and validation rules live in [09-configuration](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19). `zopia validate`, `zopia diff`, and `zopia navigate` have no configurable knobs yet — a named config file only needs to load. |
 
 Both commands print warnings only to stderr as
 `Warning: ZOPIA_WARN_* <pointer>: <message>`. In particular, `zopia reverse`
