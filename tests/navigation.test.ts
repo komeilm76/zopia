@@ -118,6 +118,30 @@ describe('spec ↔ tree navigation (Phase 3, S-93)', () => {
     try { specPointersToLines('{"a":}', ['#/a']); } catch (error) { expect((error as ZopiaError).code).toBe('ZOPIA_SPEC_INVALID_JSON'); }
   });
 
+  it('S-93: scanning tolerates nested arrays and rejects malformed array bodies (round 9)', () => {
+    const withArrays = JSON.stringify({
+      openapi: '3.1.0', info: { title: 'T', version: '1' },
+      paths: { '/pets': { get: { operationId: 'listPets', tags: ['pets', 'animals]', '"quoted"'], security: [{ key: [] }], servers: [], responses: { '200': { description: 'ok' } } } } },
+      servers: [{ url: 'https://a.example.com', variables: { base: { enum: ['a', 'b'], default: 'a' } } }, {}],
+    });
+    expect(specPointerToLine(withArrays, '#/paths/~1pets/get')).toBeTypeOf('number');
+    // object-keys with array values map like any other key; only positions INSIDE arrays stay unmappable
+    expect(specPointerToLine(withArrays, '#/servers')).toBeTypeOf('number');
+    expect(specPointerToLine(withArrays, '#/paths/~1pets/get/tags')).toBeTypeOf('number');
+    expect(specPointerToLine(withArrays, '#/nope')).toBeUndefined();
+    expect(() => specPointersToLines('{"a":[1,}', ['#/a'])).toThrow(ZopiaError);
+    expect(() => specPointersToLines('{"a":[', ['#/a'])).toThrow(ZopiaError);
+    expect(() => specPointersToLines('', ['#/a'])).toThrow(ZopiaError);
+    expect(() => specPointersToLines('[1,2]', ['#/a'])).not.toThrow();
+    expect(() => specPointersToLines('{"a" 1}', ['#/a'])).toThrow(ZopiaError);
+    expect(() => specPointersToLines('{"a":1,}', ['#/a'])).toThrow(ZopiaError);
+    expect(() => specPointersToLines('{"a":"x\\nz"}', ['#/a'])).not.toThrow();
+    expect(() => specPointersToLines('{"a":"x\n' + '\n' + 'z"}', ['#/a'])).toThrow(ZopiaError);
+    expect(() => specPointersToLines('{"a":"unterminated', ['#/a'])).toThrow(ZopiaError);
+    // '#' root pointers and non-fragment shapes simply never match
+    expect(specPointerToLine('{"a":1}', '#')).toBeUndefined();
+  });
+
   it('S-93: specPointerAtLine picks the nearest declaration at-or-before the cursor, deterministically', () => {
     const pretty = JSON.stringify(SPEC, null, 2);
     const pointers = ['#/paths/~1pets/get', '#/paths/~1pets/post', '#/webhooks/signed/post', '#/components/schemas/Pet'];
@@ -128,6 +152,53 @@ describe('spec ↔ tree navigation (Phase 3, S-93)', () => {
     expect(specPointerAtLine(pretty, 1, pointers)).toBeUndefined();
     // order of candidates does not change the winner
     expect(specPointerAtLine(pretty, (getLine as number) + 4, [...pointers].reverse())).toBe('#/paths/~1pets/get');
+  });
+
+  it('S-93: pure manifest-shape guards — malformed entries skip, first operationId wins, labels omit absent ids (round 9 coverage)', () => {
+    const index = navigationIndexFromManifest({
+      apis: [
+        null,
+        42,
+        { file: undefined, path: '/legacy', method: 'get', operationId: 'legacyOp' },
+        { file: 'a/get/index.ts', path: '/a', method: 'get' },
+        { file: 'b/get/index.ts', path: '/b', method: 'get', operationId: 'dupe' },
+        { file: 'c/get/index.ts', path: '/c', method: 'get', operationId: 'dupe' },
+      ],
+      webhooks: [null, { file: 'webhooks/h/post/index.ts', name: 'h', method: 'post' }],
+      components: [null, { file: 'components/Thing/index.ts', name: 'Thing' }, { file: undefined, name: 'Ghost' }],
+      options: {},
+    } as any);
+    // malformed entries and legacy file-less records skip; the first operationId occurrence wins
+    expect(index.locations().map((location) => location.file)).toEqual([
+      '.zopia-manifest.json',
+      'a/get/index.ts',
+      'b/get/index.ts',
+      'c/get/index.ts',
+      'components/Thing/index.ts',
+      'components/index.ts',
+      'webhooks/h/post/index.ts',
+    ]);
+    expect(index.pointerForOperationId('dupe')).toBe('#/paths/~1b/get');
+    expect(index.pointerForOperationId('legacyOp')).toBeUndefined();
+    // labels omit the parenthesized id when none was declared
+    expect(index.treeToSpecLocation('a/get/index.ts').label).toBe('get /a');
+    expect(index.treeToSpecLocation('webhooks/h/post/index.ts').label).toBe('webhook h post');
+    // every unsupported pointer shape keeps its dedicated hint branch
+    const shapes: [string, string][] = [
+      ['#/paths', 'unsupported spec pointer for navigation'],
+      ['#/paths/~1a/get/extra', 'unsupported spec pointer for navigation'],
+      ['#/~1sneaky', 'unsupported spec pointer for navigation'],
+      ['ambient', 'unsupported spec pointer for navigation'],
+      ['#/components/schemas/Oops/extra', 'unsupported spec pointer for navigation'],
+      ['#/components/things/Thing', 'unsupported spec pointer for navigation'],
+      ['#/', 'unsupported spec pointer for navigation'],
+      ['#/components', 'unsupported spec pointer for navigation'],
+      ['#/webhooks/ghost/post', 'spec pointer has no generated module'],
+      ['#/components/schemas/Ghost', 'declares no generated module'],
+    ];
+    for (const [pointer, message] of shapes) expect(() => index.specToLocations(pointer)).toThrow(message);
+    // the unheard-webhook failure mentions webhooks, not paths
+    try { index.specToLocations('#/webhooks/ghost/post'); expect.unreachable(); } catch (error) { expect((error as ZopiaError).hint).toContain('webhook'); }
   });
 
   it('S-93: CLI navigate prints stable lines both directions and rejects bad grammar', async () => {

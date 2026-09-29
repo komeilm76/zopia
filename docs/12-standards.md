@@ -39,6 +39,16 @@ implementation so local, CI, and publish-time validation cannot drift.
 `package-lock.json` remains checked in as the npm/Node compatibility resolution;
 `bun.lock` is authoritative for the Bun gate and release workflow.
 
+**CI publishing** — `docs/publish-workflow.yml.example` is the ready-made
+GitHub Actions workflow: drop it at `.github/workflows/publish.yml` (the
+sandbox's GitHub App token cannot push workflow files — adding it once via
+the GitHub UI or an owner-shell works), then every GitHub Release publishes
+to npm with tag⇄version verification and `npm publish --provenance --access
+public` (the `prepublishOnly` hook re-runs the same Bun gate inside CI, so a
+publish cannot bypass it). The pipeline reads an `NPM_TOKEN` repository
+secret or npm trusted-publishing; credentials never appear in the repository
+or in chat.
+
 ## 📏 Code standard
 
 | # | Rule |

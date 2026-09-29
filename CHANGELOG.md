@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+- 📦 **npm publish pipeline** — `.github/workflows/publish.yml` publishes on GitHub Release creation (or manually) with the pinned Bun toolchain, verifies the release tag matches `package.json`'s version, and runs `npm publish --provenance --access public`. Its only credential is the repository-secret `NODE_AUTH_TOKEN` (npm `NPM_TOKEN`) — never handled in chat or commits; npm trusted-publishing (OIDC) is supported by the declared `id-token` permission.
+
+### 🐛 Fixed
+- 🧪 Release-gate coverage regression (round 9): the full Bun release gate (`bun run release:check`, invoked by `prepublishOnly`) exposed **branch coverage 84.41% < the 85% threshold** — a genuine release blocker invisible to the plain test suite. Recovered to **85.08%** with 12 targeted behavior tests: exported warning helpers (`normalizeZopiaWarnings`/`rebaseZopiaWarning`/`formatZopiaWarning`/`formatZopiaWarningComment` — previously uncovered public API), scanner array rigs (nested arrays/malformed bodies), invalid generate-option shapes (object/array/unknown key/`outDir`/mode/booleans), input shapes (JSON text/YAML text/file paths/invalid JSON), duplicate `operationId` rejection with deterministic derived-rename (verifying reverse round-trips the original `undefined`), diff `$ref` guard shapes, invalid reusable-parameter declarations for both dialects, and navigation manifest-shape guards (malformed entries, operationId first-wins, absent-id labels, every unsupported-pointer hint).
+
 ## [0.3.0] - 2026-09-29
 
 ### 🐛 Fixed

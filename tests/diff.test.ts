@@ -216,6 +216,16 @@ describe('spec diff (Phase 3, S-91)', () => {
     )).toThrowError(expect.objectContaining({ code: 'ZOPIA_SPEC_PATH_REF' }));
   });
 
+  it('S-91: broken $ref shapes inside compared documents fail with typed errors (round 9 coverage)', () => {
+    const doc = (item: unknown) => ({ openapi: '3.1.0' as const, info: { title: 'T', version: '1' }, paths: { '/a': item }, components: { schemas: {} } });
+    for (const [broken, code] of [
+      [{ $ref: '' }, 'ZOPIA_SPEC_PATH_REF'],
+      [{ $ref: 5 }, 'ZOPIA_SPEC_PATH_REF'],
+    ] as const) {
+      expect(() => diffOpenApiDocuments(doc(broken) as any, doc(broken) as any)).toThrow(code);
+    }
+  });
+
   it('S-91: unreadable or invalid inputs fail with typed errors at the offending input', async () => {
     const missing = await diffOpenApiSpecs('/nonexistent/old-spec.json', JSON.stringify(base)).then(
       () => { throw new Error('must throw'); },
