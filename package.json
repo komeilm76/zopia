@@ -1,6 +1,6 @@
 {
   "name": "zopia",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Type-safe OpenAPI, JSON Schema, and Zod conversion toolkit.",
   "keywords": [
     "api-docs",
@@ -72,6 +72,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "import": "./src/runtime.ts",
+      "default": "./src/runtime.ts"
     }
   }
 }

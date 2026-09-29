@@ -180,6 +180,29 @@ stderr, hint included) · `2` internal error (should never happen — report it)
 | R-103 | ✍️ **Hand edits** — Phase 1 overwrites them on regeneration (see the file banner); the merge-safe custom layer arrives in Phase 3 | [07 → Regeneration](07-api-docs.md#-regeneration--manual-edits-phase-1-policy) |
 | R-104 | 🧪 **km-api helpers** — `makeFullPath`, `makeParams`, `convertResponseType`, … are available on every generated config for free | [Concepts → km-api](05-concepts.md#-km-api) |
 | R-105 | 🚫 **No zopia import in app code** — generated files depend only on `zod` + `km-api` (R-502) | — |
+| R-106 | 🌳 **Runtime tree loading** — when wiring endpoints dynamically beats importing files one by one, `createApiDocs()` from the opt-in `zopia/runtime` subpath turns the whole directory into one nested object (plus the `flattenApiDocs` flat record); generation output is untouched | [07 → Runtime tree consumption](07-api-docs.md#-runtime-tree-consumption--createapidocs) |
+
+### 🌳 Consuming the tree at runtime
+
+Import the dedicated subpath (the package root stays free of
+filesystem-importing APIs) and point it at any directory zopia ever generated
+into — `directory`, `flat`, and split `multi-tag` / `multi-server` trees all
+resolve through their manifests:
+
+```ts
+import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+
+// Nested: exact URL path segments, lowercase method leaf, default-export config
+const apiDocs = await createApiDocs('api_docs');
+const getUser = apiDocs.users['{userId}'].get;   // the makeApiConfig object
+
+// Flat: keyed by operationId (derived with the generator's own naming rules)
+const endpoints = flattenApiDocs(apiDocs);
+endpoints.getUser === getUser;                    // → true
+```
+
+Failures are typed `ZopiaError`s with `at`/`hint` — see
+[API docs → Runtime tree consumption](07-api-docs.md#-runtime-tree-consumption--createapidocs).
 
 ## 🧯 Error handling
 

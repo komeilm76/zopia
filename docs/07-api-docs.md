@@ -106,6 +106,81 @@ templates, duplicate parameters, unsupported methods, and unsafe roots. Engine �
 does not emit a facade module in v0.1.0: direct imports are the generated
 file-level API, and the manifest remains authoritative (D-06).
 
+## 🌳 Runtime tree consumption — `createApiDocs`
+
+> 🎯 **S-94** — *an opt-in runtime API, shipped in the `zopia` package itself,
+> converts a generated tree directory into the nested / flat objects an
+> application consumes. No generation output changes: the feature only reads
+> and imports.*
+
+```ts
+import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+
+const apiDocs = await createApiDocs('api_docs');   // ← the entire consumer DX
+const endpoint = apiDocs.applicant['{applicantId}'].exame['{examId}'].get;
+// → the endpoint module's makeApiConfig object (its default export)
+
+const endpoints = flattenApiDocs(apiDocs);        // the flat freebie
+endpoints.getExam;                                 // same leaf object
+```
+
+**Manifest discovery & merge (B-conditions).** The resolver reads the root
+`.zopia-manifest.json` **plus** every one-level-deep preset bucket manifest
+(`multi-tag` / `multi-server` splits write one manifest per bucket directory),
+merging all of them and deduplicating by `${path}#${method}` — the root
+manifest wins duplicates, buckets follow in sorted directory order. Any
+directory that was ever a zopia output root is accepted, including a single
+preset bucket root. Entries are then sorted deterministically: URL path
+segments first, then the canonical method order
+(`get, post, put, delete, head, options, patch, trace`).
+
+**Nesting.** Branch keys are the URL path segments **exactly and in order**
+(including literal `{param}` segments), the leaf key is the lowercase method,
+and the leaf value is the endpoint module's **default export**, loaded with
+dynamic `import()` through `pathToFileURL` (Windows-safe). Because which keys
+exist depends on the source spec, the `ApiDocsTree` type types every node
+permissively (branch ∪ config). A tree `/` path nests its methods at the root
+(`apiDocs.get`). Paths that cannot coexist in one nested tree — a path
+continuing below another path's method leaf, or two paths differing only by a
+trailing slash — fail with a typed `ZOPIA_SPEC_INVALID` instead of silently
+dropping an endpoint. Key insertion follows the deterministic sort, so the
+same tree always enumerates keys in the same order (P-1).
+
+**Errors** reuse the manifest conventions: a missing manifest →
+`ZOPIA_DOCS_MISSING_MANIFEST`; garbled JSON or unusable `apis[]` records →
+`ZOPIA_MANIFEST_INVALID`; a module that cannot be imported or has no default
+export → `ZOPIA_DOCS_IMPORT_FAILED` naming the file. Reading is pure — nothing
+on disk is written.
+
+**The flatten freebie.** `flattenApiDocs(apiDocs)` deep-walks the tree in its
+deterministic leaf order and returns a flat `Record<string, config>` keyed by
+each config's `operationId`. When a leaf has no usable `operationId`, or two
+keys collide, the name is derived by the **same rules the generator uses for
+its `export const` identifiers** (R-732: camelize, reserved-word guard,
+leading-numeric guard, `2`/`3`… uniqueness suffix — `await` → `awaitEndpoint`,
+`get-a` + `getA` → `getA` + `getA2`), so the flat keys always match the
+modules' named exports. The shared rules live in
+`src/conversions/api-docs-names.ts` and both call-sites (generation and
+runtime) use them.
+
+**A small km-api hand-off** — every leaf *is* a `makeApiConfig()` object, so
+the km-api surface is available directly:
+
+```ts
+import { createApiDocs } from 'zopia/runtime';
+
+const apiDocs = await createApiDocs('api_docs');
+const getUser = apiDocs.users['{userId}'].get;
+
+getUser.method;                          // "GET"
+getUser.pathShape;                       // "/users/{userId}"
+getUser.request.params.parse({ userId: '22ccbc6a-…' }); // ✅ Zod-validated path params
+getUser.response[200].parse({ id: 'u1', email: 'a@b.c' }); // ✅ Zod-validated response
+```
+
+> 💡 Generated webhook modules are not URL-path endpoints and stay outside the
+> nested tree — import them directly or reverse-convert the tree (engine ④).
+
 ## 🧬 Operation contract extraction
 
 Before rendering an endpoint, zopia normalizes each operation into an

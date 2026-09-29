@@ -55,7 +55,7 @@ describe('package and release contract', () => {
   it('S-76/R-191: release identity and public package metadata are complete and synchronized', () => {
     expect(manifest).toMatchObject({
       name: 'zopia',
-      version: '0.3.0',
+      version: '0.4.0',
       description: expect.any(String),
       homepage: 'https://github.com/komeilm76/zopia#readme',
       bugs: { url: 'https://github.com/komeilm76/zopia/issues' },
@@ -118,7 +118,7 @@ describe('package and release contract', () => {
   it('R-192: the npm archive is allowlisted, executable, and free of development files', () => {
     expect(manifest.files).toEqual(['bin', 'src', 'docs', 'CHANGELOG.md', 'LICENSE', 'README.md']);
     const packed = dryRunPackage();
-    expect({ name: packed.name, version: packed.version }).toEqual({ name: 'zopia', version: '0.3.0' });
+    expect({ name: packed.name, version: packed.version }).toEqual({ name: 'zopia', version: '0.4.0' });
 
     const paths = packed.files.map((file) => file.path);
     expect(paths).toEqual(expect.arrayContaining([

@@ -162,27 +162,47 @@ function escapeRegularExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function exampleDiagnostics(code: string): readonly ts.Diagnostic[] {
-  const file = join(repositoryRoot, '.zopia-jsdoc-example.ts');
-  const options: ts.CompilerOptions = {
-    allowImportingTsExtensions: true,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    noEmit: true,
-    paths: { zopia: ['./src/index.ts'] },
-    strict: true,
-    target: ts.ScriptTarget.ES2022,
+const exampleOptions: ts.CompilerOptions = {
+  allowImportingTsExtensions: true,
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  noEmit: true,
+  paths: { zopia: ['./src/index.ts'] },
+  strict: true,
+  target: ts.ScriptTarget.ES2022,
+};
+// Every @example block becomes one virtual file of a SINGLE shared program, so the
+// library graph is parsed and checked once for all examples instead of once per
+// block (the per-example loop only slices that program's diagnostics by file).
+const exampleHost = ts.createCompilerHost(exampleOptions);
+const exampleReadFile = exampleHost.readFile.bind(exampleHost);
+const exampleFileExists = exampleHost.fileExists.bind(exampleHost);
+const exampleGetSourceFile = exampleHost.getSourceFile.bind(exampleHost);
+
+function exampleVirtualFile(index: number): string {
+  return join(repositoryRoot, `.zopia-jsdoc-example-${index}.ts`);
+}
+
+function exampleDiagnostics(codes: readonly string[]): readonly (readonly ts.Diagnostic[])[] {
+  exampleHost.fileExists = (candidate) => codes.some((_, index) => candidate === exampleVirtualFile(index)) || exampleFileExists(candidate);
+  exampleHost.readFile = (candidate) => {
+    const index = codes.findIndex((_, position) => candidate === exampleVirtualFile(position));
+    return index === -1 ? exampleReadFile(candidate) : codes[index];
   };
-  const host = ts.createCompilerHost(options);
-  const readFile = host.readFile.bind(host);
-  const fileExists = host.fileExists.bind(host);
-  const getSourceFile = host.getSourceFile.bind(host);
-  host.fileExists = (candidate) => candidate === file || fileExists(candidate);
-  host.readFile = (candidate) => candidate === file ? code : readFile(candidate);
-  host.getSourceFile = (candidate, languageVersion, onError, shouldCreateNewSourceFile) => candidate === file
-    ? ts.createSourceFile(file, code, languageVersion, true, ts.ScriptKind.TS)
-    : getSourceFile(candidate, languageVersion, onError, shouldCreateNewSourceFile);
-  return ts.getPreEmitDiagnostics(ts.createProgram([file], options, host));
+  exampleHost.getSourceFile = (candidate, languageVersion, onError, shouldCreateNewSourceFile) => {
+    const index = codes.findIndex((_, position) => candidate === exampleVirtualFile(position));
+    return index === -1
+      ? exampleGetSourceFile(candidate, languageVersion, onError, shouldCreateNewSourceFile)
+      : ts.createSourceFile(candidate, codes[index], languageVersion, true, ts.ScriptKind.TS);
+  };
+  const program = ts.createProgram(codes.map((_, index) => exampleVirtualFile(index)), exampleOptions, exampleHost);
+  const diagnostics = ts.getPreEmitDiagnostics(program).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  return codes.map((_, index) => {
+    const file = exampleVirtualFile(index);
+    const own = diagnostics.filter((diagnostic) => diagnostic.file?.fileName === file);
+    const shared = diagnostics.filter((diagnostic) => diagnostic.file?.fileName === undefined || !codes.some((_, position) => diagnostic.file?.fileName === exampleVirtualFile(position)));
+    return [...own, ...shared];
+  });
 }
 
 describe('public JSDoc contract', () => {
@@ -265,6 +285,7 @@ describe('public JSDoc contract', () => {
 
   it('R-133: TypeScript examples are syntactically and semantically valid modules', () => {
     const failures: string[] = [];
+    const gathered: Array<{ subject: string; code: string }> = [];
     for (const parsed of parsedSources) {
       for (const declaration of auditedDeclarations(parsed.source)) {
         const comment = jsDoc(declaration, parsed.text) ?? '';
@@ -275,10 +296,14 @@ describe('public JSDoc contract', () => {
         }
         for (const [index, match] of examples.entries()) {
           const code = match[1].split(/\r?\n/).map((entry) => entry.replace(/^\s*\*\s?/, '')).join('\n');
-          const diagnostics = exampleDiagnostics(code).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
-          if (diagnostics.length) failures.push(`${relative(repositoryRoot, parsed.file)} ${label(declaration, parsed.source)} example ${index + 1}: ${diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')).join('; ')}`);
+          gathered.push({ subject: `${relative(repositoryRoot, parsed.file)} ${label(declaration, parsed.source)} example ${index + 1}`, code });
         }
       }
+    }
+    // One shared program typechecks every gathered example (see exampleDiagnostics).
+    const diagnosticsPerExample = exampleDiagnostics(gathered.map((entry) => entry.code));
+    for (const [{ subject }, diagnostics] of gathered.map((entry, index) => [entry, diagnosticsPerExample[index]] as const)) {
+      if (diagnostics.length) failures.push(`${subject}: ${diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')).join('; ')}`);
     }
     expect(failures).toEqual([]);
   }, 60_000);

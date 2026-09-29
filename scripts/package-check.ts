@@ -120,6 +120,19 @@ try {
   await run('Packed CLI help', 'node', [binary, '--help'], consumer);
   await run('Packed CLI generation', 'node', [binary, 'generate', specification, generated], consumer);
   await run('Packed CLI reverse conversion', 'node', [binary, 'reverse', generated, '--out', reversed], consumer);
+
+  // The opt-in runtime subpath must work from the packed archive: load the generated
+  // tree into the nested/flat objects and hand a leaf back to km-api-level checks.
+  await writeFile(join(consumer, 'smoke-runtime.ts'), [
+    "import { createApiDocs, flattenApiDocs } from 'zopia/runtime';",
+    "const apiDocs = await createApiDocs('api-docs');",
+    "const endpoint = apiDocs.health.get;",
+    "const endpoints = flattenApiDocs(apiDocs);",
+    "if (endpoint.pathShape !== '/health' || endpoint.method !== 'GET') throw new Error('packed runtime tree access failed');",
+    "if (endpoints.getHealth !== endpoint) throw new Error('packed runtime flatten failed');",
+    '',
+  ].join('\n'));
+  await run('Packed runtime subpath import', process.execPath, ['run', 'smoke-runtime.ts'], consumer);
   const output = JSON.parse(await readFile(reversed, 'utf8')) as Record<string, unknown>;
   const info = output.info as Record<string, unknown> | undefined;
   const pathsObject = output.paths as Record<string, unknown> | undefined;

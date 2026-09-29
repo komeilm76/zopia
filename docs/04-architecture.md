@@ -13,6 +13,7 @@ release-blocking defect under the
 ├── bin/zopia.js                # ⌨️ npm executable; launches the Bun CLI
 ├── src/
 │   ├── index.ts                # 🚪 public named-export surface
+│   ├── runtime.ts              # 🌳 `zopia/runtime` subpath entry (tree consumption, S-94)
 │   ├── cli.ts                  # ⌨️ process entry point
 │   ├── cli-command.ts          #    strict parser, help, output/exit contract
 │   ├── config.ts               # 🧾 zopia.config.ts discovery, trusted import, validation (D-19)
@@ -20,6 +21,8 @@ release-blocking defect under the
 │   ├── warnings.ts             # ⚠️ structured warning pipeline
 │   ├── validation.ts           # 🧹 zopia validate lint batteries (specs + generated trees, S-89)
 │   ├── diff.ts                 # 🔍 zopia diff semantic spec comparison (S-91)
+│   ├── runtime/
+│   │   └── create-api-docs.ts  # 🌳 manifest discovery + nested/flat runtime trees (S-94)
 │   └── conversions/
 │       ├── zod-to-json-schema.ts       # ① Zod → JSON Schema
 │       ├── json-schema-to-zod.ts       # ② JSON Schema → Zod
@@ -32,6 +35,7 @@ release-blocking defect under the
 │       ├── openapi-contracts.ts        #    request/response extraction
 │       ├── api-docs-layout.ts          #    directory/flat path mapping
 │       ├── api-docs-plan.ts            #    collision-safe file planning
+│       ├── api-docs-names.ts           #    shared export-identifier rules (R-732)
 │       ├── api-docs-facade.ts          #    ergonomic access-path helper
 │       ├── api-docs-generate.ts        # ③ rendering + guarded writes
 │       ├── openapi-to-api-docs-public.ts # public Engine ③ wrapper

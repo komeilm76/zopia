@@ -1,6 +1,7 @@
 import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { asZopiaError, ZopiaError } from '../errors';
+import { endpointExportName } from './api-docs-names';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { deriveReusableParameterSchema, deriveReusableResponseSchema, extractOperationContracts, reusableDeclarations } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
@@ -61,7 +62,7 @@ function collectComponentRefs(value: unknown, names = new Set<string>(), mapEntr
   return names;
 }
 function schemaCode(schema: unknown, name: string): string {
-  const safeName = exportName(name);
+  const safeName = endpointExportName(name);
   const converted = jsonSchemaToZod(schema === undefined ? true : schema as any, { rootName: safeName });
   const source = converted.code.trimEnd();
   const direct = source.match(new RegExp(`^const ${safeName.replace(/[$]/g, '\\$&')} = ([\\s\\S]*);$`));
@@ -222,23 +223,16 @@ function resolveObject(value: unknown, source: OpenApiDocument): any {
   }
   return current;
 }
-function exportName(operationId: string): string {
-  const parts = operationId.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
-  let name = parts.map((part, index) => index === 0 ? part : part[0].toUpperCase() + part.slice(1)).join('') || 'endpoint';
-  if (!/^[A-Za-z_$]/.test(name)) name = `endpoint${name}`;
-  if (['arguments', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'eval', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield'].includes(name)) name = `${name}Endpoint`;
-  return name;
-}
 function componentExportName(componentName: string): string {
-  const name = exportName(componentName);
+  const name = endpointExportName(componentName);
   return name.endsWith('Schema') ? name : `${name}Schema`;
 }
 function componentParameterExportName(componentName: string): string {
-  const name = exportName(componentName);
+  const name = endpointExportName(componentName);
   return name.endsWith('Parameter') ? name : `${name}Parameter`;
 }
 function componentResponseExportName(componentName: string): string {
-  const name = exportName(componentName);
+  const name = endpointExportName(componentName);
   return name.endsWith('Response') ? name : `${name}Response`;
 }
 function componentReaches(source: OpenApiDocument, from: string, target: string, seen = new Set<string>()): boolean {
@@ -352,7 +346,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const examplesValue = { ...(Object.keys(requestExamples).length ? { request: requestExamples } : {}), ...(Object.keys(responseExamples).length ? { response: responseExamples } : {}) };
   const examples = Object.keys(examplesValue).length ? `examples: JSON.parse(${JSON.stringify(stableDataJson(examplesValue))}),` : '';
   const opId = operation.operationId;
-  const exportId = exportName(opId);
+  const exportId = endpointExportName(opId);
   const tags = ir.tags;
   const auth = ir.security !== undefined && ir.security.length > 0 && ir.security.every((requirement) => Object.keys(requirement as Record<string, unknown>).length > 0) ? 'YES' : 'NO';
   const sourceName = JSON.stringify(`${source.info.title} v${source.info.version}`).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');

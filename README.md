@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-✅ **Status — Phase 3 complete · v0.3.0 released**
+✅ **Status — Phase 3 complete · v0.4.0 released**
 
 </div>
 
@@ -90,6 +90,28 @@ await openApiToApiDocs('swagger.json', {
 // ④ Convert the tree back into a spec
 const { openapi } = await apiDocsToOpenApi('api_docs', { version: '3.1' });
 ```
+
+### 🌳 Consuming the tree at runtime
+
+When wiring endpoints dynamically beats importing generated files one by one,
+import the opt-in runtime subpath and point it at any directory zopia ever
+generated into (`directory`, `flat`, and `multi-tag` / `multi-server` splits
+all resolve through their manifests):
+
+```ts
+import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+
+// Nested: URL path segments → lowercase method → the makeApiConfig object
+const apiDocs = await createApiDocs('api_docs');
+const getUser = apiDocs.users['{userId}'].get;   // default export of that index.ts
+
+// Flat freebie: keyed by operationId, same leaf objects, deterministic order
+const endpoints = flattenApiDocs(apiDocs);
+endpoints.getUser === getUser;                    // → true
+```
+
+Generation output is untouched — the resolver only reads manifests and imports
+modules. See [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs.md#-runtime-tree-consumption--createapidocs).
 
 ## 📚 Documentation
 

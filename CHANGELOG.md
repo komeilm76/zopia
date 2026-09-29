@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
 ### ✨ Added
+- 🌳 **Runtime tree consumption — `zopia/runtime` (S-94).** New opt-in subpath
+  export (`import { createApiDocs, flattenApiDocs } from 'zopia/runtime'`) that
+  turns a generated api-docs directory into the objects an application
+  consumes, with **zero changes to generation output**. `createApiDocs(dir)` —
+  the entire consumer DX — discovers the root `.zopia-manifest.json` plus every
+  one-level-deep preset bucket manifest (`multi-tag`/`multi-server`), merges
+  them (deduplicating by `${path}#${method}`, root manifest first), sorts
+  deterministically (path segments, then the canonical method order), and
+  returns one nested object keyed by the exact URL path segments with the
+  lowercase method as leaf key holding the endpoint module's `export default`
+  (loaded via `pathToFileURL`, Windows-safe). `flattenApiDocs(tree)` is the
+  flat freebie: a `Record<string, config>` keyed by `operationId`, deriving
+  missing names and collision suffixes through the **same shared rules the
+  generator uses for its export identifiers** (extracted to
+  `src/conversions/api-docs-names.ts`: camelize, reserved-word guard,
+  leading-numeric guard, `2`/`3`… suffixing — `await` → `awaitEndpoint`).
+  Missing/garbled manifests, unsafe manifest paths, import failures, and
+  modules without default exports fail typed (`ZOPIA_DOCS_MISSING_MANIFEST`,
+  `ZOPIA_MANIFEST_INVALID`, `ZOPIA_DOCS_IMPORT_FAILED`); paths that cannot
+  share one nested tree (below a method leaf, trailing-slash twins) fail typed
+  `ZOPIA_SPEC_INVALID`. Documented in
+  [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs.md).
 - 📦 **npm publish pipeline** — `.github/workflows/publish.yml` publishes on GitHub Release creation (or manually) with the pinned Bun toolchain, verifies the release tag matches `package.json`'s version, and runs `npm publish --provenance --access public`. Its only credential is the repository-secret `NODE_AUTH_TOKEN` (npm `NPM_TOKEN`) — never handled in chat or commits; npm trusted-publishing (OIDC) is supported by the declared `id-token` permission.
 
 ### 🐛 Fixed
