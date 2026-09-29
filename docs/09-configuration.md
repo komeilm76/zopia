@@ -20,6 +20,7 @@ export default defineConfig({
     mode: 'directory',
     insertComponents: true,
     useComponentAsReference: true,
+    custom: true,
     outDir: 'api_docs',
   },
   reverse: { version: '3.1', out: 'openapi.json' },
@@ -52,6 +53,9 @@ interface ZopiaGenerateOptions {
 
   /** 📦 Write .zopia-manifest.json (needed by engine ④ — keep it on). @default true */
   manifest?: boolean;
+
+  /** 🧩 Write merge-safe custom.ts companions per endpoint. @default false (D-24) */
+  custom?: boolean;
 }
 ```
 
@@ -62,6 +66,7 @@ interface ZopiaGenerateOptions {
 | `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` (schemas plus reusable `components/parameters/**` / `components/responses/**` modules, v0.2.x — D-18) |
 | `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
+| `custom` | `boolean` | `false` | D-24 — every endpoint/webhook module exports `export * as custom from './custom';` and a sibling `custom.ts` is scaffolded once and never overwritten; CLI flag `--custom`, config key `generate.custom` |
 
 ### ✅ Validation rules
 

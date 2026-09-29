@@ -124,7 +124,7 @@ approximation.
 
 ```text
 zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat]
-    [--insert-components] [--use-component-as-reference] [--no-manifest]
+    [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest]
     [--watch] [--config path]
 zopia reverse <docs-dir|manifest.json> [--out openapi.json]
     [--version 2.0|3.0|3.1] [--config path]
@@ -141,7 +141,7 @@ zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
 
 | # | Contract |
 | --- | --- |
-| R-931 | Boolean flags are additive and default to `false` when absent; `--no-manifest` is the explicit inverse of the default-on manifest option; `--watch` (S-88) is generate-only and requires a spec **file path** — it watches the spec's parent directory so atomic editor saves (`write-temp` + rename) still trigger a regeneration, coalesces change bursts, prints per-run errors to stderr while continuing, and never writes a partial tree beyond the failing run's first output. With a [project config file](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19), config values fill every option the flags leave unset, and every explicit flag still wins (D-19); the `<output-dir>` positional is required unless the config supplies `generate.outDir`. |
+| R-931 | Boolean flags are additive and default to `false` when absent; `--custom` enables the merge-safe companion layer ([07 → R-744](07-api-docs.md#-regeneration--manual-edits-phase-1-policy)); `--no-manifest` is the explicit inverse of the default-on manifest option; `--watch` (S-88) is generate-only and requires a spec **file path** — it watches the spec's parent directory so atomic editor saves (`write-temp` + rename) still trigger a regeneration, coalesces change bursts, prints per-run errors to stderr while continuing, and never writes a partial tree beyond the failing run's first output. With a [project config file](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19), config values fill every option the flags leave unset, and every explicit flag still wins (D-19); the `<output-dir>` positional is required unless the config supplies `generate.outDir`. |
 | R-932 | Parsing is strict and completes before either engine runs: options may surround positional arguments, but unknown, command-incompatible, repeated, or valueless options and missing/extra positionals fail with `ZOPIA_CONFIG_INVALID` at the offending argument. |
 | R-933 | Data uses stdout (or the selected `--out` file); warnings and errors use stderr. Exit status is `0` success, `1` typed user/configuration failure, and `2` unexpected internal failure. |
 | R-934 | `-h`/`--help` lists the complete grammar and warns that reverse conversion executes generated TypeScript from trusted trees. `--config <path>` selects an explicit config file on every command; loading, discovery, and validation rules live in [09-configuration](09-configuration.md#-zopiaconfigts--project-defaults-v02x-d-19). `zopia validate` has no configurable knobs yet — a named config file only needs to load. |

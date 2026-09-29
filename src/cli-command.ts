@@ -33,6 +33,7 @@ interface GenerateArguments {
   insertComponents: boolean;
   useComponentAsReference: boolean;
   manifest: boolean;
+  custom: boolean;
   config?: string;
   watch: boolean;
 }
@@ -50,7 +51,7 @@ interface ValidateArguments {
 }
 
 const HELP_TEXT = `Usage:
-  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest] [--watch] [--config path]
+  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest] [--watch] [--config path]
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
   zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
 
@@ -65,6 +66,7 @@ Generate options:
   --mode directory|flat            Select endpoint layout (default: config generate.mode, then directory).
   --insert-components              Emit component schema modules.
   --use-component-as-reference     Import emitted components; requires --insert-components.
+  --custom                         Write merge-safe custom companion modules per endpoint and export them.
   --no-manifest                    Do not write .zopia-manifest.json (overrides config generate.manifest).
   --watch                          Regenerate whenever the spec file changes (Ctrl+C to stop).
 
@@ -113,6 +115,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
   let insertComponents = false;
   let useComponentAsReference = false;
   let manifest = true;
+  let custom = false;
   let config: string | undefined;
   let watchMode = false;
 
@@ -133,6 +136,9 @@ function parseGenerate(argv: string[]): GenerateArguments {
     } else if (argument === '--no-manifest') {
       markOption(seen, argument);
       manifest = false;
+    } else if (argument === '--custom') {
+      markOption(seen, argument);
+      custom = true;
     } else if (argument === '--config') {
       markOption(seen, argument);
       config = optionValue(argv, index, argument);
@@ -149,7 +155,7 @@ function parseGenerate(argv: string[]): GenerateArguments {
 
   if (positional.length < 1) invalid('generate requires <spec.json|spec.yaml>', 'argv', 'provide the input spec path');
   if (positional.length > 2) invalid(`unexpected generate argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
-  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, config, watch: watchMode };
+  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, custom, config, watch: watchMode };
 }
 
 function parseReverse(argv: string[]): ReverseArguments {
@@ -331,6 +337,7 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
       useComponentAsReference: parsed.useComponentAsReference || (generateDefaults?.useComponentAsReference ?? false),
       // `--no-manifest` is explicit and always wins over config defaults.
       manifest: parsed.manifest && (generateDefaults?.manifest ?? true),
+      custom: parsed.custom || (generateDefaults?.custom ?? false),
     };
     if (parsed.watch) {
       await runGenerateWatch(parsed.input, options, output);

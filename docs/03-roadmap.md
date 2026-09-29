@@ -161,8 +161,11 @@ The v0.1.0 release satisfies all of the following:
   drift. Findings are deterministic sorted diagnostics with stable
   `ZOPIA_VALIDATE_*` lint codes; the CLI prints them on stdout and exits `1`
   when any error-severity finding exists
-- ♻️ **Incremental regeneration** — only re-emit files whose inputs changed;
-  merge-safe custom layer for manual edits (a `custom` companion file per endpoint)
+- ♻️ **Incremental regeneration** — ✅ unchanged generated files keep their
+  mtimes (byte-identical regeneration writes nothing); the opt-in merge-safe
+  custom layer (D-24, S-90) exports a `custom` companion namespace per
+  endpoint/webhook scaffolded once and never overwritten (`--custom`,
+  `generate.custom`, or the `custom` generate option)
 - 🔍 **Diff tool** — `zopia diff old.json new.json` → human-readable changes
 - 🧩 **Presets** — monorepo / multi-server / multi-tag layouts
 - 🧑‍💻 **VS Code extension** — navigate spec ↔ generated code both ways

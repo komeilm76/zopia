@@ -23,6 +23,8 @@ export interface ZopiaProjectGenerateConfig {
   useComponentAsReference?: boolean;
   /** Write `.zopia-manifest.json`; `--no-manifest` on the CLI always overrides. */
   manifest?: boolean;
+  /** Write merge-safe `custom` companion modules when `--custom` is absent. */
+  custom?: boolean;
   /** Output directory used when the positional `<output-dir>` is omitted. */
   outDir?: string;
 }
@@ -104,11 +106,11 @@ function validateProjectConfig(candidate: unknown, file: string): ZopiaProjectCo
   const config: ZopiaProjectConfig = {};
   if (candidate.generate !== undefined) {
     if (!isRecord(candidate.generate)) invalidConfig('generate config must be an object', 'generate', 'provide generate conversion defaults');
-    validateUnknownKeys(candidate.generate, ['mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'outDir'], 'generate');
+    validateUnknownKeys(candidate.generate, ['mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom', 'outDir'], 'generate');
     const mode = candidate.generate.mode;
     if (mode !== undefined && mode !== 'directory' && mode !== 'flat') invalidConfig("generate.mode must be 'directory' or 'flat'", 'generate.mode', "use '--mode directory' or '--mode flat'");
-    const booleans: Partial<Pick<ZopiaProjectGenerateConfig, 'insertComponents' | 'useComponentAsReference' | 'manifest'>> = {};
-    for (const key of ['insertComponents', 'useComponentAsReference', 'manifest'] as const) {
+    const booleans: Partial<Pick<ZopiaProjectGenerateConfig, 'insertComponents' | 'useComponentAsReference' | 'manifest' | 'custom'>> = {};
+    for (const key of ['insertComponents', 'useComponentAsReference', 'manifest', 'custom'] as const) {
       const value = validateBooleanOption(candidate.generate[key], `generate.${key}`);
       if (value !== undefined) booleans[key] = value;
     }

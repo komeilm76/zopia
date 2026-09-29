@@ -26,6 +26,8 @@ export interface ZopiaGenerateOptions {
   useComponentAsReference?: boolean;
   /** Write the reverse-conversion manifest. @default true */
   manifest?: boolean;
+  /** Write merge-safe per-endpoint `custom` companion modules and export them. @default false */
+  custom?: boolean;
 }
 
 /** One file written by Engine ③, relative to its output directory. */
@@ -52,6 +54,7 @@ interface ValidatedOptions {
   insertComponents: boolean;
   useComponentAsReference: boolean;
   manifest: boolean;
+  custom: boolean;
 }
 
 const escapePointer = (value: string | number): string => String(value).replace(/~/g, '~0').replace(/\//g, '~1');
@@ -62,7 +65,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'generate options must be an object', { hint: 'pass an options object or omit it' });
   }
   const value = options ?? {};
-  const known = new Set(['outDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest']);
+  const known = new Set(['outDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom']);
   const unknown = Object.keys(value).find((key) => !known.has(key));
   if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown generate option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
   if (value.outDir !== undefined && (typeof value.outDir !== 'string' || value.outDir.trim() === '' || value.outDir.includes('\0'))) {
@@ -71,7 +74,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
   if (value.mode !== undefined && value.mode !== 'directory' && value.mode !== 'flat') {
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported layout mode: ${String(value.mode)}`, { at: 'mode', hint: "use 'directory' or 'flat'" });
   }
-  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest'] as const) {
+  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest', 'custom'] as const) {
     if (value[key] !== undefined && typeof value[key] !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `${key} must be a boolean`, { at: key });
   }
   if (value.useComponentAsReference === true && value.insertComponents !== true) {
@@ -83,6 +86,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
     insertComponents: value.insertComponents ?? false,
     useComponentAsReference: value.useComponentAsReference ?? false,
     manifest: value.manifest ?? true,
+    custom: value.custom ?? false,
   };
 }
 
@@ -392,6 +396,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
       insertComponents: config.insertComponents,
       useComponentAsReference: config.useComponentAsReference,
       manifest: config.manifest,
+      custom: config.custom,
     });
     if (staleness.status === 'stale') warnings.push({
       code: 'ZOPIA_WARN_STALE_TREE',
@@ -410,6 +415,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
       insertComponents: config.insertComponents,
       useComponentAsReference: config.useComponentAsReference,
       manifest: config.manifest,
+      custom: config.custom,
     });
   } catch (error: any) {
     if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'EEXIST', 'EISDIR', 'ENOTDIR'].includes(String(error?.code))) throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', `unable to write api-docs tree: ${error.message}`, { at: config.outDir, cause: error });

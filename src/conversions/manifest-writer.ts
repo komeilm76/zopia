@@ -1,7 +1,7 @@
 import { deriveReusableParameterSchema, deriveReusableResponseSchema, reusableDeclarations } from './openapi-contracts';
 import { asZopiaError, ZopiaError } from '../errors';
 import { createHash } from 'node:crypto';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { jsonSchemaToZod, type JsonSchemaOverlay } from './json-schema-to-zod';
 import type { ApiDocsMode } from './api-docs-layout';
@@ -43,6 +43,8 @@ export interface ZopiaManifestGenerationOptions {
   insertComponents: boolean;
   /** Whether endpoint modules import emitted components. */
   useComponentAsReference: boolean;
+  /** Whether endpoint custom companion modules were requested. @default false */
+  custom?: boolean;
 }
 
 /** Original reference placement relative to one source operation. */
@@ -284,6 +286,8 @@ export interface CreateZopiaManifestOptions {
   insertComponents: boolean;
   /** Whether endpoint modules import component files. */
   useComponentAsReference: boolean;
+  /** Whether endpoint custom companion modules were requested. @default false */
+  custom?: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -450,7 +454,7 @@ export function hashOpenApiDocument(document: OpenApiDocument): string {
  */
 export function createZopiaManifest(source: OpenApiDocument, plans: readonly ApiDocsFilePlan[], options: CreateZopiaManifestOptions, webhookPlans: readonly ApiDocsFilePlan[] = []): GeneratedZopiaManifest {
   if (!isRecord(source) || !isRecord(source.info) || !isRecord(source.paths)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid manifest source document', { at: '#', hint: 'provide a normalized Swagger/OpenAPI document' });
-  if (!isRecord(options) || !['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Invalid manifest generation options', { at: 'options' });
+  if (!isRecord(options) || !['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean' || (options.custom !== undefined && typeof options.custom !== 'boolean')) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Invalid manifest generation options', { at: 'options' });
   if (options.useComponentAsReference && !options.insertComponents) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
   const sourceHash = hashOpenApiDocument(source);
   const swagger = source.swagger === '2.0';
@@ -510,7 +514,7 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     $schema: ZOPIA_MANIFEST_SCHEMA,
     zopiaVersion: ZOPIA_VERSION,
     mode: options.mode,
-    options: { insertComponents: options.insertComponents, useComponentAsReference: options.useComponentAsReference },
+    options: { insertComponents: options.insertComponents, useComponentAsReference: options.useComponentAsReference, ...(options.custom === true ? { custom: true } : {}) },
     pathOrder: Object.keys(source.paths),
     schemaComponentsPresent: swagger
       ? Object.prototype.hasOwnProperty.call(source, 'definitions')
@@ -592,8 +596,8 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'pathOrder', 'schemaComponentsPresent', 'infoOverlay', 'documentOverlay', 'pathsOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis', 'webhooks', 'webhookOrder', 'webhooksOverlay'], 'root');
   if (manifest.zopiaVersion !== ZOPIA_VERSION) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest writer version');
   if (manifest.mode !== 'directory' && manifest.mode !== 'flat') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest mode');
-  if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest generation options');
-  validateKeys(manifest.options, ['insertComponents', 'useComponentAsReference'], 'options');
+  if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents || (manifest.options.custom !== undefined && typeof manifest.options.custom !== 'boolean')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest generation options');
+  validateKeys(manifest.options, ['insertComponents', 'useComponentAsReference', 'custom'], 'options');
   if (!Array.isArray(manifest.pathOrder) || manifest.pathOrder.some((path) => typeof path !== 'string' || !path.startsWith('/') && !path.startsWith('x-')) || new Set(manifest.pathOrder).size !== manifest.pathOrder.length) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest path order');
   if (typeof manifest.schemaComponentsPresent !== 'boolean') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest schema-component presence');
   if (!isRecord(manifest.source) || !['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source');
@@ -759,6 +763,7 @@ export async function writeZopiaManifest(outputDir: string, manifest: ZopiaManif
   const file = join(root, ZOPIA_MANIFEST_FILE);
   const temporary = `${file}.tmp`;
   const content = serializeZopiaManifest(manifest);
+  if (await readFile(file, 'utf8').catch(() => undefined) === content) return file;
   let temporaryWritten = false;
   try {
     await mkdir(root, { recursive: true });
