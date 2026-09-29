@@ -178,7 +178,7 @@ stderr, hint included) · `2` internal error (should never happen — report it)
 | R-101 | 📂 **Import, don't re-type** — your app imports the generated `index.ts` files; their Zod schemas *are* the validation | — |
 | R-102 | 🔄 **Spec or generation options changed?** re-run `zopia generate` — output is idempotent (P-1); manifest staleness warns on source/config/incomplete-tree drift and safely prunes only obsolete manifest-owned files (`ZOPIA_WARN_STALE_TREE`) | [07 → Regeneration](07-api-docs.md#-regeneration--manual-edits-phase-1-policy) |
 | R-103 | ✍️ **Hand edits** — Phase 1 overwrites them on regeneration (see the file banner); the merge-safe custom layer arrives in Phase 3 | [07 → Regeneration](07-api-docs.md#-regeneration--manual-edits-phase-1-policy) |
-| R-104 | 🧪 **km-api helpers** — `makeFullPath`, `makeParams`, `convertResponseType`, … are available on every generated config for free | [Concepts → km-api](05-concepts.md#-km-api) |
+| R-104 | 🧪 **km-api helpers** — `makeFullPath`, `makeParams`, `convertResponseType`, … are available on every generated config for free | [Concepts → km-api](https://github.com/komeilm76/zopia/blob/main/docs/05-concepts.md#-km-api) |
 | R-105 | 🚫 **No zopia import in app code** — generated files depend only on `zod` + `km-api` (R-502) | — |
 | R-106 | 🌳 **Runtime tree loading** — when wiring endpoints dynamically beats importing files one by one, `createApiDocs()` from the opt-in `zopia/runtime` subpath turns the whole directory into one nested object (plus the `flattenApiDocs` flat record); generation output is untouched | [07 → Runtime tree consumption](07-api-docs.md#-runtime-tree-consumption--createapidocs) |
 
@@ -223,9 +223,9 @@ try {
 ```
 
 The full error-code table lives in
-[Architecture → Error model](04-architecture.md#-error-model).
+[Architecture → Error model](https://github.com/komeilm76/zopia/blob/main/docs/04-architecture.md#-error-model).
 
 ## 🔗 Next
 
 - ⚙️ Every option → [Configuration](09-configuration.md)
-- 🧪 How all of this is tested → [Testing](11-testing.md)
+- 🧪 How all of this is tested → [Testing](https://github.com/komeilm76/zopia/blob/main/docs/11-testing.md)

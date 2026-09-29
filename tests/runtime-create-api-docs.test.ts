@@ -211,6 +211,35 @@ describe('runtime api-docs tree consumption (S-94)', () => {
     expect(Object.keys(flattenApiDocs(secondTree))).toEqual(Object.keys(flattenApiDocs(firstTree)));
   });
 
+  it('S-94/P-1: integer-like path segments keep enumeration deterministic (JS numeric-key ordering)', async () => {
+    // JavaScript objects enumerate integer-like own keys first, in ascending numeric
+    // order, regardless of insertion order. Path segments such as `/9` or `/123/items`
+    // therefore reorder the enumeration — the requirement is determinism (same tree ⇒
+    // same key order), which must stay pinned for both the tree and the flat record.
+    const root = await temporaryDirectory();
+    await openApiToApiDocs({
+      openapi: '3.1.0',
+      info: { title: 'Numeric', version: '1' },
+      paths: {
+        '/users': { get: { operationId: 'listUsers', responses: { '200': { description: 'ok' } } } },
+        '/123/items': { get: { operationId: 'numericItems', responses: { '200': { description: 'ok' } } } },
+        '/9': { get: { operationId: 'nine', responses: { '200': { description: 'ok' } } } },
+      },
+    }, { outDir: root });
+    const first = await createApiDocs(root);
+    const second = await createApiDocs(root);
+    expect(treeKeys(first as unknown as Record<string, unknown>)).toEqual(treeKeys(second as unknown as Record<string, unknown>));
+    expect(Object.keys(first)).toEqual(['9', '123', 'users']);
+    expect(first['9'].get.operationId).toBe('nine');
+    expect(first['123'].items.get.operationId).toBe('numericItems');
+    const flatFirst = flattenApiDocs(first);
+    const flatSecond = flattenApiDocs(second);
+    expect(Object.keys(flatFirst)).toEqual(Object.keys(flatSecond));
+    expect(Object.keys(flatFirst)).toEqual(['nine', 'numericItems', 'listUsers']);
+    expect(flatFirst.nine.pathShape).toBe('/9');
+    expect(flatFirst.numericItems.pathShape).toBe('/123/items');
+  });
+
   it('S-94: absolute and relative directory paths load through pathToFileURL (Windows-safe)', async () => {
     const outputDir = await temporaryDirectory();
     await openApiToApiDocs(splittableSpec, { outDir: outputDir });

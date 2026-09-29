@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-09-29
 
+### 🔄 Changed
+- 📦 **Slimmer npm package — practical docs only.** The published archive now
+  ships just the user-facing guides (`docs/07-api-docs.md`,
+  `docs/09-configuration.md`, `docs/10-usage.md`) next to `README.md` /
+  `CHANGELOG.md`; the development documentation (overview, targets, roadmap,
+  architecture, concepts, conversions, components, testing, standards, the
+  docs map, and the publish-workflow example) stays in the GitHub repository
+  and is linked from the README — npm users installing the package get
+  usage/installation docs, not project management artifacts. The tarball
+  shrinks **239 KB → 182 KB packed (915 KB → 750 KB unpacked, 50 → 39
+  files)**; `npm` force-includes `README*` from any directory, so the docs map
+  is explicitly negated (`!docs/README.md`) in `files`. `package:check` and
+  the release contract now enforce the slim archive: a missing practical doc
+  fails, and any development doc leaking into the pack fails.
+
 ### ✨ Added
 - 🌳 **Runtime tree consumption — `zopia/runtime` (S-94).** New opt-in subpath
   export (`import { createApiDocs, flattenApiDocs } from 'zopia/runtime'`) that

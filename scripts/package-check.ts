@@ -67,11 +67,15 @@ try {
   if (name !== packageManifest.name || version !== packageManifest.version) throw new Error(`unexpected package identity: ${name}@${version}`);
 
   const paths = files.map((file) => file.path);
-  const required = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'bin/zopia.js', 'src/index.ts', 'docs/README.md'];
+  const packedDocs = ['docs/07-api-docs.md', 'docs/09-configuration.md', 'docs/10-usage.md'];
+  const required = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'bin/zopia.js', 'src/index.ts', 'src/runtime.ts', ...packedDocs];
   for (const path of required) if (!paths.includes(path)) throw new Error(`package archive is missing ${path}`);
-  const allowed = /^(?:package\.json|README\.md|CHANGELOG\.md|LICENSE|bin\/|src\/|docs\/)/;
+  const allowed = /^(?:package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$|bin\/|src\/|docs\/(?:07-api-docs|09-configuration|10-usage)\.md$)/;
   const unexpected = paths.filter((path) => !allowed.test(path));
   if (unexpected.length) throw new Error(`package archive contains private files: ${unexpected.join(', ')}`);
+  // npm users get practical usage/installation docs only — development docs stay on GitHub.
+  const internalDocs = paths.filter((path) => /^docs\//.test(path) && !packedDocs.includes(path));
+  if (internalDocs.length) throw new Error(`package archive contains development-only docs: ${internalDocs.join(', ')}`);
   if (paths.some((path) => /^(?:tests|scripts|coverage|km-api-promts)\//.test(path) || /(?:^|\/)(?:bun\.lock|package-lock\.json|tsconfig\.json|vitest\.config\.mts)$/.test(path))) {
     throw new Error('package archive contains development-only files');
   }

@@ -27,7 +27,10 @@
   "files": [
     "bin",
     "src",
-    "docs",
+    "docs/07-api-docs.md",
+    "docs/09-configuration.md",
+    "docs/10-usage.md",
+    "!docs/README.md",
     "CHANGELOG.md",
     "LICENSE",
     "README.md"

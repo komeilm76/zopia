@@ -252,7 +252,7 @@ With the default options (`insertComponents: false`), every `index.ts` imports
 **only** `zod` and `km-api` (R-502): each component use is inlined into its
 request/parameter/response expression (R-403). Cross-file imports appear
 **only** when `useComponentAsReference` is `true` — see
-[Components](08-components.md).
+[Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md).
 
 ## 📦 The manifest — `.zopia-manifest.json`
 
@@ -408,5 +408,5 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 
 ## 🔗 Next
 
-- 🧱 What changes when components are emitted → [Components](08-components.md)
+- 🧱 What changes when components are emitted → [Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md)
 - ⚙️ Every option that shapes this output → [Configuration](09-configuration.md)

@@ -115,23 +115,33 @@ modules. See [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs
 
 ## 📚 Documentation
 
-Everything about the project — targets, architecture, conversion rules,
-output format, configuration, testing, standards — lives in [`docs/`](docs/).
+The **practical guides ship inside the npm package** — usage, configuration,
+and the generated output format. The development documentation (project
+targets, roadmap, architecture, testing strategy, engineering standards)
+stays in the
+[GitHub repository](https://github.com/komeilm76/zopia/tree/main/docs).
+
+**📦 Packed with the npm package** (relative links, in `docs/`):
 
 | 📄 Document | Contents |
 | --- | --- |
-| 🧭 [Overview](docs/01-overview.md) | What zopia is, the problem it solves, principles, non-goals |
-| 🎯 [Targets](docs/02-targets.md) | The explicit, testable targets of this project |
-| 🗺️ [Roadmap](docs/03-roadmap.md) | Phases, milestones, definition of done |
-| 🏗️ [Architecture](docs/04-architecture.md) | Modules, pipeline, internal model, error model, safety |
-| 🧩 [Concepts](docs/05-concepts.md) | Glossary — Swagger 2.0, OpenAPI 3.x, JSON Schema, `$ref`, Zod v4, km-api |
-| 🔄 [Conversions](docs/06-conversions.md) | The four engines: algorithms, mapping tables, edge cases |
-| 📄 [API docs format](docs/07-api-docs.md) | `directory` & `flat` layouts, `index.ts` contract, manifest |
-| 🧱 [Components](docs/08-components.md) | `insertComponents` / `useComponentAsReference`, `$ref` graphs |
-| ⚙️ [Configuration](docs/09-configuration.md) | Full option reference, defaults, validation rules |
 | 🚀 [Usage](docs/10-usage.md) | Installation, programmatic API, CLI, end-to-end example |
-| 🧪 [Testing](docs/11-testing.md) | Vitest strategy, scenario matrix, fixtures, coverage gates |
-| 📏 [Standards](docs/12-standards.md) | Code, JSDoc, commits, changelog, releases, key decisions |
+| ⚙️ [Configuration](docs/09-configuration.md) | Full option reference, defaults, validation rules |
+| 📄 [API docs format](docs/07-api-docs.md) | `directory` & `flat` layouts, `index.ts` contract, manifest, runtime consumption |
+
+**🐙 GitHub-only** (development docs, not packed):
+
+| 📄 Document | Contents |
+| --- | --- |
+| 🧭 [Overview](https://github.com/komeilm76/zopia/blob/main/docs/01-overview.md) | What zopia is, the problem it solves, principles, non-goals |
+| 🎯 [Targets](https://github.com/komeilm76/zopia/blob/main/docs/02-targets.md) | The explicit, testable targets of this project |
+| 🗺️ [Roadmap](https://github.com/komeilm76/zopia/blob/main/docs/03-roadmap.md) | Phases, milestones, definition of done |
+| 🏗️ [Architecture](https://github.com/komeilm76/zopia/blob/main/docs/04-architecture.md) | Modules, pipeline, internal model, error model, safety |
+| 🧩 [Concepts](https://github.com/komeilm76/zopia/blob/main/docs/05-concepts.md) | Glossary — Swagger 2.0, OpenAPI 3.x, JSON Schema, `$ref`, Zod v4, km-api |
+| 🔄 [Conversions](https://github.com/komeilm76/zopia/blob/main/docs/06-conversions.md) | The four engines: algorithms, mapping tables, edge cases |
+| 🧱 [Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md) | `insertComponents` / `useComponentAsReference`, `$ref` graphs |
+| 🧪 [Testing](https://github.com/komeilm76/zopia/blob/main/docs/11-testing.md) | Vitest strategy, scenario matrix, fixtures, coverage gates |
+| 📏 [Standards](https://github.com/komeilm76/zopia/blob/main/docs/12-standards.md) | Code, JSDoc, commits, changelog, releases, key decisions |
 
 ## 🏗️ Project structure
 
@@ -161,7 +171,7 @@ zopia/
 
 ## 🧪 Development
 
-zopia is a **Bun-first** project (see [docs/12-standards.md](docs/12-standards.md)):
+zopia is a **Bun-first** project (see [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/12-standards.md)):
 
 ```bash
 bun install --frozen-lockfile # 📦 reproducible install from bun.lock
@@ -179,7 +189,7 @@ bun run release:check         # 🚢 complete pinned-Bun prepublish gate
 
 ## 🤝 Contributing
 
-Read [docs/12-standards.md](docs/12-standards.md) first — it defines code style,
+Read [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/12-standards.md) first — it defines code style,
 JSDoc rules, the commit convention, and the changelog rule. Every feature ships
 **with** its documentation in the same commit.
 
