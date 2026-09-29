@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   files)**; `npm` force-includes `README*` from any directory, so the docs map
   is explicitly negated (`!docs/README.md`) in `files`. `package:check` and
   the release contract now enforce the slim archive: a missing practical doc
-  fails, and any development doc leaking into the pack fails.
+  fails, and any development doc leaking into the pack fails. The release
+  standard (R-192) and the docs map describe the split.
 
 ### ✨ Added
 - 🌳 **Runtime tree consumption — `zopia/runtime` (S-94).** New opt-in subpath
