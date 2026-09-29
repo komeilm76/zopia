@@ -1,0 +1,25 @@
+{
+  "name": "zopia-vscode-navigator",
+  "displayName": "Zopia Navigator",
+  "version": "0.1.0",
+  "description": "Jump between a Swagger/OpenAPI document and the zopia-generated api-docs tree in both directions.",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "publisher": "zopia",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/komeilm76/zopia", "directory": "editors/vscode" },
+  "activationEvents": ["onLanguage:json", "onLanguage:jsonc", "onLanguage:yaml", "onLanguage:typescript"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "zopia.openSpecLocation", "title": "Zopia: Open spec location" },
+      { "command": "zopia.openGeneratedCode", "title": "Zopia: Open generated code" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "zopia.openSpecLocation", "when": "resourceExtname == .ts" },
+        { "command": "zopia.openGeneratedCode", "when": "resourceExtname =~ /\\.(json|jsonc|yaml|yml)$/" }
+      ]
+    }
+  }
+}

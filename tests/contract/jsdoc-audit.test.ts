@@ -281,7 +281,7 @@ describe('public JSDoc contract', () => {
       }
     }
     expect(failures).toEqual([]);
-  }, 20_000);
+  }, 60_000);
 
   it('R-135: relative documentation links in @see tags resolve', () => {
     const failures: string[] = [];

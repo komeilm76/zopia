@@ -122,7 +122,8 @@ describe('CLI command contract', () => {
     await runCli(['--help'], capture.output);
 
     expect(capture.stdout).toHaveLength(1);
-    expect(capture.stdout[0]).toContain('zopia generate <spec.json> <output-dir>');
+    expect(capture.stdout[0]).toContain('zopia generate <spec.json|spec.yaml> [output-dir]');
+    expect(capture.stdout[0]).toContain('[--config path]');
     expect(capture.stdout[0]).toContain('zopia reverse <docs-dir|manifest.json>');
     expect(capture.stdout[0]).toContain('--use-component-as-reference');
     expect(capture.stdout[0]).toContain('Security: reverse executes generated TypeScript');
@@ -180,7 +181,7 @@ describe('CLI command contract', () => {
     { label: 'a cross-command reverse flag', argv: ['reverse', 'docs', '--mode', 'flat'], at: '--mode' },
     { label: 'a missing output value before reading input', argv: ['reverse', 'missing', '--out'], at: '--out' },
     { label: 'a missing version value before reading input', argv: ['reverse', 'missing', '--version'], at: '--version' },
-    { label: 'an invalid reverse version before reading input', argv: ['reverse', 'missing', '--version', '2.0'], at: '--version' },
+    { label: 'an invalid reverse version before reading input', argv: ['reverse', 'missing', '--version', '4.0'], at: '--version' },
     { label: 'a duplicate output flag', argv: ['reverse', 'docs', '--out', 'one.json', '--out', 'two.json'], at: '--out' },
     { label: 'an unknown command', argv: ['publish', 'spec.json'], at: 'publish' },
   ])('R-932: rejects $label', async ({ argv, at }) => {
@@ -236,6 +237,6 @@ describe('CLI command contract', () => {
     await import('../src/cli');
 
     expect(process.exitCode).toBe(0);
-    expect(write).toHaveBeenCalledWith(expect.stringContaining('zopia generate <spec.json> <output-dir>'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('zopia generate <spec.json|spec.yaml> [output-dir]'));
   });
 });

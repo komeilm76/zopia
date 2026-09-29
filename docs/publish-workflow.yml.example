@@ -1,0 +1,48 @@
+name: publish
+
+# Publishes zopia to npm whenever a GitHub Release is published, or manually
+# via workflow_dispatch. Credentials live in the repository secret NPM_TOKEN
+# (automation/classic token with publish rights) or npm trusted publishing;
+# the agent/maintainer running the pipeline never sees them. --provenance
+# attestations require the id-token permission declared below.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Bun (pinned packageManager version)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+
+      - name: Install Node (for the npm client)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify release tag matches package.json version
+        if: github.event_name == 'release'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v${version}" == "${{ github.event.release.tag_name }}" || {
+            echo "Tag ${{ github.event.release.tag_name }} does not match package.json v${version}"
+            exit 1
+          }
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

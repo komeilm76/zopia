@@ -21,6 +21,8 @@ export interface ZopiaManifestGenerationIdentity {
   useComponentAsReference: boolean;
   /** Whether this generation should retain a manifest. */
   manifest: boolean;
+  /** Whether endpoint custom companion modules were requested. */
+  custom?: boolean;
 }
 
 /** Stable reason why an existing generated tree is stale. */
@@ -29,6 +31,7 @@ export type ZopiaManifestStalenessReason =
   | 'source-changed'
   | 'mode-changed'
   | 'component-options-changed'
+  | 'custom-companions-changed'
   | 'generated-files-missing'
   | 'manifest-disabled';
 
@@ -49,11 +52,18 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+const isManifestComponent = (value: unknown): value is { kind?: string; file?: unknown } => typeof value === 'object' && value !== null;
+
 function collectOwnedFiles(manifest: GeneratedZopiaManifest): string[] {
   const files = new Set<string>([ZOPIA_MANIFEST_FILE]);
   for (const api of manifest.apis) files.add(api.file);
+  for (const webhook of manifest.webhooks ?? []) files.add(webhook.file);
   for (const component of manifest.components) if (component.file !== null) files.add(component.file);
-  if (manifest.options.insertComponents) files.add('components/index.ts');
+  if (manifest.options.insertComponents) {
+    files.add('components/index.ts');
+    if (manifest.components?.some((component) => isManifestComponent(component) && component.kind === 'parameter' && typeof component.file === 'string' && component.file)) files.add('components/parameters/index.ts');
+    if (manifest.components?.some((component) => isManifestComponent(component) && component.kind === 'response' && typeof component.file === 'string' && component.file)) files.add('components/responses/index.ts');
+  }
   return [...files].sort(compareText);
 }
 
@@ -110,6 +120,7 @@ export async function inspectZopiaManifestStaleness(outputDir: string, identity:
   if (generated.source.sha256 !== identity.sourceSha256) reasons.push('source-changed');
   if (generated.mode !== identity.mode) reasons.push('mode-changed');
   if (generated.options.insertComponents !== identity.insertComponents || generated.options.useComponentAsReference !== identity.useComponentAsReference) reasons.push('component-options-changed');
+  if ((generated.options.custom === true) !== (identity.custom === true)) reasons.push('custom-companions-changed');
   if (await hasMissingOwnedFiles(outputDir, ownedFiles)) reasons.push('generated-files-missing');
   if (!identity.manifest) reasons.push('manifest-disabled');
   return {
@@ -131,6 +142,7 @@ export function formatManifestStaleness(reasons: readonly ZopiaManifestStaleness
     'source-changed': 'the source document changed',
     'mode-changed': 'the layout mode changed',
     'component-options-changed': 'component generation options changed',
+    'custom-companions-changed': 'custom companion modules were enabled or disabled',
     'generated-files-missing': 'manifest-owned generated files are missing or unsafe',
     'manifest-disabled': 'manifest output was disabled',
   };

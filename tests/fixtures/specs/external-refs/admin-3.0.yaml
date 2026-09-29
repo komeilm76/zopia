@@ -1,0 +1,72 @@
+openapi: 3.0.3
+info:
+  title: Admin API
+  version: 1.0.0
+  contact:
+    name: Platform Team
+  x-provider: zopia
+servers:
+  - url: https://admin.internal/v1
+security:
+  - BearerAuth: []
+tags:
+  - name: users
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      tags:
+        - users
+      parameters:
+        - name: limit
+          in: query
+          description: maximum users returned per page
+          schema:
+            type: integer
+            maximum: 200
+      responses:
+        '200':
+          description: a page of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: './shared-schemas.yaml#/User'
+        default:
+          $ref: 'shared-responses.yaml#/Problem'
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags:
+        - users
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: 'common.json#/definitions/UserId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './shared-schemas.yaml#/UserUpdate'
+      responses:
+        '200':
+          description: the updated user
+          content:
+            application/json:
+              schema:
+                $ref: './shared-schemas.yaml#/User'
+        default:
+          $ref: 'shared-responses.yaml#/Problem'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

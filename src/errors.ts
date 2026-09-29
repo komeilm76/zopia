@@ -12,6 +12,7 @@ export const ZOPIA_ERROR_CODES = Object.freeze([
   'ZOPIA_SCHEMA_INVALID',
   'ZOPIA_SPEC_INVALID',
   'ZOPIA_SPEC_INVALID_JSON',
+  'ZOPIA_SPEC_INVALID_YAML',
   'ZOPIA_SPEC_MISSING_PATHS',
   'ZOPIA_SPEC_PATH_REF',
   'ZOPIA_SPEC_UNSUPPORTED_VERSION',
@@ -43,6 +44,7 @@ export interface ZopiaErrorOptions {
 const DEFAULT_ERROR_HINTS: Record<ZopiaErrorCode, string> = {
   ZOPIA_CONFIG_INVALID: 'correct the invalid option or argument',
   ZOPIA_SPEC_INVALID_JSON: 'provide readable, valid JSON',
+  ZOPIA_SPEC_INVALID_YAML: 'provide readable, valid YAML',
   ZOPIA_SPEC_INVALID: 'fix the invalid Swagger/OpenAPI document',
   ZOPIA_SPEC_UNSUPPORTED_VERSION: 'use Swagger 2.0, OpenAPI 3.0, or OpenAPI 3.1',
   ZOPIA_SPEC_MISSING_PATHS: 'add a paths object to the API document',

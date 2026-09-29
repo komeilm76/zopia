@@ -27,23 +27,54 @@ export {
 } from './conversions/openapi';
 export {
   openApiToApiDocs,
+  readOpenApiSourceInput,
+  validateOpenApiReferences,
+  type ReadOpenApiSourceInputResult,
   type ZopiaGenerateOptions,
   type ZopiaGeneratedFile,
   type ZopiaGenerateResult,
 } from './conversions/openapi-to-api-docs-public';
 export {
   collectOpenApiOperations,
+  collectOpenApiWebhookOperations,
   deriveOperationId,
   OPENAPI_METHODS,
   type OpenApiMethod,
   type OpenApiOperation,
 } from './conversions/openapi-to-api-docs';
 export { endpointFilePath, type ApiDocsMode } from './conversions/api-docs-layout';
-export { planApiDocsFiles, type ApiDocsFilePlan } from './conversions/api-docs-plan';
+export { assertUniqueOperationIdsAcrossScopes, planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './conversions/api-docs-plan';
 export { generateApiDocsFiles, type GeneratedApiDocsFile, type GenerateApiDocsOptions } from './conversions/api-docs-generate';
+export { planPresetBuckets, ZOPIA_GENERATE_PRESETS, type ZopiaGeneratePreset, type ZopiaPresetBucket, type ZopiaPresetTree } from './conversions/api-docs-presets';
+export { loadNavigationIndex, navigationIndexFromManifest, specPointerAtLine, specPointerToLine, specPointersToLines, type ZopiaNavigationIndex, type ZopiaNavigationKind, type ZopiaNavigationLocation } from './api-docs-navigation';
 export { apiDocsFacadeAccess } from './conversions/api-docs-facade';
 export { buildOpenApiOperationIR, type OpenApiOperationIR } from './conversions/openapi-ir';
 export { extractOperationContracts, type OperationContracts } from './conversions/openapi-contracts';
 export { resolveOpenApiLocalRef } from './conversions/openapi-ref';
 export { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, type ZopiaReverseOptions, type ZopiaReverseResult } from './conversions/manifest-to-openapi';
 export { type ZopiaManifest } from './conversions/manifest-writer';
+export {
+  defineConfig,
+  loadZopiaConfig,
+  type ZopiaConfigLoadOptions,
+  type ZopiaProjectConfig,
+  type ZopiaProjectGenerateConfig,
+  type ZopiaProjectReverseConfig,
+} from './config';
+export {
+  validateZopia,
+  ZOPIA_VALIDATION_CODES,
+  type ZopiaValidateOptions,
+  type ZopiaValidationCode,
+  type ZopiaValidationIssue,
+  type ZopiaValidationResult,
+} from './validation';
+export {
+  diffOpenApiDocuments,
+  diffOpenApiSpecs,
+  type ZopiaDiffArea,
+  type ZopiaDiffCounts,
+  type ZopiaDiffEntry,
+  type ZopiaDiffKind,
+  type ZopiaDiffResult,
+} from './diff';

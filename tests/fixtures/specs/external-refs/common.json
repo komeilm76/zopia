@@ -1,0 +1,21 @@
+{
+  "definitions": {
+    "UserId": {
+      "type": "integer",
+      "format": "int64",
+      "minimum": 1
+    },
+    "Address": {
+      "type": "object",
+      "properties": {
+        "street": { "type": "string" },
+        "city": { "type": "string" },
+        "postalCode": { "$ref": "#/definitions/PostalCode" }
+      }
+    },
+    "PostalCode": {
+      "type": "string",
+      "pattern": "^[0-9]{5}$"
+    }
+  }
+}

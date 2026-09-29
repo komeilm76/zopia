@@ -2,7 +2,7 @@ import { useTemporaryDirectories } from './test-temporary-directories';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { openApiToApiDocs, ZopiaError } from '../src';
+import { apiDocsToOpenApi, openApiToApiDocs, ZopiaError } from '../src';
 
 const temporaryDirectory = useTemporaryDirectories();
 
@@ -155,5 +155,78 @@ describe('openApiToApiDocs public API', () => {
 
     try { await openApiToApiDocs(minimal(), { mode: 'invalid' as any }); }
     catch (error) { expect(error).toBeInstanceOf(ZopiaError); }
+  });
+});
+
+describe('operationId identity (round 9 coverage)', () => {
+  it('rejects duplicate explicit operationIds and renumbers derived predecessors deterministically', async () => {
+    const base = { openapi: '3.1.0' as const, info: { title: 'T', version: '1' }, components: { schemas: {} } };
+    const duplicate = {
+      ...base,
+      paths: {
+        '/a': { get: { operationId: 'shared', responses: { '200': { description: 'ok' } } } },
+        '/b': { get: { operationId: 'shared', responses: { '200': { description: 'ok' } } } },
+      },
+    };
+    await expect(openApiToApiDocs(duplicate as any, { outDir: await temporaryDirectory() })).rejects.toThrow('Duplicate operationId: shared');
+    // derived id later claimed explicitly: the derived predecessor is renamed with a numeric suffix
+    const outputDir = await temporaryDirectory();
+    const result = await openApiToApiDocs({
+      ...base,
+      paths: {
+        '/a': { get: { responses: { '200': { description: 'ok' } } } },
+        '/b': { get: { operationId: 'getA', responses: { '200': { description: 'ok' } } } },
+      },
+    } as any, { outDir: outputDir });
+    expect(result.files.map((file) => file.path).sort()).toEqual(['.zopia-manifest.json', 'a/get/index.ts', 'b/get/index.ts']);
+    // the generation-internal rename is visible in the manifest; the source
+    // truth (op without operationId) round-trips back EXACTLY as authored
+    const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')) as { apis: { operationId?: string }[] };
+    expect(manifest.apis.map((api) => api.operationId).sort()).toEqual(['getA', 'getA2']);
+    const reversed = await apiDocsToOpenApi(outputDir);
+    const operations = Object.values(reversed.openapi.paths ?? {}).flatMap((item) => Object.values(item as Record<string, { operationId?: string }>)).map((operation) => operation.operationId).sort();
+    expect(operations).toEqual(['getA', undefined]);
+  });
+});
+
+describe('generate options validation (round 9 coverage)', () => {
+  const spec = { openapi: '3.1.0' as const, info: { title: 'T', version: '1' }, paths: {}, components: { schemas: {} } };
+  it('rejects every invalid options shape with its dedicated typed message', async () => {
+    const cases: [unknown, string][] = [
+      [null, 'generate options must be an object'],
+      [[], 'generate options must be an object'],
+      ['nope', 'generate options must be an object'],
+      [{ bogus: true }, 'unknown generate option: bogus'],
+      [{ outDir: '   ' }, 'outDir must be a non-empty path'],
+      [{ outDir: 42 }, 'outDir must be a non-empty path'],
+      [{ outDir: 'a\u0000b' }, 'outDir must be a non-empty path'],
+      [{ mode: 'grid' }, 'unsupported layout mode'],
+      [{ insertComponents: 'yes' }, 'insertComponents must be a boolean'],
+      [{ useComponentAsReference: 1 }, 'useComponentAsReference must be a boolean'],
+      [{ manifest: 'no' }, 'manifest must be a boolean'],
+      [{ custom: 0 }, 'custom must be a boolean'],
+    ];
+    for (const [options, message] of cases) {
+      await expect(openApiToApiDocs(spec as any, options as any)).rejects.toMatchObject({ code: 'ZOPIA_CONFIG_INVALID' } satisfies Partial<ZopiaError>);
+      await expect(openApiToApiDocs(spec as any, options as any)).rejects.toThrow(message);
+    }
+  });
+});
+
+describe('accepted input shapes (round 9 coverage)', () => {
+  const spec = { openapi: '3.1.0' as const, info: { title: 'T', version: '1' }, paths: { '/ping': { get: { operationId: 'ping', responses: { '200': { description: 'ok' } } } } }, components: { schemas: {} } };
+  it('accepts JSON text, YAML text, and file paths identically, and rejects malformed JSON text', async () => {
+    const out1 = await temporaryDirectory();
+    const byText = await openApiToApiDocs(JSON.stringify(spec), { outDir: out1 });
+    expect(byText.files.map((file) => file.path)).toContain('ping/get/index.ts');
+    const out2 = await temporaryDirectory();
+    const byYaml = await openApiToApiDocs('openapi: 3.1.0\ninfo:\n  title: T\n  version: \'1\'\npaths: {}\n', { outDir: out2 });
+    expect(byYaml.files.length).toBeGreaterThan(0);
+    const out3 = await temporaryDirectory();
+    const seed = join(out3, 'spec.json');
+    await writeFile(seed, JSON.stringify(spec), 'utf8');
+    const byFile = await openApiToApiDocs(seed, { outDir: join(out3, 'tree') });
+    expect(byFile.files.map((file) => file.path)).toEqual(byText.files.map((file) => file.path));
+    await expect(openApiToApiDocs('{\"openapi\": ', { outDir: await temporaryDirectory() })).rejects.toMatchObject({ code: 'ZOPIA_SPEC_INVALID_JSON' } satisfies Partial<ZopiaError>);
   });
 });

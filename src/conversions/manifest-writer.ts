@@ -1,6 +1,7 @@
+import { deriveReusableParameterSchema, deriveReusableResponseSchema, reusableDeclarations } from './openapi-contracts';
 import { asZopiaError, ZopiaError } from '../errors';
 import { createHash } from 'node:crypto';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { jsonSchemaToZod, type JsonSchemaOverlay } from './json-schema-to-zod';
 import type { ApiDocsMode } from './api-docs-layout';
@@ -15,7 +16,7 @@ export const ZOPIA_MANIFEST_SCHEMA = 'zopia:manifest@1' as const;
 export const ZOPIA_MANIFEST_FILE = '.zopia-manifest.json' as const;
 
 /** Package version recorded by the current manifest writer. */
-export const ZOPIA_VERSION = '0.1.0' as const;
+export const ZOPIA_VERSION = '0.3.0' as const;
 
 /** Supported source dialect labels stored in a manifest. */
 export type ZopiaManifestSourceKind = 'swagger-2.0' | 'openapi-3.0' | 'openapi-3.1';
@@ -42,6 +43,8 @@ export interface ZopiaManifestGenerationOptions {
   insertComponents: boolean;
   /** Whether endpoint modules import emitted components. */
   useComponentAsReference: boolean;
+  /** Whether endpoint custom companion modules were requested. @default false */
+  custom?: boolean;
 }
 
 /** Original reference placement relative to one source operation. */
@@ -74,6 +77,8 @@ export interface ZopiaManifestResponseOverlay {
 export interface ZopiaManifestComponent {
   /** Exact source component name. */
   name: string;
+  /** Component kind: schema module, reusable parameter module, or reusable response module (D-18). Absent means `schema` (legacy manifests). */
+  kind?: 'schema' | 'parameter' | 'response';
   /** Emitted module path, or `null` when components were not emitted. Optional only for legacy reader compatibility. */
   file?: string | null;
   /** Complete original component schema. */
@@ -96,6 +101,30 @@ export interface ZopiaManifestApi {
   sourceOperation?: Record<string, unknown>;
   /** Whether the operation was inherited exclusively through a path-item `$ref`. */
   pathItemRef?: boolean;
+  /** Source reference placements. Readers also accept legacy representations. */
+  refs?: unknown;
+  /** Schema and operation restorations. Readers also accept legacy representations. */
+  overlay?: unknown;
+  /** Response metadata without a km-api representation. Readers also accept legacy representations. */
+  responseOverlay?: unknown;
+  /** Explicit operation security requirements, including an empty list. */
+  security?: unknown[];
+}
+
+/** One generated webhook endpoint and its reverse-conversion metadata (OpenAPI 3.1). */
+export interface ZopiaManifestWebhookApi {
+  /** Generated endpoint module path. Optional only for legacy reader compatibility. */
+  file?: string;
+  /** Original OpenAPI webhook name (not a URL path template). */
+  name: string;
+  /** Lowercase HTTP method. */
+  method: string;
+  /** Explicit or deterministically derived operation ID. */
+  operationId?: string;
+  /** Whether the operation was inherited exclusively through a webhook-item `$ref`. */
+  webhookItemRef?: boolean;
+  /** Complete original operation object. */
+  sourceOperation?: Record<string, unknown>;
   /** Source reference placements. Readers also accept legacy representations. */
   refs?: unknown;
   /** Schema and operation restorations. Readers also accept legacy representations. */
@@ -140,6 +169,8 @@ export interface ZopiaManifest {
   swaggerConsumes?: string[];
   /** Swagger response media types. */
   swaggerProduces?: string[];
+  /** Internal marker set when the manifest was dialect-downgraded from OpenAPI 3.x to Swagger 2.0 during reverse conversion; never persisted. */
+  dialectDowngraded?: true;
   /** Swagger reusable parameters. */
   swaggerParameters?: Record<string, unknown>;
   /** Swagger reusable responses. */
@@ -154,6 +185,12 @@ export interface ZopiaManifest {
   components?: ZopiaManifestComponent[];
   /** Generated endpoint records. */
   apis: ZopiaManifestApi[];
+  /** Generated webhook endpoint records (OpenAPI 3.1). Omitted when the source has no webhooks. */
+  webhooks?: ZopiaManifestWebhookApi[];
+  /** Exact source `webhooks` map key order. Present alongside `webhooks`. */
+  webhookOrder?: string[];
+  /** Webhook-item metadata retained outside endpoint code (`parameters`, `x-` keys, extension names). */
+  webhooksOverlay?: Record<string, unknown>;
 }
 
 /** Current writer component shape (legacy manifests may omit writer-owned fields). */
@@ -166,6 +203,22 @@ export interface GeneratedZopiaManifestComponent extends ZopiaManifestComponent 
 
 /** Current writer endpoint shape (legacy manifests may omit writer-owned fields). */
 export interface GeneratedZopiaManifestApi extends ZopiaManifestApi {
+  /** Portable generated endpoint path. */
+  file: string;
+  /** Explicit or deterministically derived operation identifier. */
+  operationId: string;
+  /** Complete original operation object. */
+  sourceOperation: Record<string, unknown>;
+  /** Canonical source reference placements. */
+  refs: ZopiaManifestRef[];
+  /** Canonical schema and operation restorations. */
+  overlay: ZopiaManifestOverlay[];
+  /** Canonical response metadata restorations. */
+  responseOverlay: ZopiaManifestResponseOverlay[];
+}
+
+/** Current writer webhook endpoint shape (legacy manifests may omit writer-owned fields). */
+export interface GeneratedZopiaManifestWebhookApi extends ZopiaManifestWebhookApi {
   /** Portable generated endpoint path. */
   file: string;
   /** Explicit or deterministically derived operation identifier. */
@@ -221,6 +274,8 @@ export interface GeneratedZopiaManifest extends ZopiaManifest {
   components: GeneratedZopiaManifestComponent[];
   /** Canonical generated endpoint records. */
   apis: GeneratedZopiaManifestApi[];
+  /** Generated webhook endpoint records, present when the source declares webhooks. */
+  webhooks?: GeneratedZopiaManifestWebhookApi[];
 }
 
 /** Options used by the pure manifest builder. */
@@ -231,6 +286,8 @@ export interface CreateZopiaManifestOptions {
   insertComponents: boolean;
   /** Whether endpoint modules import component files. */
   useComponentAsReference: boolean;
+  /** Whether endpoint custom companion modules were requested. @default false */
+  custom?: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -391,12 +448,13 @@ export function hashOpenApiDocument(document: OpenApiDocument): string {
  * @param source Normalized Swagger/OpenAPI source document.
  * @param plans Planned endpoint files represented by the source document.
  * @param options Layout and component-generation settings to record.
+ * @param webhookPlans Planned webhook endpoint files represented by the source `webhooks` map.
  * @returns Validated canonical current-writer manifest.
  * @throws {@link ZopiaError} when the source, plans, or options are invalid.
  */
-export function createZopiaManifest(source: OpenApiDocument, plans: readonly ApiDocsFilePlan[], options: CreateZopiaManifestOptions): GeneratedZopiaManifest {
+export function createZopiaManifest(source: OpenApiDocument, plans: readonly ApiDocsFilePlan[], options: CreateZopiaManifestOptions, webhookPlans: readonly ApiDocsFilePlan[] = []): GeneratedZopiaManifest {
   if (!isRecord(source) || !isRecord(source.info) || !isRecord(source.paths)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid manifest source document', { at: '#', hint: 'provide a normalized Swagger/OpenAPI document' });
-  if (!isRecord(options) || !['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Invalid manifest generation options', { at: 'options' });
+  if (!isRecord(options) || !['directory', 'flat'].includes(options.mode) || typeof options.insertComponents !== 'boolean' || typeof options.useComponentAsReference !== 'boolean' || (options.custom !== undefined && typeof options.custom !== 'boolean')) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'Invalid manifest generation options', { at: 'options' });
   if (options.useComponentAsReference && !options.insertComponents) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
   const sourceHash = hashOpenApiDocument(source);
   const swagger = source.swagger === '2.0';
@@ -410,6 +468,17 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     schema: cloneJson(schema),
     overlay: cloneJson(sortDerivedRecords(manifestSchemaOverlays(schema))),
   }));
+  if (options.insertComponents) {
+    const declared = reusableDeclarations(source);
+    for (const [kind, map, derive] of [['parameter', declared.parameter, deriveReusableParameterSchema], ['response', declared.response, deriveReusableResponseSchema]] as const) {
+      components.push(...Object.entries(map).sort(([left], [right]) => compareText(left, right)).flatMap(([name, declaration]) => {
+        const schema = derive(source, name, declaration);
+        // Schema-less responses render `z.void()` at use sites and carry no reusable schema (D-18).
+        if (kind === 'response' && schema === undefined) return [];
+        return [{ name, kind, file: `components/${kind}s/${name}/index.ts`, schema: cloneJson(schema), overlay: cloneJson(sortDerivedRecords(manifestSchemaOverlays(schema))) }];
+      }));
+    }
+  }
   const apis: GeneratedZopiaManifestApi[] = sortedPlans.map((plan) => ({
     file: plan.file,
     path: plan.path,
@@ -425,11 +494,27 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     responseOverlay: cloneJson(sortDerivedRecords(Object.entries(plan.operation.responses ?? {}).flatMap(([status, response]) => isRecord(response) && response.headers !== undefined ? [{ status, headers: response.headers }] : []))),
     ...(Object.prototype.hasOwnProperty.call(plan.operation, 'security') ? { security: cloneJson(plan.operation.security) as unknown[] } : {}),
   }));
+  const webhookNames = isRecord(source.webhooks) ? Object.keys(source.webhooks) : [];
+  const webhooks: GeneratedZopiaManifestWebhookApi[] = [...webhookPlans].sort((left, right) => compareText(left.file, right.file)).map((plan) => ({
+    file: plan.file,
+    name: plan.path,
+    method: plan.method,
+    operationId: plan.operationId,
+    sourceOperation: cloneJson(plan.operation),
+    ...(isRecord(source.webhooks?.[plan.path]) && typeof source.webhooks[plan.path].$ref === 'string' && !Object.prototype.hasOwnProperty.call(source.webhooks[plan.path], plan.method) ? { webhookItemRef: true } : {}),
+    refs: sortDerivedRecords(collectRefs(plan.operation)),
+    overlay: cloneJson(sortDerivedRecords([
+      ...collectOperationSchemaOverlays(plan.operation, swagger),
+      ...(['callbacks', 'servers', 'externalDocs', 'links'] as const).filter((key) => Object.prototype.hasOwnProperty.call(plan.operation, key)).map((key) => ({ key, value: plan.operation[key] })),
+    ])),
+    responseOverlay: cloneJson(sortDerivedRecords(Object.entries(plan.operation.responses ?? {}).flatMap(([status, response]) => isRecord(response) && response.headers !== undefined ? [{ status, headers: response.headers }] : []))),
+    ...(Object.prototype.hasOwnProperty.call(plan.operation, 'security') ? { security: cloneJson(plan.operation.security) as unknown[] } : {}),
+  }));
   const manifest: GeneratedZopiaManifest = {
     $schema: ZOPIA_MANIFEST_SCHEMA,
     zopiaVersion: ZOPIA_VERSION,
     mode: options.mode,
-    options: { insertComponents: options.insertComponents, useComponentAsReference: options.useComponentAsReference },
+    options: { insertComponents: options.insertComponents, useComponentAsReference: options.useComponentAsReference, ...(options.custom === true ? { custom: true } : {}) },
     pathOrder: Object.keys(source.paths),
     schemaComponentsPresent: swagger
       ? Object.prototype.hasOwnProperty.call(source, 'definitions')
@@ -443,7 +528,7 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
       sha256: sourceHash,
     },
     infoOverlay: cloneJson(Object.fromEntries(Object.entries(source.info).filter(([key]) => !['title', 'version', 'description'].includes(key)))),
-    documentOverlay: cloneJson(Object.fromEntries(Object.entries(source).filter(([key]) => key === 'externalDocs' || key === 'webhooks' || key === 'jsonSchemaDialect' || key.startsWith('x-')))),
+    documentOverlay: cloneJson(Object.fromEntries(Object.entries(source).filter(([key]) => key === 'externalDocs' || (key === 'webhooks' && webhookNames.length === 0) || key === 'jsonSchemaDialect' || key.startsWith('x-')))),
     pathsOverlay: cloneJson(Object.fromEntries(Object.entries(source.paths ?? {}).flatMap(([path, item]) => {
       if (path.startsWith('x-')) return [[path, item]];
       if (!isRecord(item)) return [];
@@ -470,6 +555,14 @@ export function createZopiaManifest(source: OpenApiDocument, plans: readonly Api
     ...(Object.prototype.hasOwnProperty.call(source, 'security') ? { defaultSecurity: cloneJson(source.security) } : {}),
     components,
     apis,
+    ...(webhookNames.length ? { webhookOrder: webhookNames } : {}),
+    ...(isRecord(source.webhooks) ? { webhooksOverlay: cloneJson(Object.fromEntries(webhookNames.flatMap((name) => {
+      const item = (source.webhooks as Record<string, unknown>)[name];
+      if (!isRecord(item)) return [];
+      const metadata = Object.fromEntries(Object.entries(item).filter(([key]) => !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(key)));
+      return Object.keys(metadata).length ? [[name, metadata]] : [];
+    }))) } : {}),
+    ...(webhooks.length ? { webhooks } : {}),
   };
   validateZopiaManifest(manifest);
   return manifest;
@@ -500,11 +593,11 @@ function validateSchemaOverlay(overlay: unknown, context: string): void {
  */
 export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest is GeneratedZopiaManifest {
   if (!isRecord(manifest) || manifest.$schema !== ZOPIA_MANIFEST_SCHEMA) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest schema');
-  validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'pathOrder', 'schemaComponentsPresent', 'infoOverlay', 'documentOverlay', 'pathsOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis'], 'root');
+  validateKeys(manifest, ['$schema', 'zopiaVersion', 'source', 'mode', 'options', 'pathOrder', 'schemaComponentsPresent', 'infoOverlay', 'documentOverlay', 'pathsOverlay', 'componentsOverlay', 'servers', 'swaggerHost', 'swaggerSchemes', 'swaggerConsumes', 'swaggerProduces', 'swaggerParameters', 'swaggerResponses', 'tags', 'securitySchemes', 'defaultSecurity', 'components', 'apis', 'webhooks', 'webhookOrder', 'webhooksOverlay'], 'root');
   if (manifest.zopiaVersion !== ZOPIA_VERSION) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest writer version');
   if (manifest.mode !== 'directory' && manifest.mode !== 'flat') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest mode');
-  if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest generation options');
-  validateKeys(manifest.options, ['insertComponents', 'useComponentAsReference'], 'options');
+  if (!isRecord(manifest.options) || typeof manifest.options.insertComponents !== 'boolean' || typeof manifest.options.useComponentAsReference !== 'boolean' || manifest.options.useComponentAsReference && !manifest.options.insertComponents || (manifest.options.custom !== undefined && typeof manifest.options.custom !== 'boolean')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest generation options');
+  validateKeys(manifest.options, ['insertComponents', 'useComponentAsReference', 'custom'], 'options');
   if (!Array.isArray(manifest.pathOrder) || manifest.pathOrder.some((path) => typeof path !== 'string' || !path.startsWith('/') && !path.startsWith('x-')) || new Set(manifest.pathOrder).size !== manifest.pathOrder.length) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest path order');
   if (typeof manifest.schemaComponentsPresent !== 'boolean') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest schema-component presence');
   if (!isRecord(manifest.source) || !['swagger-2.0', 'openapi-3.0', 'openapi-3.1'].includes(manifest.source.kind)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest source');
@@ -540,16 +633,20 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
   if (manifest.defaultSecurity !== undefined) validateSecurityRequirements(manifest.defaultSecurity, 'default security');
   if (!Array.isArray(manifest.apis)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest APIs');
   if (!Array.isArray(manifest.components)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest components');
-  if (!manifest.schemaComponentsPresent && manifest.components.length > 0) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Schema components require a declared source container');
+  if (!manifest.schemaComponentsPresent && manifest.components.some((component) => isRecord(component) && (!component.kind || component.kind === 'schema'))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Schema components require a declared source container');
 
   const componentNames = new Set<string>();
   const files = new Set<string>();
   for (const component of manifest.components) {
-    if (!isRecord(component) || typeof component.name !== 'string' || !component.name || componentNames.has(component.name)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${String((component as any)?.name)}`);
-    validateKeys(component, ['name', 'file', 'schema', 'overlay'], 'component');
-    componentNames.add(component.name);
+    const kind = isRecord(component) ? component.kind : undefined;
+    if (!isRecord(component) || kind !== undefined && kind !== 'schema' && kind !== 'parameter' && kind !== 'response' || typeof component.name !== 'string' || !component.name) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${String((component as any)?.name)}`);
+    const identity = `${kind === 'parameter' || kind === 'response' ? kind : 'schema'}:${component.name}`;
+    if (componentNames.has(identity)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid or duplicate zopia manifest component: ${component.name}`);
+    validateKeys(component, ['name', 'kind', 'file', 'schema', 'overlay'], 'component');
+    componentNames.add(identity);
     if (!Object.prototype.hasOwnProperty.call(component, 'schema')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Missing zopia manifest component schema: ${component.name}`);
-    const expectedFile = manifest.options.insertComponents ? `components/${component.name}/index.ts` : null;
+    const kindDirectory = kind === 'parameter' ? 'components/parameters' : kind === 'response' ? 'components/responses' : 'components';
+    const expectedFile = manifest.options.insertComponents ? `${kindDirectory}/${component.name}/index.ts` : null;
     if ((manifest.options.insertComponents && component.name.includes('/')) || component.file !== expectedFile || (component.file !== null && !isPortableManifestPath(component.file))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest component file: ${String(component.file)}`);
     if (component.file !== null) {
       const fileKey = component.file.toLowerCase();
@@ -593,6 +690,51 @@ export function validateZopiaManifest(manifest: ZopiaManifest): asserts manifest
       validateKeys(overlay, ['status', 'headers'], 'response overlay');
     }
   }
+
+  if (manifest.webhooks !== undefined) {
+    if (manifest.source.kind !== 'openapi-3.1') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest webhooks for this source kind');
+    if (!Array.isArray(manifest.webhooks) || !Array.isArray(manifest.webhookOrder) || manifest.webhookOrder.some((name) => typeof name !== 'string' || !name) || new Set(manifest.webhookOrder).size !== manifest.webhookOrder.length) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest webhook order');
+    if (manifest.webhooksOverlay !== undefined && !isRecord(manifest.webhooksOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', 'Invalid zopia manifest webhooksOverlay');
+    for (const [name, item] of Object.entries(manifest.webhooksOverlay ?? {})) {
+      if (!name.startsWith('x-') && (!isRecord(item) || Object.keys(item).some((key) => ['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(key)))) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhooksOverlay entry: ${name}`);
+    }
+    const webhookOperations = new Set<string>();
+    for (const webhook of manifest.webhooks) {
+      if (!isRecord(webhook) || typeof webhook.file !== 'string' || !isPortableManifestPath(webhook.file) || typeof webhook.name !== 'string' || !webhook.name || webhook.name.startsWith('x-') || typeof webhook.method !== 'string' || !['get', 'post', 'put', 'delete', 'head', 'options', 'patch', 'trace'].includes(webhook.method)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook API: ${String((webhook as any)?.name)} ${String((webhook as any)?.method)}`);
+      if (!manifest.webhookOrder.includes(webhook.name)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Missing zopia manifest webhook-order entry: ${webhook.name}`);
+      validateKeys(webhook, ['file', 'name', 'method', 'operationId', 'sourceOperation', 'webhookItemRef', 'refs', 'overlay', 'responseOverlay', 'security'], 'webhook API');
+      if (webhook.webhookItemRef !== undefined && typeof webhook.webhookItemRef !== 'boolean') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook-item reference flag: ${webhook.file}`);
+      if (typeof webhook.operationId !== 'string' || !webhook.operationId) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook operation ID: ${webhook.file}`);
+      // Paths and webhooks are separate OpenAPI namespaces; a webhook named like a
+      // path template must not trip the path collision check (`operations`). Their
+      // shared identity constraint is operationId uniqueness, enforced on reverse.
+      const operation = `webhook\0${webhook.method}\0${webhook.name}`;
+      if (webhookOperations.has(operation)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest webhook API: ${webhook.method.toUpperCase()} ${webhook.name}`);
+      webhookOperations.add(operation);
+      const fileKey = webhook.file.toLowerCase();
+      if (files.has(fileKey)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Duplicate zopia manifest file: ${webhook.file}`);
+      files.add(fileKey);
+      if (!isRecord(webhook.sourceOperation) || !Array.isArray(webhook.refs) || !Array.isArray(webhook.overlay) || !Array.isArray(webhook.responseOverlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest webhook API metadata: ${webhook.file}`);
+      if (Object.prototype.hasOwnProperty.call(webhook, 'security')) validateSecurityRequirements(webhook.security, `webhook API security: ${webhook.file}`);
+      for (const ref of webhook.refs) {
+        if (!isRecord(ref) || typeof ref.at !== 'string' || typeof ref.ref !== 'string' || ref.component !== undefined && typeof ref.component !== 'string') throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ref: ${webhook.file}`);
+        validateKeys(ref, ['at', 'ref', 'component'], 'ref');
+        validatePointer(ref.at, 'ref');
+        if (ref.ref !== '#' && !ref.ref.startsWith('#/')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest ref target: ${ref.ref}`);
+      }
+      for (const overlay of webhook.overlay) {
+        if (!isRecord(overlay)) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest overlay: ${webhook.file}`);
+        if ('key' in overlay) {
+          if (typeof overlay.key !== 'string' || !['callbacks', 'servers', 'externalDocs', 'links'].includes(overlay.key) || !Object.prototype.hasOwnProperty.call(overlay, 'value')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest operation overlay: ${String(overlay.key)}`);
+          validateKeys(overlay, ['key', 'value'], 'operation overlay');
+        } else validateSchemaOverlay(overlay, `schema overlay: ${webhook.file}`);
+      }
+      for (const overlay of webhook.responseOverlay) {
+        if (!isRecord(overlay) || typeof overlay.status !== 'string' || !overlay.status || !Object.prototype.hasOwnProperty.call(overlay, 'headers')) throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `Invalid zopia manifest response overlay: ${webhook.file}`);
+        validateKeys(overlay, ['status', 'headers'], 'response overlay');
+      }
+    }
+  }
   stableJson(manifest);
 }
 /**
@@ -621,6 +763,7 @@ export async function writeZopiaManifest(outputDir: string, manifest: ZopiaManif
   const file = join(root, ZOPIA_MANIFEST_FILE);
   const temporary = `${file}.tmp`;
   const content = serializeZopiaManifest(manifest);
+  if (await readFile(file, 'utf8').catch(() => undefined) === content) return file;
   let temporaryWritten = false;
   try {
     await mkdir(root, { recursive: true });

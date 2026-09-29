@@ -38,6 +38,11 @@ implementation; it now describes the implemented v0.1.0 behavior and deferred sc
       ([rules](06-conversions.md))
 - [x] 🧱 Component options — `insertComponents`, `useComponentAsReference`,
       nested references, and direct/mutual cycles ([rules](08-components.md))
+- [x] 📝 **YAML input** — owned deterministic YAML 1.2 core-schema parser,
+      `.yaml`/`.yml` paths and inline YAML text, anchors/aliases/merge keys,
+      stable `ZOPIA_SPEC_INVALID_YAML` ([rules](06-conversions.md#engine-③--openapi--api-docs), D-16)
+- [x] 🔗 **External `$ref`s** — same-folder references bundled inline for
+      spec file paths, byte-identical to inline twins ([rules](06-conversions.md#engine-③--openapi--api-docs), D-17)
 - [x] 📦 Manifest writer/reader — `.zopia-manifest.json` (D-06)
 - [x] ⚠️ **Warnings pipeline** — stable typed codes, exact JSON Pointer locations,
       deterministic collection/callbacks, generated-code markers, and CLI stderr
@@ -100,33 +105,89 @@ The v0.1.0 release satisfies all of the following:
    uses `km-api: ^0.4.1` from npm; no Git submodule or unpublished commit remains.
    The dependency remains installed and type-checkable in every release gate.
 
-## 🧰 Phase 2 — Breadth (v0.2.x)
+## 🧰 Phase 2 — Breadth (v0.2.x) ✅
 
-- 📝 **YAML input** — accept `swagger.yaml` / `openapi.yaml` (D-13 lifts)
-- 🔗 **External `$ref`s** — resolve references to other files in the same folder
-- 🧩 **Reusable parameters & responses** — emitted as their own component files
-  (v0.1.0 resolves them for endpoint code and preserves/restores their reusable
-  declarations through the manifest; km-api has no standalone-parameter concept)
-- 🧾 **`zopia.config.ts`** — project-level config file (CLI flags stay available)
-- 📤 **OpenAPI 2.0 output** from engine ④ (`version: '2.0'`) for legacy targets
-- 🧪 More JSON Schema keywords — `patternProperties`, `if/then/else`,
-  `minProperties/maxProperties`, `propertyNames`, `contains`
-  (Phase 1: documented approximation + warning, D-12)
-- 🪝 **3.1 webhook endpoint generation** — v0.1.0 preserves webhooks in the
-  manifest and restores them for 3.1 output with `ZOPIA_WARN_WEBHOOKS`, but does
-  not generate endpoint files for them (valid local path-item `$ref`s already
-  resolve and round-trip in v0.1.0)
-- 👀 **Watch mode** — `zopia generate --watch` for spec-driven development
+- 📝 **YAML input** — ✅ accept `swagger.yaml` / `openapi.yaml` (D-13 lifts → D-16)
+- 🔗 **External `$ref`s** — ✅ resolve references to other files in the same folder (D-17)
+- 🧩 **Reusable parameters & responses** — ✅ emitted as their own component
+  files `components/parameters/<Name>/index.ts` and
+  `components/responses/<Name>/index.ts` with `<Name>Parameter` / `<Name>Response`
+  exports, kind barrels, manifest `kind` entries, and a reverse conversion that
+  refreshes declarations from the modules while restoring every use-site `$ref`
+  verbatim (D-18; km-api has no standalone-parameter concept, so modules hold the
+  derived schema only — name/location/`required` remain operation data)
+- 🧾 **`zopia.config.ts`** — ✅ project-level config file with working-directory
+  discovery, explicit `--config` paths, validated `{ generate, reverse }` defaults,
+  and stable precedence CLI flag > config value > built-in default (D-19);
+  CLI flags stay available
+- 📤 **OpenAPI 2.0 output** — ✅ engine ④ accepts `version: '2.0'` (CLI
+  `--version 2.0`, config `reverse.version`) and downgrades 3.x-sourced
+  manifests into Swagger 2.0 documents: `nullable` becomes `x-nullable`,
+  `requestBody` becomes `body`/`formData` parameters, `components` becomes
+  top-level `definitions`/`parameters`/`responses`, `servers` decomposes into
+  `host`/`basePath`/`schemes`, and unrepresentable 3.x features (webhooks,
+  `jsonSchemaDialect`, cookie params, `links`, multi-flow OAuth2, …) drop with
+  deterministic `ZOPIA_WARN_DIALECT_DOWNGRADE` warnings (D-20)
+- 🧪 **More JSON Schema keywords** — ✅ `propertyNames` graduates from the D-12
+  approximation to native conversion: the exact
+  `{ type: 'object', propertyNames: { type: 'string', <pattern/length constraints> }, additionalProperties: <schema> }`
+  form now converts to `z.record(key, value)` (and back) with no warning or
+  frozen overlay (D-22); every other listed keyword keeps its runtime-refinement
+  + frozen-overlay round-trip (`patternProperties`, `if/then/else`,
+  `minProperties/maxProperties`, non-native `propertyNames` forms, `contains`) (Phase 1: documented approximation + warning, D-12)
+- 🪝 **3.1 webhook endpoint generation** — ✅ `document.webhooks` operations now
+  generate real endpoint files under `webhooks/<name>/<method>/index.ts`
+  alongside path operations (D-23). The manifest records `webhooks[]` entries
+  with the same reference/overlay/security metadata as path endpoints plus
+  `webhookOrder` and a `webhooksOverlay` (item-level metadata, `x-` names, and
+  operation-less items stay verbatim), so engine ④ reassembles webhooks in exact
+  source order for 3.1 output and omits them with source-located
+  `ZOPIA_WARN_WEBHOOKS` warnings for 3.0/2.0 output. Operation-less webhook maps
+  keep the Phase 1 manifest-only behavior (no endpoint files, forward warning)
+- 👀 **Watch mode** — ✅ `zopia generate --watch` regenerates whenever the spec
+  file changes (S-88): an immediate initial run, 50 ms-coalesced re-runs that
+  serialize against in-flight generation, run errors printed to stderr while
+  watching continues, and abort/cleanup on exit. Uses `fs.watch` with the
+  existing stale-tree/prune pipeline, so spec edits refresh owned files in place
 
-## 🌌 Phase 3 — Ecosystem (v0.3+)
+## 🌌 Phase 3 — Ecosystem (v0.3+) ✅
 
-- 🧹 **`zopia validate`** — lint/validate specs and generated trees (broken
-  refs, name collisions, unreachable components, km-api version drift)
-- ♻️ **Incremental regeneration** — only re-emit files whose inputs changed;
-  merge-safe custom layer for manual edits (a `custom` companion file per endpoint)
-- 🔍 **Diff tool** — `zopia diff old.json new.json` → human-readable changes
-- 🧩 **Presets** — monorepo / multi-server / multi-tag layouts
-- 🧑‍💻 **VS Code extension** — navigate spec ↔ generated code both ways
+- 🧹 **`zopia validate`** — ✅ CLI command + `validateZopia()` API lint specs
+  and generated trees (S-89): specs are checked for dialect validity, broken
+  local `$ref`s, endpoint-planning failures (name collisions, cross-namespace
+  duplicate operationIds), and components unreachable from any operation
+  (transitive; Swagger `definitions` included). Generated trees are checked for
+  manifest presence/validity, a successful reverse dry-run, and km-api peer
+  drift. Findings are deterministic sorted diagnostics with stable
+  `ZOPIA_VALIDATE_*` lint codes; the CLI prints them on stdout and exits `1`
+  when any error-severity finding exists
+- ♻️ **Incremental regeneration** — ✅ unchanged generated files keep their
+  mtimes (byte-identical regeneration writes nothing); the opt-in merge-safe
+  custom layer (D-24, S-90) exports a `custom` companion namespace per
+  endpoint/webhook scaffolded once and never overwritten (`--custom`,
+  `generate.custom`, or the `custom` generate option)
+- 🔍 **Diff tool** — ✅ `zopia diff old.json new.json` + `diffOpenApiSpecs()`
+  API (S-91): semantic comparison of dialect, info, endpoints (with
+  parameter/request-body/response details), webhooks, schema components,
+  document fields, and `x-` extensions; key order is ignored; deterministic
+  `+`/`-`/`~` human-readable lines with a summary; differences are data on
+  stdout, so the CLI exits `0` for changed pairs
+- 🧩 **Presets** — ✅ split-generation layouts (S-92): `--preset multi-tag`
+  routes each operation by its primary tag, `--preset multi-server` by the
+  effective first server (repeatedly), producing one independently
+  reverse-convertible api-docs sub-tree per bucket; untagged/default-server
+  operations land in `untagged`/`https-default-server`-style buckets; nothing
+  to split → the normal single tree. Programmatic `preset` option plus
+  `generate.preset` configuration; `planPresetBuckets()` exposes the pure
+  deterministic planner (collision-safe slugs, `ZOPIA_WARN_PRESET_PRIMARY_TAG`
+  on multi-tagged operations) and results report `trees[]`
+- 🧑‍💻 **VS Code extension** — ✅ navigate spec ↔ generated code both ways
+  (S-93): manifest-driven navigation core (`loadNavigationIndex`,
+  `specToLocations`/`treeToSpecLocation`, one-pass JSON
+  `specPointersToLines`/`specPointerAtLine` cursor resolution, YAML
+  operationId fallback) plus the `zopia navigate` CLI (`--to-code` /
+  `--to-spec`) and a plain-JS extension package under `editors/vscode/`
+  resolving the workspace's own zopia install
 
 ## 🧮 Versioning
 

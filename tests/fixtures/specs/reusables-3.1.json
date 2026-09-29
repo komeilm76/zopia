@@ -1,0 +1,41 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Reusable API", "version": "1.0.0", "description": "Reusable parameters and responses contract fixture" },
+  "components": {
+    "schemas": {
+      "Widget": { "type": "object", "properties": { "id": { "type": "string" } } },
+      "CursorToken": { "type": "string", "minLength": 8 }
+    },
+    "parameters": {
+      "PageSize": { "name": "pageSize", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1 } },
+      "Cursor": { "name": "cursor", "in": "query", "schema": { "$ref": "#/components/schemas/CursorToken" } },
+      "ViaHeader": { "$ref": "#/components/parameters/Cursor" }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "missing",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+      },
+      "Empty": { "description": "nothing" }
+    }
+  },
+  "paths": {
+    "/widgets": {
+      "get": {
+        "operationId": "listWidgets",
+        "summary": "List widgets",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/ViaHeader" },
+          { "name": "verbose", "in": "query", "schema": { "type": "boolean" } }
+        ],
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Widget" } } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "204": { "$ref": "#/components/responses/Empty" },
+          "default": { "$ref": "#/components/responses/NotFound", "description": "default description" }
+        }
+      }
+    }
+  }
+}

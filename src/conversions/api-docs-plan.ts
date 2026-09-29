@@ -1,6 +1,27 @@
 import { ZopiaError } from '../errors';
-import { collectOpenApiOperations, type OpenApiOperation } from './openapi-to-api-docs';
-import { endpointFilePath, type ApiDocsMode } from './api-docs-layout';
+import { collectOpenApiOperations, collectOpenApiWebhookOperations, type OpenApiOperation } from './openapi-to-api-docs';
+import { normalizeOpenApiDocument } from './openapi';
+import { endpointFilePath, isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
+
+/**
+ * Enforce document-wide `operationId` uniqueness across the path and webhook namespaces.
+ *
+ * Each collector dedupes only its own namespace, but OpenAPI requires the id to be
+ * unique across the whole document — a `$ref` alias can surface the same explicit id
+ * in both. Generation and validation share this guard.
+ *
+ * @param plans Path endpoint plans from {@link planApiDocsFiles}.
+ * @param webhookPlans Webhook endpoint plans from {@link planWebhookDocsFiles}.
+ * @returns Nothing.
+ * @throws {@link ZopiaError} `ZOPIA_SPEC_INVALID` when both scopes mint the same id.
+ */
+export function assertUniqueOperationIdsAcrossScopes(plans: readonly ApiDocsFilePlan[], webhookPlans: readonly ApiDocsFilePlan[]): void {
+  const pathOperationIds = new Map(plans.map((plan) => [plan.operationId, plan.path]));
+  for (const webhookPlan of webhookPlans) {
+    const owner = pathOperationIds.get(webhookPlan.operationId);
+    if (owner !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId across paths and webhooks: ${webhookPlan.operationId}`, { at: `#/webhooks/${webhookPlan.path.replace(/~/g, '~0').replace(/\//g, '~1')}`, hint: `rename one operationId (also used by path ${owner})` });
+  }
+}
 
 /** One normalized operation paired with its collision-safe output path. */
 export interface ApiDocsFilePlan extends OpenApiOperation {
@@ -67,4 +88,43 @@ export function planApiDocsFiles(input: Record<string, any> | string, mode: ApiD
     plan.push({ ...operation, file: `${name}/${operation.method}/index.ts` });
   }
   return plan;
+}
+
+/**
+ * Deterministic runtime placeholder path emitted inside generated webhook endpoint modules.
+ *
+ * Webhook names are not URL paths, but the km-api endpoint contract requires a leading-slash
+ * `/` runtime path string. Reverse conversion ignores this placeholder and restores the
+ * authoritative webhook name held by the manifest.
+ *
+ * @param name Source webhook name.
+ * @returns Sanitized `/webhooks/<name>` placeholder path.
+ */
+export const webhookRuntimePath = (name: string): string =>
+  `/webhooks/${name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'webhook'}`;
+
+/**
+ * Plan generated webhook endpoint files without touching the filesystem (OpenAPI 3.1).
+ *
+ * @param input Valid OpenAPI object containing a `webhooks` section.
+ * @param mode Directory or flattened endpoint layout.
+ * @returns Deterministically ordered webhook operations with portable output paths.
+ * @throws {@link ZopiaError} when the webhook section or layout mode is invalid.
+ */
+export function planWebhookDocsFiles(input: Record<string, any> | string, mode: ApiDocsMode = 'directory'): ApiDocsFilePlan[] {
+  if (mode !== 'directory' && mode !== 'flat') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `Unsupported API docs mode: ${mode}`);
+  const { document } = normalizeOpenApiDocument(input);
+  const operations = collectOpenApiWebhookOperations(document);
+  const stems = new Map<string, string>(); const usedStems = new Set<string>();
+  for (const operation of operations) {
+    if (stems.has(operation.path)) continue;
+    const base = operation.path.replace(/[^A-Za-z0-9._-]+/g, '-').toLowerCase() || 'webhook';
+    // Sanitization can leave hazardous stems for exotic legal names (e.g. `..` is a
+    // valid webhook name but never a valid segment); reject them deterministically.
+    if (!isPortableApiDocsSegment(base) || base.startsWith('.')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsafe webhook name: ${operation.path}`, { at: `#/webhooks/${operation.path}` });
+    let stem = base; let suffix = 1;
+    while (usedStems.has(stem)) stem = `${base}-${++suffix}`;
+    stems.set(operation.path, stem); usedStems.add(stem);
+  }
+  return operations.map((operation) => ({ ...operation, file: endpointFilePath(webhookRuntimePath(stems.get(operation.path)!), operation.method, mode) }));
 }

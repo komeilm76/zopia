@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildOpenApiOperationIR, extractOperationContracts } from '../src';
+import { deriveReusableParameterSchema } from '../src/conversions/openapi-contracts';
+import { ZopiaError } from '../src/errors';
 
 describe('OpenAPI operation contracts', () => {
   it('S-03: extracts Swagger primitive parameter types', () => {
@@ -39,7 +41,7 @@ describe('OpenAPI operation contracts', () => {
     const [ir] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], paths: { '/x': { parameters: [{ in: 'body', name: 'payload', required: true, schema: { type: 'object' } }], post: { responses: { '200': { description: 'ok' } } } } } });
     expect(extractOperationContracts(ir).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'object' }, required: true });
     const [referenced] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, consumes: ['application/json'], parameters: { Payload: { in: 'body', name: 'payload', required: true, schema: { type: 'string' } } }, paths: { '/x': { post: { parameters: [{ $ref: '#/parameters/Payload' }], responses: { '200': { description: 'ok' } } } } } });
-    expect(extractOperationContracts(referenced).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'string' }, required: true });
+    expect(extractOperationContracts(referenced).requestBody).toEqual({ contentType: 'application/json', schema: { type: 'string' }, required: true, reusable: 'Payload' });
     const [invalid] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { parameters: [{ in: 'body', name: 'payload', required: 'yes', schema: { type: 'object' } }], responses: { '200': { description: 'ok' } } } } } });
     expect(() => extractOperationContracts(invalid)).toThrow('Invalid Swagger body parameter required');
     const [nameless] = buildOpenApiOperationIR({ swagger: '2.0', info: { title: 'x', version: '1' }, paths: { '/x': { post: { parameters: [{ in: 'body', schema: { type: 'object' } }], responses: { '200': { description: 'ok' } } } } } });
@@ -151,5 +153,24 @@ describe('OpenAPI operation contracts', () => {
     expect(() => extractOperationContracts(swaggerRange)).toThrow('Invalid response status: 2XX');
     const [openApiRange] = buildOpenApiOperationIR({ openapi: '3.1.0', info: { title: 'x', version: '1' }, paths: { '/x': { get: { responses: { '2XX': { description: 'ok' } } } } } });
     expect(extractOperationContracts(openApiRange).responses[0].status).toBe('2XX');
+  });
+});
+
+describe('deriveReusableParameterSchema — invalid declarations (round 9 coverage)', () => {
+  const swagger = { swagger: '2.0' as const, info: { title: 'T', version: '1' }, paths: {} };
+  const modern = { openapi: '3.0.3' as const, info: { title: 'T', version: '1' }, paths: {}, components: {} };
+  it('rejects Swagger declarations without name/in, body schema, or a supported type', () => {
+    expect(() => deriveReusableParameterSchema(swagger as any, 'p', { name: 'p' })).toThrow(ZopiaError);
+    expect(() => deriveReusableParameterSchema(swagger as any, 'p', { name: 'p', in: 'body' })).toThrow('Invalid Swagger body parameter');
+    expect(() => deriveReusableParameterSchema(swagger as any, 'p', { name: 'p', in: 'query', type: 'weird' })).toThrow('Invalid Swagger parameter type');
+    expect(deriveReusableParameterSchema(swagger as any, 'p', { name: 'p', in: 'body', schema: { type: 'string' } })).toEqual({ type: 'string' });
+  });
+  it('rejects 3.x declarations with unsupported in, schema+content conflicts, or schema-less content', () => {
+    expect(() => deriveReusableParameterSchema(modern as any, 'p', { name: 'p' })).toThrow('Invalid reusable parameter');
+    expect(() => deriveReusableParameterSchema(modern as any, 'p', { name: 'p', in: 'body' })).toThrow('Invalid reusable parameter');
+    expect(() => deriveReusableParameterSchema(modern as any, 'p', { name: 'p', in: 'query', schema: {}, content: {} })).toThrow('cannot define both schema and content');
+    expect(() => deriveReusableParameterSchema(modern as any, 'p', { name: 'p', in: 'query', content: { 'text/plain': {} } })).toThrow('requires schema or content');
+    expect(deriveReusableParameterSchema(modern as any, 'p', { name: 'p', in: 'query', content: { 'text/plain': { schema: { type: 'integer' } } } })).toEqual({ type: 'integer' });
+    expect(deriveReusableParameterSchema(modern as any, 'p', { name: 'p', in: 'query', schema: { type: 'boolean' } })).toEqual({ type: 'boolean' });
   });
 });

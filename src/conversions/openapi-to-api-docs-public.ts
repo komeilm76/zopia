@@ -3,13 +3,18 @@ import { ZopiaError } from '../errors';
 import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { generateApiDocsFiles } from './api-docs-generate';
 import type { ApiDocsMode } from './api-docs-layout';
+import { bundleExternalOpenApiRefs } from './openapi-external-ref';
 import { extractOperationContracts } from './openapi-contracts';
 import { buildOpenApiOperationIR } from './openapi-ir';
+import { collectOpenApiWebhookOperations } from './openapi-to-api-docs';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
+import { parseYaml } from './yaml';
 import { jsonSchemaToZod, type JsonSchema } from './json-schema-to-zod';
 import { hashOpenApiDocument, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { formatManifestStaleness, inspectZopiaManifestStaleness } from './manifest-staleness';
+import { join } from 'node:path';
+import { planPresetBuckets, ZOPIA_GENERATE_PRESETS, type ZopiaGeneratePreset, type ZopiaPresetTree } from './api-docs-presets';
 
 /** Options for generating an api-docs tree from Swagger or OpenAPI. */
 export interface ZopiaGenerateOptions {
@@ -23,6 +28,10 @@ export interface ZopiaGenerateOptions {
   useComponentAsReference?: boolean;
   /** Write the reverse-conversion manifest. @default true */
   manifest?: boolean;
+  /** Write merge-safe per-endpoint `custom` companion modules and export them. @default false */
+  custom?: boolean;
+  /** Split generation into per-bucket sub-trees: `multi-tag` (per primary tag) or `multi-server` (per effective first server). @default undefined */
+  preset?: ZopiaGeneratePreset;
 }
 
 /** One file written by Engine ③, relative to its output directory. */
@@ -41,6 +50,8 @@ export interface ZopiaGenerateResult {
   warnings: ZopiaWarning[];
   /** Manifest path relative to `outDir`, absent when `manifest` is false. */
   manifestPath?: string;
+  /** Generated preset sub-trees, present only when a preset split actually happened. */
+  trees?: ZopiaPresetTree[];
 }
 
 interface ValidatedOptions {
@@ -49,6 +60,8 @@ interface ValidatedOptions {
   insertComponents: boolean;
   useComponentAsReference: boolean;
   manifest: boolean;
+  custom: boolean;
+  preset?: ZopiaGeneratePreset;
 }
 
 const escapePointer = (value: string | number): string => String(value).replace(/~/g, '~0').replace(/\//g, '~1');
@@ -59,7 +72,7 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'generate options must be an object', { hint: 'pass an options object or omit it' });
   }
   const value = options ?? {};
-  const known = new Set(['outDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest']);
+  const known = new Set(['outDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom', 'preset']);
   const unknown = Object.keys(value).find((key) => !known.has(key));
   if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown generate option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
   if (value.outDir !== undefined && (typeof value.outDir !== 'string' || value.outDir.trim() === '' || value.outDir.includes('\0'))) {
@@ -68,11 +81,14 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
   if (value.mode !== undefined && value.mode !== 'directory' && value.mode !== 'flat') {
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported layout mode: ${String(value.mode)}`, { at: 'mode', hint: "use 'directory' or 'flat'" });
   }
-  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest'] as const) {
+  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest', 'custom'] as const) {
     if (value[key] !== undefined && typeof value[key] !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `${key} must be a boolean`, { at: key });
   }
   if (value.useComponentAsReference === true && value.insertComponents !== true) {
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'useComponentAsReference requires insertComponents', { at: 'useComponentAsReference', hint: 'enable `insertComponents` first' });
+  }
+  if (value.preset !== undefined && !ZOPIA_GENERATE_PRESETS.includes(value.preset)) {
+    throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported generate preset: ${String(value.preset)}`, { at: 'preset', hint: `use ${ZOPIA_GENERATE_PRESETS.join(' or ')}` });
   }
   return {
     outDir: value.outDir ?? 'api_docs',
@@ -80,29 +96,75 @@ function validateOptions(options: ZopiaGenerateOptions | undefined): ValidatedOp
     insertComponents: value.insertComponents ?? false,
     useComponentAsReference: value.useComponentAsReference ?? false,
     manifest: value.manifest ?? true,
+    custom: value.custom ?? false,
+    ...(value.preset === undefined ? {} : { preset: value.preset }),
   };
 }
 
-async function readInput(input: string | Record<string, unknown>): Promise<OpenApiDocument> {
-  if (input && typeof input === 'object' && !Array.isArray(input)) return input;
-  if (typeof input !== 'string' || input.trim() === '') {
-    throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a JSON object, JSON text, or .json file path', { at: '#', hint: 'pass a Swagger/OpenAPI JSON object or file' });
-  }
-  let text = input;
-  const trimmed = input.trimStart();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    try { text = await readFile(input, 'utf8'); }
-    catch (error) {
-      throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `unable to read JSON input: ${input}`, { at: input, hint: 'check that the JSON file exists and is readable', cause: error });
-    }
-  }
+const YAML_PATH_PATTERN = /\.ya?ml$/i;
+
+/** Detect inline YAML text: multi-line strings that are not JSON, or a single-line mapping entry. */
+function isInlineYamlText(text: string): boolean {
+  if (text.includes('\n')) return true;
+  const firstLine = text.trimStart();
+  return /^---(?:\s|$)/.test(firstLine) || /^[^:#{}[\],&*!|>%@`][^:]*:(?:\s|$)/.test(firstLine);
+}
+
+function asSpecDocument(parsed: unknown, at: string | undefined): OpenApiDocument {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a Swagger/OpenAPI document object', { at: at ?? '#', hint: 'provide a Swagger/OpenAPI document object' });
+  return parsed as OpenApiDocument;
+}
+
+function parseJsonSpec(text: string, source: string | undefined): OpenApiDocument {
   let parsed: unknown;
   try { parsed = JSON.parse(text) as unknown; }
   catch (error) {
-    throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `invalid JSON: ${error instanceof Error ? error.message : String(error)}`, { at: typeof input === 'string' && text !== input ? input : undefined, hint: 'fix the JSON syntax', cause: error });
+    throw new ZopiaError('ZOPIA_SPEC_INVALID_JSON', `invalid JSON: ${error instanceof Error ? error.message : String(error)}`, { at: source, hint: 'fix the JSON syntax', cause: error });
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a JSON object', { at: '#', hint: 'provide a Swagger/OpenAPI document object' });
-  return parsed as OpenApiDocument;
+  return asSpecDocument(parsed, source);
+}
+
+function parseYamlSpec(text: string, source: string | undefined): OpenApiDocument {
+  try { return asSpecDocument(parseYaml(text), source); }
+  catch (error) {
+    if (source !== undefined && error instanceof ZopiaError && error.code === 'ZOPIA_SPEC_INVALID_YAML') {
+      const message = error.message.slice(`${error.code}: `.length);
+      throw new ZopiaError('ZOPIA_SPEC_INVALID_YAML', message, { at: source, hint: error.hint, cause: error });
+    }
+    throw error;
+  }
+}
+
+/** The parsed input document plus the spec file it was read from (when any). */
+export interface ReadOpenApiSourceInputResult {
+  /** Parsed Swagger/OpenAPI document. */
+  document: OpenApiDocument;
+  /** Input spec file path; external `$ref`s resolve against its folder (D-17). */
+  sourceFile?: string;
+}
+
+async function readInput(input: string | Record<string, unknown>): Promise<ReadOpenApiSourceInputResult> {
+  if (input && typeof input === 'object' && !Array.isArray(input)) return { document: input };
+  if (typeof input !== 'string' || input.trim() === '') {
+    throw new ZopiaError('ZOPIA_SPEC_INVALID', 'input must be a Swagger/OpenAPI object, JSON/YAML text, or a .json/.yaml/.yml file path', { at: '#', hint: 'pass a Swagger/OpenAPI document object, document text, or file path' });
+  }
+  const trimmed = input.trimStart();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return { document: parseJsonSpec(input, undefined) };
+  if (isInlineYamlText(input)) return { document: parseYamlSpec(input, undefined) };
+  const yamlPath = YAML_PATH_PATTERN.test(input);
+  let text: string;
+  try { text = await readFile(input, 'utf8'); }
+  catch (error) {
+    const code = yamlPath ? 'ZOPIA_SPEC_INVALID_YAML' : 'ZOPIA_SPEC_INVALID_JSON';
+    throw new ZopiaError(code, `unable to read ${yamlPath ? 'YAML' : 'JSON'} input: ${input}`, { at: input, hint: 'check that the spec file exists and is readable', cause: error });
+  }
+  if (yamlPath) return { document: parseYamlSpec(text, input), sourceFile: input };
+  if (/\.json$/i.test(input)) return { document: parseJsonSpec(text, input), sourceFile: input };
+  try { return { document: parseJsonSpec(text, input), sourceFile: input }; }
+  catch (error) {
+    if (error instanceof ZopiaError && error.code === 'ZOPIA_SPEC_INVALID_JSON') return { document: parseYamlSpec(text, input), sourceFile: input };
+    throw error;
+  }
 }
 
 function normalizePublic(document: OpenApiDocument): OpenApiDocument {
@@ -203,7 +265,8 @@ function warningsForDocument(document: OpenApiDocument): ZopiaWarning[] {
   if (Array.isArray(document.servers)) document.servers.forEach((server: any, index: number) => {
     if (server && typeof server === 'object' && server.variables !== undefined) push({ code: 'ZOPIA_WARN_SERVER_VARIABLES', at: `#/servers/${index}/variables`, message: 'server variables are preserved in the manifest but are not represented in generated endpoint code' });
   });
-  if (document.webhooks !== undefined) push({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks are preserved in the manifest but are not emitted as endpoint files' });
+
+  if (document.webhooks !== undefined && collectOpenApiWebhookOperations(document).length === 0) push({ code: 'ZOPIA_WARN_WEBHOOKS', at: '#/webhooks', message: 'webhooks declare no operations and are preserved verbatim in the manifest' });
 
   if (document.swagger !== '2.0' && document.components !== undefined && (!document.components || typeof document.components !== 'object' || Array.isArray(document.components))) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'Invalid OpenAPI components: expected an object');
   const schemas = document.swagger === '2.0' ? document.definitions : document.components?.schemas;
@@ -272,12 +335,37 @@ function mapGenerationError(error: unknown): ZopiaError {
 }
 
 /**
+ * Read a Swagger/OpenAPI document from an in-memory object, JSON/YAML text, or a
+ * `.json`/`.yaml`/`.yml` path — the same acceptance rules as {@link openApiToApiDocs}.
+ *
+ * @param input Swagger/OpenAPI object, JSON/YAML text, or readable JSON/YAML file path.
+ * @returns Parsed document plus the spec file path when the input named one.
+ * @throws {@link ZopiaError} `ZOPIA_SPEC_INVALID*` when the input cannot be read or parsed.
+ */
+export function readOpenApiSourceInput(input: string | Record<string, unknown>): Promise<ReadOpenApiSourceInputResult> {
+  return readInput(input);
+}
+
+/**
+ * Validate every local `$ref` inside a normalized document against the rule that
+ * references must resolve — the same scan engine ③ runs before planning.
+ *
+ * @param document Normalized Swagger/OpenAPI document to scan.
+ * @returns Nothing.
+ * @throws {@link ZopiaError} `ZOPIA_REF_NOT_FOUND`/`ZOPIA_REF_EXTERNAL`/`ZOPIA_SPEC_INVALID` located at the offending reference.
+ */
+export function validateOpenApiReferences(document: OpenApiDocument): void {
+  validateReferences(document);
+}
+
+/**
  * Generate a reversible api-docs tree from Swagger 2.0 or OpenAPI 3.0/3.1.
  *
- * Accepts an in-memory JSON object, JSON text, or a `.json` file path. See R-641
- * for primary-media selection and R-408 for structured warning behavior.
+ * Accepts an in-memory document object, JSON text, YAML text, or a readable
+ * `.json`/`.yaml`/`.yml` file path (D-16). See R-641 for primary-media
+ * selection and R-408 for structured warning behavior.
  *
- * @param input Swagger/OpenAPI object, JSON text, or readable JSON file path.
+ * @param input Swagger/OpenAPI object, JSON/YAML text, or readable JSON/YAML file path.
  * @param options Output directory, layout, component, reference, and manifest controls.
  * @returns Sorted written-file metadata, structured warnings, and the optional manifest path.
  * @throws {ZopiaError} `ZOPIA_CONFIG_INVALID` for invalid options and `ZOPIA_SPEC_*` or `ZOPIA_REF_*` for invalid input.
@@ -296,9 +384,30 @@ function mapGenerationError(error: unknown): ZopiaError {
  */
 export async function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult> {
   const config = validateOptions(options);
-  const parsed = await readInput(input);
-  const document = normalizePublic(parsed);
+  const inputDocument = await readInput(input);
+  const bundled = inputDocument.sourceFile ? await bundleExternalOpenApiRefs(inputDocument.document, inputDocument.sourceFile) : inputDocument.document;
+  const document = normalizePublic(bundled);
   validateReferences(document);
+
+  if (config.preset !== undefined) {
+    const buckets = planPresetBuckets(document, config.preset);
+    if (buckets !== undefined) {
+      const presetWarnings: ZopiaWarning[] = [];
+      for (const bucket of buckets) presetWarnings.push(...bucket.warnings);
+      const trees: ZopiaPresetTree[] = [];
+      const presetFiles: ZopiaGeneratedFile[] = [];
+      for (const bucket of buckets) {
+        const generatedTree = await openApiToApiDocs(bucket.document, { ...options, preset: undefined, outDir: join(config.outDir, bucket.directory) });
+        trees.push({ name: bucket.name, directory: bucket.directory, ...(generatedTree.manifestPath === undefined ? {} : { manifestPath: `${bucket.directory}/${generatedTree.manifestPath}` }) });
+        for (const file of generatedTree.files) presetFiles.push({ ...file, path: `${bucket.directory}/${file.path}` });
+        // Descriptions stay verbatim; locations gain the bucket directory prefix so downstream tooling can navigate directly.
+        for (const warning of generatedTree.warnings) presetWarnings.push(warning.at === undefined ? warning : { ...warning, at: `${bucket.directory}/${warning.at}` });
+      }
+      presetFiles.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+      const collector = new ZopiaWarningCollector(); collector.addAll(presetWarnings);
+      return { files: presetFiles, warnings: collector.toArray(), trees };
+    }
+  }
 
   let hash: string;
   try { hash = hashOpenApiDocument(document); }
@@ -318,6 +427,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
       insertComponents: config.insertComponents,
       useComponentAsReference: config.useComponentAsReference,
       manifest: config.manifest,
+      custom: config.custom,
     });
     if (staleness.status === 'stale') warnings.push({
       code: 'ZOPIA_WARN_STALE_TREE',
@@ -336,6 +446,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
       insertComponents: config.insertComponents,
       useComponentAsReference: config.useComponentAsReference,
       manifest: config.manifest,
+      custom: config.custom,
     });
   } catch (error: any) {
     if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'EEXIST', 'EISDIR', 'ENOTDIR'].includes(String(error?.code))) throw new ZopiaError('ZOPIA_FS_WRITE_FAILED', `unable to write api-docs tree: ${error.message}`, { at: config.outDir, cause: error });

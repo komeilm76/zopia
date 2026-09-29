@@ -5,7 +5,7 @@ to its governing document and automated release-gate coverage — see
 [Testing → Scenario matrix](11-testing.md).
 
 > ✅ **Complete** = implemented, documented, and covered by the release gate.
-> Deferred work is listed explicitly under [Roadmap → Phase 2](03-roadmap.md#-phase-2--breadth-v02x).
+> Deferred work is listed explicitly under [Roadmap → Phase 2](03-roadmap.md#-phase-2--breadth-v02x-).
 
 ## 🔄 Conversion targets
 
@@ -49,7 +49,7 @@ to its governing document and automated release-gate coverage — see
 > 📌 The reverse-conversion *capability* (T-4/T-10/T-11) **is** in the first
 > phase — it is part of the four targets above. What is deferred:
 
-- 📝 YAML spec input → [Roadmap Phase 2](03-roadmap.md)
+- ~~📝 YAML spec input~~ → shipped in v0.2.x (D-16; `.yaml`/`.yml` files and inline YAML text reach the same normalized model as JSON)
 - 🔗 External (multi-file) `$ref`s → [Roadmap Phase 2](03-roadmap.md)
 - 🧩 Reusable **parameters / responses** as emitted components (Phase 1 emits `components.schemas` only) → [Roadmap Phase 2](03-roadmap.md)
-- 🖥️ `zopia validate` (spec linting) and incremental regeneration → [Roadmap Phase 3](03-roadmap.md)
+- ~~🖥️ `zopia validate` (spec linting)~~ → shipped in v0.3.x (S-89; [Roadmap Phase 3](03-roadmap.md)); incremental regeneration remains deferred

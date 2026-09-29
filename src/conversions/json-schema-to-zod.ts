@@ -45,6 +45,37 @@ const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sortedEntries = <T>(value: Record<string, T>): Array<[string, T]> => Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
 const isSchemaValue = (value: unknown): value is JsonSchema => typeof value === 'boolean' || (value !== null && typeof value === 'object' && !Array.isArray(value));
 
+const nativeRecordKeyConstraint = (value: unknown): boolean => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (record.type !== 'string') return false;
+  if (Object.keys(record).some((key) => !['type', 'pattern', 'minLength', 'maxLength'].includes(key))) return false;
+  if (record.pattern === undefined && record.minLength === undefined && record.maxLength === undefined) return false;
+  if (record.pattern !== undefined) {
+    if (typeof record.pattern !== 'string') return false;
+    try { new RegExp(record.pattern); } catch { return false; }
+  }
+  for (const bound of ['minLength', 'maxLength'] as const) if (record[bound] !== undefined && (typeof record[bound] !== 'number' || !Number.isSafeInteger(record[bound]) || (record[bound] as number) < 0)) return false;
+  return true;
+};
+
+/**
+ * Detect the exact `z.record(key, value)` ↔ schema form (D-22): an object node declaring
+ * only type/propertyNames/additionalProperties where propertyNames is an explicit string
+ * constraint and additionalProperties is an object schema. Zod emits the identical shape
+ * back, so no refinement approximation or frozen overlay is needed.
+ */
+function isNativeRecordObject(node: unknown): boolean {
+  if (!isSchemaValue(node) || typeof node === 'boolean') return false;
+  const record = node as Record<string, unknown>;
+  if (record.type !== 'object') return false;
+  for (const key of ['properties', 'patternProperties', 'required', 'minProperties', 'maxProperties', 'dependencies', 'dependentRequired', 'dependentSchemas', 'unevaluatedProperties', 'unevaluatedItems']) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) return false;
+  }
+  if (!nativeRecordKeyConstraint(record.propertyNames)) return false;
+  return record.additionalProperties !== null && typeof record.additionalProperties === 'object' && !Array.isArray(record.additionalProperties);
+}
+
 function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overlays: JsonSchemaOverlay[] } {
   const warnings: AnalysisWarning[] = [];
   const overlays: JsonSchemaOverlay[] = [];
@@ -92,7 +123,7 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
       return;
     }
     const refinementKeyword = ['patternProperties', 'propertyNames', 'minProperties', 'maxProperties', 'contains', 'minContains', 'maxContains', 'dependencies', 'dependentRequired', 'dependentSchemas'].find((key) => Object.prototype.hasOwnProperty.call(node, key));
-    if (refinementKeyword) {
+    if (refinementKeyword && !(refinementKeyword === 'propertyNames' && isNativeRecordObject(node))) {
       freeze(node, at, 'ZOPIA_WARN_FROZEN_SUBTREE', refinementKeyword, `\`${refinementKeyword}\` is implemented with runtime refinements and frozen for exact reverse conversion`);
       return;
     }
@@ -529,6 +560,12 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     let arrayIsTuple = false;
     switch (node.type) {
       case 'object': {
+        if (isNativeRecordObject(node)) {
+          const key = convert(node.propertyNames as JsonSchema, resolving, pointer(at, 'propertyNames'));
+          const value = convert(node.additionalProperties as JsonSchema, resolving, pointer(at, 'additionalProperties'));
+          result = { schema: z.record(key.schema as any, value.schema), code: `z.record(${key.code}, ${value.code})` };
+          break;
+        }
         if (node.properties !== undefined && (!node.properties || typeof node.properties !== 'object' || Array.isArray(node.properties))) { pushWarning('Invalid properties: expected an object'); result = { schema: z.object({}).passthrough(), code: 'z.object({}).passthrough()' }; break; }
         const requiredKeys = Array.isArray(node.required) && node.required.every((key: unknown) => typeof key === 'string') ? node.required as string[] : [];
         if (node.required !== undefined && (!Array.isArray(node.required) || requiredKeys.length !== node.required.length)) pushWarning('Invalid required: expected an array of strings');
@@ -748,7 +785,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     } else if (node.multipleOf !== undefined && (node.type === 'number' || node.type === 'integer')) pushWarning('Invalid multipleOf: expected a positive number');
     if (node.contains === undefined && (node.minContains !== undefined || node.maxContains !== undefined)) pushWarning('minContains/maxContains require contains and were ignored');
     if (node.additionalItems !== undefined && !Array.isArray(node.items) && !Array.isArray(node.prefixItems)) pushWarning('additionalItems applies only to tuple schemas and was ignored');
-    if (node.type === 'object' && node.propertyNames !== undefined) {
+    if (node.type === 'object' && node.propertyNames !== undefined && !isNativeRecordObject(node)) {
       if (typeof node.propertyNames === 'boolean' || (node.propertyNames !== null && typeof node.propertyNames === 'object' && !Array.isArray(node.propertyNames))) {
         const propertyDefinition = typeof node.propertyNames === 'object' ? node.propertyNames as Record<string, unknown> : undefined;
         const propertySchema = convert((propertyDefinition?.type === undefined && propertyDefinition && ('pattern' in propertyDefinition || 'minLength' in propertyDefinition || 'maxLength' in propertyDefinition)) ? { ...propertyDefinition, type: 'string' } as JsonSchema : node.propertyNames as JsonSchema, resolving, pointer(at, 'propertyNames'));

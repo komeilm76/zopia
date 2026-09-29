@@ -1,10 +1,10 @@
-import { lstat, mkdir, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { asZopiaError, ZopiaError } from '../errors';
 import { buildOpenApiOperationIR } from './openapi-ir';
-import { extractOperationContracts } from './openapi-contracts';
+import { deriveReusableParameterSchema, deriveReusableResponseSchema, extractOperationContracts, reusableDeclarations } from './openapi-contracts';
 import { jsonSchemaToZod } from './json-schema-to-zod';
-import { planApiDocsFiles, type ApiDocsFilePlan } from './api-docs-plan';
+import { assertUniqueOperationIdsAcrossScopes, planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './api-docs-plan';
 import { isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
 import type { OpenApiDocument } from './openapi';
 import { createZopiaManifest, hashOpenApiDocument, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
@@ -33,6 +33,8 @@ export interface GenerateApiDocsOptions {
   useComponentAsReference?: boolean;
   /** Whether the reverse-conversion manifest is emitted. @default true */
   manifest?: boolean;
+  /** Whether merge-safe per-endpoint custom companion modules are emitted. @default false */
+  custom?: boolean;
 }
 
 function componentReferenceSuffix(ref: unknown): string | undefined {
@@ -175,13 +177,38 @@ async function writeGeneratedFile(root: string, file: string, content: string, p
     if (metadata.isSymbolicLink()) {
       if (!previouslyOwned.has(file)) throw outputPathError(file);
       await rm(absolutePath, { force: true });
-    }
+    } else if (metadata.isFile() && await readFile(absolutePath, 'utf8').catch(() => undefined) === content) return absolutePath;
   } catch (error) {
     if (!isMissingPath(error)) throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect generated output file', { at: file, hint: 'check output-directory permissions and file types' });
   }
   try { await writeFile(absolutePath, content, 'utf8'); }
   catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write generated output file', { at: file, hint: 'check output-directory permissions and available disk space' }); }
   return absolutePath;
+}
+
+const CUSTOM_SCAFFOLD = '/**\n * Hand-written companion for the generated endpoint module in `./index`.\n * zopia writes this scaffold once and never overwrites it — edits survive regeneration.\n */\nexport {};\n';
+
+/** Sibling `custom.ts` path of one planned endpoint module. */
+function customCompanionFile(planFile: string): string {
+  if (!planFile.endsWith('/index.ts')) throw new ZopiaError('ZOPIA_SPEC_INVALID', `unsafe custom companion target: ${planFile}`, { at: planFile, hint: 'generated endpoint modules must live in their own directory' });
+  return `${planFile.slice(0, -'index.ts'.length)}custom.ts`;
+}
+
+/** Writes a companion `custom.ts` scaffold exactly once; existing files and symlinks at the path are kept untouched. */
+async function writeCustomScaffold(root: string, file: string): Promise<void> {
+  const absolutePath = resolve(root, ...file.split('/'));
+  if (!isInside(root, absolutePath) || absolutePath === root) throw outputPathError(file);
+  try {
+    const metadata = await lstat(absolutePath);
+    // A directory at the companion path would shadow the `./custom` import of the sibling module.
+    if (metadata.isDirectory()) throw outputPathError(file);
+    return;
+  } catch (error) { if (!isMissingPath(error)) throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to inspect custom companion file', { at: file, hint: 'check output-directory permissions and file types' }); }
+  try { await writeFile(absolutePath, CUSTOM_SCAFFOLD, { encoding: 'utf8', flag: 'wx' }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return;
+    throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write custom companion file', { at: file, hint: 'check output-directory permissions' });
+  }
 }
 
 function resolveObject(value: unknown, source: OpenApiDocument): any {
@@ -206,6 +233,14 @@ function componentExportName(componentName: string): string {
   const name = exportName(componentName);
   return name.endsWith('Schema') ? name : `${name}Schema`;
 }
+function componentParameterExportName(componentName: string): string {
+  const name = exportName(componentName);
+  return name.endsWith('Parameter') ? name : `${name}Parameter`;
+}
+function componentResponseExportName(componentName: string): string {
+  const name = exportName(componentName);
+  return name.endsWith('Response') ? name : `${name}Response`;
+}
 function componentReaches(source: OpenApiDocument, from: string, target: string, seen = new Set<string>()): boolean {
   if (from === target) return true;
   if (seen.has(from)) return false;
@@ -226,13 +261,13 @@ function componentReaches(source: OpenApiDocument, from: string, target: string,
   visit(schema);
   return refs.some((ref) => componentReaches(source, ref, target, seen));
 }
-function renderComponent(name: string, schema: unknown, source: OpenApiDocument): string {
-  const componentName = componentExportName(name);
+function renderComponent(name: string, schema: unknown, source: OpenApiDocument, exportNameFor: (componentName: string) => string = componentExportName, schemaImportPrefix = '../'): string {
+  const componentName = exportNameFor(name);
   const { code, imports } = schemaCodeWithComponentImports(schema, componentName, source, name);
-  const importLine = [...imports.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`../${target}/index`)};`).join('\n');
+  const importLine = [...imports.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).filter(([ref]) => ref !== componentName).map(([ref, target]) => `import { ${ref} } from ${JSON.stringify(`${schemaImportPrefix}${target}/index`)};`).join('\n');
   return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\n${importLine}${importLine ? '\n' : ''}\nexport const ${componentName} = ${code};\n\nexport default ${componentName};\n`;
 }
-function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMode = 'directory', useComponents = false): string {
+function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMode = 'directory', useComponents = false, runtimePath?: string, emitCustom = false): string {
   const ir = buildOpenApiOperationIR(source).find((candidate) => candidate.operationId === operation.operationId && candidate.path === operation.path && candidate.method.toLowerCase() === operation.method);
   if (!ir) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unable to build operation IR: ${operation.operationId}`);
   const contracts = extractOperationContracts(ir);
@@ -268,10 +303,32 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
     }
     return schemaCodeWithDocumentRefs(schema, fallback, source);
   };
-  const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `[${JSON.stringify(p.name)}]: ${componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
+  const reusableUses = { parameter: new Set<string>(), response: new Set<string>() };
+  const reusableParameterExport = (reusable: string): string => { const name = componentParameterExportName(reusable); reusableUses.parameter.add(name); return name; };
+  const params = (location: string) => contracts.parameters.filter((p) => p.in === location).map((p) => `[${JSON.stringify(p.name)}]: ${useComponents && p.reusable ? reusableParameterExport(p.reusable) : componentSchema(p.schema, `param${p.name.replace(/[^A-Za-z0-9]/g, '') || 'Value'}`)}${p.required ? '' : '.optional()'}`).join(', ');
   const rawRequestSchema = contracts.requestBody?.schema;
-  const request = `request: { body: ${contracts.requestBody ? componentSchema(rawRequestSchema, 'requestBody') : 'z.any()'},  params: z.object({ ${params('path')} }), query: z.object({ ${params('query')} }), headers: z.object({ ${params('header')} }), cookies: z.object({ ${params('cookie')} }) }`;
-  const response = contracts.responses.map((r) => `${quoteStatus(r.status)}: ${r.schema === undefined ? 'z.void()' : componentSchema(r.schema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`).join(', ');
+  const formDataMarkers: Array<readonly [string, string]> = [];
+  let requestSchema = rawRequestSchema;
+  if (useComponents && contracts.requestBody?.formDataReusable && requestSchema && typeof requestSchema === 'object' && !Array.isArray(requestSchema)) {
+    const object = requestSchema as Record<string, unknown>;
+    if (object.properties && typeof object.properties === 'object' && !Array.isArray(object.properties)) {
+      const serialized = JSON.stringify(requestSchema) ?? '';
+      const properties = { ...(object.properties as Record<string, unknown>) };
+      for (const [property, reusable] of Object.entries(contracts.requestBody.formDataReusable)) {
+        if (!Object.prototype.hasOwnProperty.call(properties, property)) continue;
+        let marker = `__zopia_reusable_reference_${formDataMarkers.length}__`;
+        while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_reusable_reference_${formDataMarkers.length}_${marker.split('_').length}__`;
+        formDataMarkers.push([marker, reusableParameterExport(reusable)]);
+        properties[property] = { const: marker };
+      }
+      requestSchema = { ...object, properties };
+    }
+  }
+  let requestBodyCode = contracts.requestBody ? componentSchema(requestSchema, 'requestBody') : 'z.any()';
+  if (useComponents && contracts.requestBody?.reusable) requestBodyCode = reusableParameterExport(contracts.requestBody.reusable);
+  for (const [marker, exportId] of formDataMarkers) requestBodyCode = requestBodyCode.split(`z.literal(${JSON.stringify(marker)})`).join(exportId);
+  const request = `request: { body: ${requestBodyCode},  params: z.object({ ${params('path')} }), query: z.object({ ${params('query')} }), headers: z.object({ ${params('header')} }), cookies: z.object({ ${params('cookie')} }) }`;
+  const response = contracts.responses.map((r) => `${quoteStatus(r.status)}: ${useComponents && r.reusable && r.schema !== undefined ? (() => { const name = componentResponseExportName(r.reusable); reusableUses.response.add(name); return name; })() : r.schema === undefined ? 'z.void()' : componentSchema(r.schema, `response${r.status.replace(/[^A-Za-z0-9]/g, '') || 'Default'}`)}`).join(', ');
   const responseContentType = contracts.responses.find((r) => r.contentType)?.contentType;
   // OpenAPI media-type keys are open strings, while km-api 0.4.1's declarations
   // enumerate known values. Keep the exact runtime value across that narrow boundary.
@@ -300,8 +357,13 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const auth = ir.security !== undefined && ir.security.length > 0 && ir.security.every((requirement) => Object.keys(requirement as Record<string, unknown>).length > 0) ? 'YES' : 'NO';
   const sourceName = JSON.stringify(`${source.info.title} v${source.info.version}`).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const endpointDepth = typeof operation.file === 'string' ? operation.file.split('/').length - 1 : mode === 'flat' ? 2 : operation.path.split('/').filter(Boolean).length + 1;
-  const componentImport = useComponents && componentRefs.size ? `\nimport { ${[...componentRefs].sort().join(', ')} } from '${'../'.repeat(endpointDepth)}components/index';` : '';
-  return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\nimport { makeApiConfig } from 'km-api';${componentImport}\n\nexport const ${exportId} = makeApiConfig({\n  method: ${JSON.stringify(operation.method.toUpperCase())},\n  pathShape: ${JSON.stringify(operation.path)},\n  operationId: ${JSON.stringify(opId)},\n  ${contracts.requestBody ? `requestContentType: ${kmApiContentType(contracts.requestBody.contentType, 'IRequestContentType')},` : ''}\n  ${responseContentType ? `responseContentType: ${kmApiContentType(responseContentType, 'IResponseContentType')},` : ''}\n  ${ir.deprecated ? "deprecated: 'YES'," : ''}\n  auth: ${JSON.stringify(auth)},\n  summary: ${JSON.stringify(operation.operation.summary ?? '')},\n  description: ${JSON.stringify(operation.operation.description ?? '')},\n  tags: ${JSON.stringify(tags)},\n  ${examples}\n  ${request},\n  response: { ${response} },\n});\n\nexport default ${exportId};\n// Source: ${sourceName}\n`.replace(/[ \t]+$/gm, '');
+  const depthPrefix = '../'.repeat(endpointDepth);
+  const componentImports: string[] = [];
+  if (useComponents && componentRefs.size) componentImports.push(`import { ${[...componentRefs].sort().join(', ')} } from '${depthPrefix}components/index';`);
+  if (useComponents && reusableUses.parameter.size) componentImports.push(`import { ${[...reusableUses.parameter].sort().join(', ')} } from '${depthPrefix}components/parameters/index';`);
+  if (useComponents && reusableUses.response.size) componentImports.push(`import { ${[...reusableUses.response].sort().join(', ')} } from '${depthPrefix}components/responses/index';`);
+  const componentImport = componentImports.length ? `\n${componentImports.join('\n')}` : '';
+  return `/** Generated by zopia — do not edit by hand. */\nimport { z } from 'zod';\nimport { makeApiConfig } from 'km-api';${componentImport}\n\nexport const ${exportId} = makeApiConfig({\n  method: ${JSON.stringify(operation.method.toUpperCase())},\n  pathShape: ${JSON.stringify(runtimePath ?? operation.path)},\n  operationId: ${JSON.stringify(opId)},\n  ${contracts.requestBody ? `requestContentType: ${kmApiContentType(contracts.requestBody.contentType, 'IRequestContentType')},` : ''}\n  ${responseContentType ? `responseContentType: ${kmApiContentType(responseContentType, 'IResponseContentType')},` : ''}\n  ${ir.deprecated ? "deprecated: 'YES'," : ''}\n  auth: ${JSON.stringify(auth)},\n  summary: ${JSON.stringify(operation.operation.summary ?? '')},\n  description: ${JSON.stringify(operation.operation.description ?? '')},\n  tags: ${JSON.stringify(tags)},\n  ${examples}\n  ${request},\n  response: { ${response} },\n});\n\nexport default ${exportId};\n${emitCustom ? "export * as custom from './custom';\n" : ''}// Source: ${sourceName}\n`.replace(/[ \t]+$/gm, '');
 }
 
 function avoidReservedFileCollisions(plans: readonly ApiDocsFilePlan[], reservedFiles: Iterable<string>): ApiDocsFilePlan[] {
@@ -368,9 +430,9 @@ export async function generateApiDocsFiles(input: OpenApiDocument | string, opti
 
 async function generateApiDocsFilesInternal(input: OpenApiDocument | string, options: GenerateApiDocsOptions): Promise<GeneratedApiDocsFile[]> {
   if (!options || typeof options !== 'object' || Array.isArray(options) || typeof options.outputDir !== 'string' || !options.outputDir || options.outputDir.includes('\0')) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'outputDir is required', { at: 'outputDir', hint: 'provide a generated-tree output directory' });
-  const unknown = Object.keys(options).find((key) => !['outputDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest'].includes(key));
+  const unknown = Object.keys(options).find((key) => !['outputDir', 'mode', 'insertComponents', 'useComponentAsReference', 'manifest', 'custom'].includes(key));
   if (unknown) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unknown generation option: ${unknown}`, { at: unknown, hint: 'remove the unsupported option' });
-  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest'] as const) if (options[key] !== undefined && typeof options[key] !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `${key} must be a boolean`, { at: key });
+  for (const key of ['insertComponents', 'useComponentAsReference', 'manifest', 'custom'] as const) if (options[key] !== undefined && typeof options[key] !== 'boolean') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `${key} must be a boolean`, { at: key });
   let source: OpenApiDocument;
   try { source = typeof input === 'string' ? JSON.parse(input) as OpenApiDocument : input; }
   catch (error) { throw asZopiaError(error, 'ZOPIA_SPEC_INVALID_JSON', 'invalid OpenAPI JSON text', { at: '#', hint: 'fix the JSON syntax' }); }
@@ -379,27 +441,48 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   const insertComponents = options.insertComponents === true;
   const useComponentAsReference = options.useComponentAsReference === true;
   const retainManifest = options.manifest !== false;
+  const emitCustom = options.custom === true;
   const schemas = source.openapi ? source.components?.schemas ?? {} : source.definitions ?? {};
   const componentNames = insertComponents ? Object.keys(schemas).sort() : [];
   const reservedFiles = componentNames.map((name) => `components/${name}/index.ts`);
-  if (insertComponents) reservedFiles.push('components/index.ts');
+  if (insertComponents) {
+    reservedFiles.push('components/index.ts');
+    const declaredReusable = reusableDeclarations(source);
+    for (const [directory, map, derive] of [['components/parameters', declaredReusable.parameter, deriveReusableParameterSchema], ['components/responses', declaredReusable.response, deriveReusableResponseSchema]] as const) {
+      const names = Object.keys(map).sort().filter((name) => {
+        const value = map[name];
+        if (value !== undefined && (!value || typeof value !== 'object' || Array.isArray(value))) return true; // surfaced later as a typed derivation error
+        return derive === deriveReusableParameterSchema || derive(source, name, value) !== undefined;
+      });
+      if (!names.length) continue;
+      reservedFiles.push(`${directory}/index.ts`, ...names.map((name) => `${directory}/${name}/index.ts`));
+    }
+  }
   if (retainManifest) reservedFiles.push(ZOPIA_MANIFEST_FILE);
   const plans = avoidReservedFileCollisions(planApiDocsFiles(source, mode), reservedFiles);
+  const webhookPlans = avoidReservedFileCollisions(planWebhookDocsFiles(source, mode), [...reservedFiles, ...plans.map((plan) => plan.file)]);
+  // OpenAPI requires operationId to be unique document-wide; $ref aliases can make the
+  // same id appear in both the path and webhook namespaces even though each collector
+  // dedupes only its own list — reject before producing a tree ④ can never reverse.
+  assertUniqueOperationIdsAcrossScopes(plans, webhookPlans);
   const previous = await inspectZopiaManifestStaleness(options.outputDir, {
     sourceSha256: hashOpenApiDocument(source),
     mode,
     insertComponents,
     useComponentAsReference,
     manifest: retainManifest,
+    custom: emitCustom,
   });
   const manifest = retainManifest ? createZopiaManifest(source, plans, {
     mode,
     insertComponents,
     useComponentAsReference,
-  }) : undefined;
+    custom: emitCustom,
+  }, webhookPlans) : undefined;
   const root = resolve(options.outputDir);
   const previouslyOwned = new Set(previous.ownedFiles);
-  const renderedEndpoints = plans.map((plan) => ({ plan, content: renderEndpoint(plan, source, mode, useComponentAsReference) }));
+  const renderedEndpoints = plans.map((plan) => ({ plan, content: renderEndpoint(plan, source, mode, useComponentAsReference, undefined, emitCustom) }));
+  const renderedWebhooks = webhookPlans.map((plan) => ({ plan, content: renderEndpoint(plan, source, mode, useComponentAsReference, webhookRuntimePath(plan.path), emitCustom) }));
   const generated: GeneratedApiDocsFile[] = [];
   if (insertComponents) {
     const componentExports = new Map<string, string>();
@@ -428,9 +511,52 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
     const barrelPath = await writeGeneratedFile(root, barrelFile, barrel, previouslyOwned);
     generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: 'components' });
   }
+  if (insertComponents) {
+    const swagger = source.swagger === '2.0';
+    const declarations = reusableDeclarations(source);
+    for (const table of [
+      { kind: 'parameter', directory: 'components/parameters', raw: swagger ? source.parameters : source.components?.parameters, containerAt: swagger ? '#/parameters' : '#/components/parameters', declared: declarations.parameter, exportNameFor: componentParameterExportName, derive: deriveReusableParameterSchema },
+      { kind: 'response', directory: 'components/responses', raw: swagger ? source.responses : source.components?.responses, containerAt: swagger ? '#/responses' : '#/components/responses', declared: declarations.response, exportNameFor: componentResponseExportName, derive: deriveReusableResponseSchema },
+    ] as const) {
+      if (table.raw !== undefined && (!table.raw || typeof table.raw !== 'object' || Array.isArray(table.raw))) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Invalid reusable ${table.kind} components: expected an object`, { at: table.containerAt });
+      const names = Object.keys(table.declared).sort();
+      if (!names.length) continue;
+      const exportUses = new Map<string, string>();
+      const directories = new Map<string, string>();
+      for (const name of names) {
+        if (name.toLowerCase() === 'index.ts') throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component file name collides with the barrel: ${name}`);
+        const previousDirectory = directories.get(name.toLowerCase());
+        if (previousDirectory) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component file name collision: ${previousDirectory} and ${name}`);
+        directories.set(name.toLowerCase(), name);
+        const exportId = table.exportNameFor(name);
+        const previousExport = exportUses.get(exportId);
+        if (previousExport) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Component export name collision: ${previousExport} and ${name}`);
+        exportUses.set(exportId, name);
+      }
+      const derived = new Map(names.map((name) => [name, table.derive(source, name, table.declared[name])]));
+      // Schema-less responses render `z.void()` at use sites — there is no shared schema to centralize (D-18).
+      const emitted = names.filter((name) => table.kind === 'parameter' || derived.get(name) !== undefined);
+      if (!emitted.length) continue;
+      for (const name of emitted) {
+        if (name.includes('/') || !isPortableApiDocsSegment(name)) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Unsafe component name: ${name}`);
+        const absolutePath = await writeGeneratedFile(root, `${table.directory}/${name}/index.ts`, renderComponent(name, derived.get(name), source, table.exportNameFor, '../../'), previouslyOwned);
+        generated.push({ file: `${table.directory}/${name}/index.ts`, absolutePath, operationId: name });
+      }
+      const barrel = emitted.map((name) => `export { ${table.exportNameFor(name)} } from ${JSON.stringify(`./${name}/index`)};`).join('\n') + '\n';
+      const barrelFile = `${table.directory}/index.ts`;
+      const barrelPath = await writeGeneratedFile(root, barrelFile, barrel, previouslyOwned);
+      generated.push({ file: barrelFile, absolutePath: barrelPath, operationId: table.directory });
+    }
+  }
   for (const { plan, content } of renderedEndpoints) {
     const absolutePath = await writeGeneratedFile(root, plan.file, content, previouslyOwned);
     generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
+    if (emitCustom) await writeCustomScaffold(root, customCompanionFile(plan.file));
+  }
+  for (const { plan, content } of renderedWebhooks) {
+    const absolutePath = await writeGeneratedFile(root, plan.file, content, previouslyOwned);
+    generated.push({ file: plan.file, absolutePath, operationId: plan.operationId });
+    if (emitCustom) await writeCustomScaffold(root, customCompanionFile(plan.file));
   }
   if (manifest) {
     const manifestPath = await writeZopiaManifest(root, manifest);

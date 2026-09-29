@@ -1,7 +1,13 @@
+import { watch } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
+import { loadZopiaConfig, type ZopiaProjectConfig } from './config';
 import { asZopiaError, ZopiaError } from './errors';
 import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
 import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
+import { validateZopia, type ZopiaValidationResult } from './validation';
+import { diffOpenApiSpecs, type ZopiaDiffResult } from './diff';
+import { loadNavigationIndex } from './api-docs-navigation';
 import { formatZopiaWarning, type ZopiaWarning } from './warnings';
 
 /** Output channels used by the CLI command runner. */
@@ -24,37 +30,83 @@ export interface ZopiaCliOutput {
 
 interface GenerateArguments {
   input: string;
-  outputDirectory: string;
+  outputDirectory?: string;
   mode?: 'directory' | 'flat';
   insertComponents: boolean;
   useComponentAsReference: boolean;
   manifest: boolean;
+  custom: boolean;
+  preset?: 'multi-tag' | 'multi-server';
+  config?: string;
+  watch: boolean;
 }
 
 interface ReverseArguments {
   input: string;
   outputFile?: string;
-  version: '3.0' | '3.1';
+  version?: '2.0' | '3.0' | '3.1';
+  config?: string;
+}
+
+interface ValidateArguments {
+  input: string;
+  config?: string;
+}
+
+interface DiffArguments {
+  before: string;
+  after: string;
+  config?: string;
 }
 
 const HELP_TEXT = `Usage:
-  zopia generate <spec.json> <output-dir> [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--no-manifest]
-  zopia reverse <docs-dir|manifest.json> [--out file] [--version 3.0|3.1]
+  zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest] [--preset multi-tag|multi-server] [--watch] [--config path]
+  zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
+  zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
+  zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
+  zopia navigate <docs-dir> (--to-code <spec-pointer> | --to-spec <tree-file>) [--config path]
 
-Global option:
+Global options:
   -h, --help                       Show this help.
+  --config path                    Use an explicit config file instead of discovering zopia.config.ts in the
+                                   working directory. CLI flags always override config values; config values
+                                   override built-in defaults. With no config value the output directory stays
+                                   a required positional argument for generate.
 
 Generate options:
-  --mode directory|flat            Select endpoint layout (default: directory).
+  --mode directory|flat            Select endpoint layout (default: config generate.mode, then directory).
   --insert-components              Emit component schema modules.
   --use-component-as-reference     Import emitted components; requires --insert-components.
-  --no-manifest                    Do not write .zopia-manifest.json.
+  --custom                         Write merge-safe custom companion modules per endpoint and export them.
+  --preset multi-tag|multi-server  Split generation into per-bucket sub-trees: one tree per primary tag,
+                                   or one per effective first server (falls through when there is nothing
+                                   to split; each sub-tree keeps its own manifest).
+  --no-manifest                    Do not write .zopia-manifest.json (overrides config generate.manifest).
+  zopia navigate                   Jump table between a generated tree and its source spec:
+                                   --to-code <pointer> prints the generated file(s) implementing
+                                   '#/paths/~1pets/get' style pointers; --to-spec <file> prints the
+                                   source pointer owning a tree-relative file (both directions are
+                                   manifest-driven, including custom companions and components).
+  --watch                          Regenerate whenever the spec file changes (Ctrl+C to stop).
 
 Reverse options:
-  --out file                       Write JSON to a file instead of stdout.
-  --version 3.0|3.1                Select OpenAPI output (default: 3.1).
+  --out file                       Write JSON to a file instead of stdout (default: config reverse.out, then stdout).
+  --version 2.0|3.0|3.1            Select OpenAPI output (default: config reverse.version, then 3.1).
 
-Security: reverse executes generated TypeScript referenced by the manifest; use only trusted trees.
+Validate options:
+  (none)                           Checks a spec for broken refs, name collisions, and unreachable components,
+                                   or a generated tree for manifest problems, reverse dry-run failures, and km-api
+                                   drift. Diagnostics print to stdout; exit status is 1 when any error-severity
+                                   diagnostic was found.
+
+Diff options:
+  (none)                           Compares two specs: dialect, info, endpoints (+/-/~ with parameter,
+                                   request-body, and response details), webhooks, schema components, and
+                                   document fields. Changes print to stdout with a summary line; differences
+                                   are data, so a non-identical pair still exits 0.
+
+Security: reverse executes generated TypeScript referenced by the manifest and the config file is executed
+JavaScript; use only trusted trees and trusted config files.
 `;
 
 const processOutput: ZopiaCliOutput = {
@@ -67,7 +119,7 @@ function invalid(message: string, at: string, hint: string): never {
 }
 
 function usage(): never {
-  invalid('usage: zopia generate <spec.json> <output-dir> [options] | zopia reverse <docs-dir|manifest.json> [options]', 'argv', "run 'zopia --help' for command syntax");
+  invalid('usage: zopia generate <spec.json|spec.yaml> [output-dir] [options] | zopia reverse <docs-dir|manifest.json> [options]', 'argv', "run 'zopia --help' for command syntax");
 }
 
 function markOption(seen: Set<string>, option: string): void {
@@ -88,6 +140,10 @@ function parseGenerate(argv: string[]): GenerateArguments {
   let insertComponents = false;
   let useComponentAsReference = false;
   let manifest = true;
+  let custom = false;
+  let preset: 'multi-tag' | 'multi-server' | undefined;
+  let config: string | undefined;
+  let watchMode = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -106,6 +162,22 @@ function parseGenerate(argv: string[]): GenerateArguments {
     } else if (argument === '--no-manifest') {
       markOption(seen, argument);
       manifest = false;
+    } else if (argument === '--custom') {
+      markOption(seen, argument);
+      custom = true;
+    } else if (argument === '--preset') {
+      markOption(seen, argument);
+      const value = optionValue(argv, index, argument);
+      if (value !== 'multi-tag' && value !== 'multi-server') invalid('invalid --preset; expected multi-tag or multi-server', argument, "use '--preset multi-tag' or '--preset multi-server'");
+      preset = value;
+      index += 1;
+    } else if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument === '--watch') {
+      markOption(seen, argument);
+      watchMode = true;
     } else if (argument.startsWith('-')) {
       invalid(`unknown generate option: ${argument}`, argument, "run 'zopia generate --help' for supported options");
     } else {
@@ -113,16 +185,17 @@ function parseGenerate(argv: string[]): GenerateArguments {
     }
   }
 
-  if (positional.length < 2) invalid('generate requires <spec.json> and <output-dir>', 'argv', 'provide both input and output paths');
+  if (positional.length < 1) invalid('generate requires <spec.json|spec.yaml>', 'argv', 'provide the input spec path');
   if (positional.length > 2) invalid(`unexpected generate argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
-  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest };
+  return { input: positional[0], outputDirectory: positional[1], mode, insertComponents, useComponentAsReference, manifest, custom, preset, config, watch: watchMode };
 }
 
 function parseReverse(argv: string[]): ReverseArguments {
   const positional: string[] = [];
   const seen = new Set<string>();
   let outputFile: string | undefined;
-  let version: '3.0' | '3.1' = '3.1';
+  let version: '2.0' | '3.0' | '3.1' | undefined;
+  let config: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -133,8 +206,12 @@ function parseReverse(argv: string[]): ReverseArguments {
     } else if (argument === '--version') {
       markOption(seen, argument);
       const value = optionValue(argv, index, argument);
-      if (value !== '3.0' && value !== '3.1') invalid("invalid --version; expected '3.0' or '3.1'", argument, "use '--version 3.0' or '--version 3.1'");
+      if (value !== '2.0' && value !== '3.0' && value !== '3.1') invalid("invalid --version; expected '2.0', '3.0', or '3.1'", argument, "use '--version 2.0', '--version 3.0', or '--version 3.1'");
       version = value;
+      index += 1;
+    } else if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
       index += 1;
     } else if (argument.startsWith('-')) {
       invalid(`unknown reverse option: ${argument}`, argument, "run 'zopia reverse --help' for supported options");
@@ -145,11 +222,193 @@ function parseReverse(argv: string[]): ReverseArguments {
 
   if (positional.length < 1) invalid('reverse requires <docs-dir|manifest.json>', 'argv', 'provide a generated docs directory or manifest path');
   if (positional.length > 1) invalid(`unexpected reverse argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
-  return { input: positional[0], outputFile, version };
+  return { input: positional[0], outputFile, version, config };
 }
 
 function printWarnings(warnings: readonly ZopiaWarning[], output: ZopiaCliOutput): void {
   for (const warning of warnings) output.stderr(`Warning: ${formatZopiaWarning(warning)}`);
+}
+
+function parseValidate(argv: string[]): ValidateArguments {
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let config: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument.startsWith('-')) {
+      invalid(`unknown validate option: ${argument}`, argument, "run 'zopia validate --help' for supported options");
+    } else {
+      positional.push(argument);
+    }
+  }
+
+  if (positional.length < 1) invalid('validate requires <spec.json|spec.yaml|docs-dir>', 'argv', 'provide the spec path or generated docs directory');
+  if (positional.length > 1) invalid(`unexpected validate argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
+  return { input: positional[0], config };
+}
+
+interface NavigateArguments {
+  tree: string;
+  toCode?: string;
+  toSpec?: string;
+  config?: string;
+}
+
+function parseNavigate(argv: string[]): NavigateArguments {
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let config: string | undefined;
+  let toCode: string | undefined;
+  let toSpec: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument === '--to-code') {
+      markOption(seen, argument);
+      toCode = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument === '--to-spec') {
+      markOption(seen, argument);
+      toSpec = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument.startsWith('-')) {
+      invalid(`unknown navigate option: ${argument}`, argument, "run 'zopia navigate --help' for supported options");
+    } else {
+      positional.push(argument);
+    }
+  }
+
+  if (positional.length < 1) invalid('navigate requires <docs-dir>', 'argv', 'provide the generated tree root (or preset bucket root) to navigate');
+  if (positional.length > 1) invalid(`unexpected navigate argument: ${positional[1]}`, positional[1], 'remove the extra positional argument');
+  if (toCode === undefined && toSpec === undefined) invalid('navigate requires --to-code or --to-spec', 'argv', "use --to-code '#/paths/~1pets/get' to find files or --to-spec pets/get/index.ts to find the pointer");
+  if (toCode !== undefined && toSpec !== undefined) invalid('navigate accepts either --to-code or --to-spec, not both', toSpec, 'pick one direction per invocation');
+  return { tree: positional[0], ...(toCode === undefined ? {} : { toCode }), ...(toSpec === undefined ? {} : { toSpec }), ...(config === undefined ? {} : { config }) };
+}
+
+function parseDiff(argv: string[]): DiffArguments {
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let config: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument.startsWith('-')) {
+      invalid(`unknown diff option: ${argument}`, argument, "run 'zopia diff --help' for supported options");
+    } else {
+      positional.push(argument);
+    }
+  }
+
+  if (positional.length < 2) invalid('diff requires <old.json|old.yaml> and <new.json|new.yaml>', 'argv', 'provide both spec paths or documents to compare');
+  if (positional.length > 2) invalid(`unexpected diff argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
+  return { before: positional[0], after: positional[1], config };
+}
+
+function printValidation(result: ZopiaValidationResult, output: ZopiaCliOutput): void {
+  for (const issue of result.diagnostics) {
+    output.stdout(`${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.code}${issue.at ? ` ${issue.at}` : ''}: ${issue.message}\n`);
+  }
+  const errors = result.diagnostics.filter((issue) => issue.severity === 'error').length;
+  const warnings = result.diagnostics.length - errors;
+  output.stdout(`zopia validate ${result.kind} ${result.target}: ${errors === 0 ? 'ok' : 'failed'} (${errors} errors, ${warnings} warnings)\n`);
+}
+
+function printDiff(result: ZopiaDiffResult, before: string, after: string, output: ZopiaCliOutput): void {
+  const glyphs = { added: '+', removed: '-', changed: '~' } as const;
+  for (const entry of result.changes) output.stdout(`${'  '.repeat(entry.depth)}${glyphs[entry.kind]} ${entry.message}\n`);
+  const total = result.changes.length;
+  output.stdout(result.identical
+    ? `zopia diff ${before} ${after}: identical (0 changes)\n`
+    : `zopia diff ${before} ${after}: ${total} change${total === 1 ? '' : 's'} (${result.counts.added} added, ${result.counts.removed} removed, ${result.counts.changed} changed)\n`);
+}
+
+/**
+ * Repeat engine ③ whenever the spec file changes.
+ *
+ * The initial run always executes once (surfacing the exact same errors as
+ * non-watch generate). Subsequent runs are coalesced: bursts within 50 ms are
+ * collapsed, and a change observed while a run is executing is re-run once the
+ * active run settles. Warnings land on stderr in deterministic order; run
+ * failures print the error and keep watching (spec edits are the natural fix).
+ *
+ * @param input Spec path to watch (JSON or YAML).
+ * @param options Resolved generate options shared by every run.
+ * @param output Destinations for generated output and diagnostics.
+ * @param signal Optional abort signal that stops watching and settles the returned promise (CLI usage passes none).
+ * @returns A promise that never resolves while watching (it resolves only if the watcher stops after a fatal error or abort).
+ * @throws {@link ZopiaError} when the watched spec cannot be resolved to a file.
+ */
+export async function runGenerateWatch(input: string, options: Parameters<typeof openApiToApiDocs>[1], output: ZopiaCliOutput = processOutput, signal?: AbortSignal): Promise<never> {
+  if (!input || typeof input !== 'string') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'watch mode requires a spec file path', { at: 'input', hint: 'pass a JSON or YAML spec path to `zopia generate --watch`' });
+  const run = async (): Promise<void> => {
+    try {
+      const result = await openApiToApiDocs(input, options);
+      printWarnings(result.warnings, output);
+    } catch (error) {
+      const typed = asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'watch run failed', { at: input });
+      output.stderr(`Error: ${typed.message}`);
+    }
+  };
+  await run();
+  let running = false;
+  let queued = false;
+  const trigger = (): void => {
+    if (running) {
+      queued = true;
+      return;
+    }
+    running = true;
+    void run().finally(() => {
+      running = false;
+      if (queued) {
+        queued = false;
+        trigger();
+      }
+    });
+  };
+  let debounce: ReturnType<typeof setTimeout> | undefined;
+  // Watch the parent directory and filter on the spec basename: editors saving
+  // atomically (write-temp + rename) replace the inode a naive file watcher is
+  // bound to, which would silently end regeneration on Linux.
+  const directory = dirname(input);
+  const name = basename(input);
+  const watcher = watch(directory, (eventType, filename) => {
+    if (filename !== null && filename.toString() !== name) return;
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(trigger, 50);
+  });
+  watcher.on('error', (error) => {
+    output.stderr(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    watcher.close();
+  });
+  return new Promise<never>((resolve) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      if (debounce) clearTimeout(debounce);
+      watcher.close();
+      resolve(undefined as never);
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      if (debounce) clearTimeout(debounce);
+      watcher.close();
+      resolve(undefined as never);
+    }, { once: true });
+  });
 }
 
 /**
@@ -173,30 +432,84 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
 
   if (command === 'generate') {
     const parsed = parseGenerate(commandArguments);
-    const result = await openApiToApiDocs(parsed.input, {
-      outDir: parsed.outputDirectory,
-      mode: parsed.mode,
-      insertComponents: parsed.insertComponents,
-      useComponentAsReference: parsed.useComponentAsReference,
-      manifest: parsed.manifest,
-    });
+    const project = await loadZopiaConfig({ file: parsed.config });
+    const generateDefaults = project?.generate;
+    const outputDirectory = parsed.outputDirectory ?? generateDefaults?.outDir;
+    if (outputDirectory === undefined) invalid('generate requires <spec.json|spec.yaml> and <output-dir>', 'argv', 'provide both input and output paths, or set generate.outDir in zopia.config.ts');
+    const options = {
+      outDir: outputDirectory,
+      mode: parsed.mode ?? generateDefaults?.mode,
+      insertComponents: parsed.insertComponents || (generateDefaults?.insertComponents ?? false),
+      useComponentAsReference: parsed.useComponentAsReference || (generateDefaults?.useComponentAsReference ?? false),
+      // `--no-manifest` is explicit and always wins over config defaults.
+      manifest: parsed.manifest && (generateDefaults?.manifest ?? true),
+      custom: parsed.custom || (generateDefaults?.custom ?? false),
+      preset: parsed.preset ?? generateDefaults?.preset,
+    };
+    if (parsed.watch) {
+      await runGenerateWatch(parsed.input, options, output);
+      return;
+    }
+    const result = await openApiToApiDocs(parsed.input, options);
     printWarnings(result.warnings, output);
+    if (result.trees) output.stdout(`zopia generate ${parsed.input}: ${result.trees.length} preset trees in ${outputDirectory} (${result.trees.map((tree) => tree.directory).join(', ')})\n`);
+    return;
+  }
+
+  if (command === 'validate') {
+    const parsed = parseValidate(commandArguments);
+    // `--config` is accepted for grammar parity and future validate defaults (D-19);
+    // validation currently has no configurable knobs, so the project file only needs
+    // to load successfully when explicitly named.
+    await loadZopiaConfig({ file: parsed.config });
+    const result = await validateZopia(parsed.input);
+    printValidation(result, output);
+    const errors = result.diagnostics.filter((issue) => issue.severity === 'error').length;
+    if (errors > 0) invalid(`zopia validate failed with ${errors} error${errors === 1 ? '' : 's'}`, parsed.input, 'resolve the reported error diagnostics');
+    return;
+  }
+
+  if (command === 'navigate') {
+    const parsed = parseNavigate(commandArguments);
+    // `--config` is accepted for grammar parity (D-19) — navigate has no
+    // configurable knobs; the project file only needs to load when explicitly named.
+    await loadZopiaConfig({ file: parsed.config });
+    const index = await loadNavigationIndex(parsed.tree);
+    if (parsed.toCode !== undefined) {
+      for (const location of index.specToLocations(parsed.toCode)) output.stdout(`zopia navigate ${parsed.tree} --to-code ${parsed.toCode}: ${location.file} (${location.label})\n`);
+    } else {
+      const location = index.treeToSpecLocation(parsed.toSpec as string);
+      output.stdout(`zopia navigate ${parsed.tree} --to-spec ${parsed.toSpec as string}: ${location.pointer} (${location.label})\n`);
+    }
+    return;
+  }
+
+  if (command === 'diff') {
+    const parsed = parseDiff(commandArguments);
+    // `--config` is accepted for grammar parity (D-19) — diff currently has no
+    // configurable defaults, the project file only needs to load when explicitly named.
+    await loadZopiaConfig({ file: parsed.config });
+    const result = await diffOpenApiSpecs(parsed.before, parsed.after);
+    printDiff(result, parsed.before, parsed.after, output);
     return;
   }
 
   if (command === 'reverse') {
     const parsed = parseReverse(commandArguments);
-    const result = await apiDocsToOpenApi(parsed.input, { version: parsed.version });
+    const project = await loadZopiaConfig({ file: parsed.config });
+    const reverseDefaults = project?.reverse;
+    const outputFile = parsed.outputFile ?? reverseDefaults?.out;
+    const result = await apiDocsToOpenApi(parsed.input, { version: parsed.version ?? reverseDefaults?.version ?? '3.1' });
     printWarnings(result.warnings, output);
     const content = `${JSON.stringify(result.openapi, null, 2)}\n`;
-    if (parsed.outputFile) {
-      try { await writeFile(parsed.outputFile, content, 'utf8'); }
-      catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write reverse output', { at: parsed.outputFile, hint: 'check the destination path and permissions' }); }
+    if (outputFile) {
+      try { await writeFile(outputFile, content, 'utf8'); }
+      catch (error) { throw asZopiaError(error, 'ZOPIA_FS_WRITE_FAILED', 'unable to write reverse output', { at: outputFile, hint: 'check the destination path and permissions' }); }
     } else output.stdout(content);
     return;
   }
 
-  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', or 'zopia --help'");
+  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', 'zopia validate', 'zopia diff', 'zopia navigate', or 'zopia --help'");
 }
 
 /**

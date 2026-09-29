@@ -39,6 +39,16 @@ implementation so local, CI, and publish-time validation cannot drift.
 `package-lock.json` remains checked in as the npm/Node compatibility resolution;
 `bun.lock` is authoritative for the Bun gate and release workflow.
 
+**CI publishing** — `docs/publish-workflow.yml.example` is the ready-made
+GitHub Actions workflow: drop it at `.github/workflows/publish.yml` (the
+sandbox's GitHub App token cannot push workflow files — adding it once via
+the GitHub UI or an owner-shell works), then every GitHub Release publishes
+to npm with tag⇄version verification and `npm publish --provenance --access
+public` (the `prepublishOnly` hook re-runs the same Bun gate inside CI, so a
+publish cannot bypass it). The pipeline reads an `NPM_TOKEN` repository
+secret or npm trusted-publishing; credentials never appear in the repository
+or in chat.
+
 ## 📏 Code standard
 
 | # | Rule |
@@ -221,9 +231,11 @@ remain explicit maintainer actions after the committed release gate is green.
 | **D-10** | 🔐 MIT license | consistency with the whole `km-*` ecosystem |
 | **D-11** | 📦 zero direct/bundled runtime dependencies in v0.1.0 | `zod` + `km-api` are explicit peers used by conversion/generated-code paths; a small owned dependency surface reduces install and security risk (P-6) |
 | **D-12** | ⚠️ unsupported facts never fail silently — every engine emits the shared structured warning; schema emission adds a canonical `// @zopia:warn` marker; restorable source facts also enter the manifest; CLI diagnostics use stderr only | "pure, safe, clean" means *visible* loss without corrupting generated output; reverse conversion restores manifest-recorded facts verbatim where the target dialect permits |
-| **D-13** | 📝 v0.1.0 input is JSON only (YAML and external refs → Phase 2); server variables are manifest-preserved but warn because endpoint modules cannot represent them | keeps the v0.1.0 parsing/resolution contract tight while round-tripping document-frame data |
+| **D-13** | 📝 v0.1.0 input is JSON only (external `$ref` resolution → Phase 2, same-folder in v0.2.x via D-17; **YAML input lifted in v0.2.x via D-16**); server variables are manifest-preserved but warn because endpoint modules cannot represent them | keeps the v0.1.0 parsing/resolution contract tight while round-tripping document-frame data |
 | **D-14** | 📐 zopia **targets km-api ≥ 0.4.1** — the output contract is "the generated tree **typechecks** against installed published km-api 0.4.1" (enforced by the golden-tree test, R-126). Eight methods including `trace`, custom/`default` statuses, arbitrary MIME strings, and `operationId` are emitted as code. Published 0.4.1 enumerates known MIME values, so exact OpenAPI extension strings cross one narrow type-only assertion; non-representable parameter metadata and response `headers` remain in manifest overlays (R-635/R-754) | `makeApiConfig` is a type-level factory with no runtime validation. The dedicated strict golden `tsc` gate verifies its real published declarations; exact runtime MIME values remain reversible. Re-verify the boundary on every km-api bump |
 | **D-15** | 📦 **km-api is consumed from npm** — zopia depends on the published `km-api@^0.4.1`; no Git submodule or unpublished commit is required. | reproducible fresh clones and published dependency resolution |
+| **D-16** | 📝 **v0.2.x YAML input is parsed by an owned, deterministic YAML 1.2 core-schema parser** (`src/conversions/yaml.ts`) — block/flow collections, plain/single/double-quoted scalars, literal/folded block scalars with chomping/indent indicators, comments, anchors/aliases/`<<` merge keys (explicit keys win), `%YAML 1.x` directives, single `---`/`...` document; keys are stringified like a JSON round-trip; tab indentation, duplicate keys, undefined aliases, custom tags, multi-document streams, complex `?` keys, and non-JSON numbers (`.inf`/`.nan`) fail with `ZOPIA_SPEC_INVALID_YAML` | a dependency (D-11) would import parser state we cannot pin for determinism (P-1); the subset covers real-world `spec.yaml` files fully, and every rejection is a typed, line-located diagnostic instead of silent approximation (P-4) |
+| **D-17** | 🔗 **v0.2.x file input resolves same-folder external `$ref`s by bundling them inline before normalization** (`src/conversions/openapi-external-ref.ts`) — `other.(json|yaml|yml)` with `./…` spellings, an optional `#` JSON Pointer ('' = whole file); sibling files are read once (P-1), bundled content is deep-cloned, nested cross-file refs resolve against their owning file, and sibling keys win over bundled content; URLs, `../`, absolute paths, subdirectories, drives, and non-spec extensions keep `ZOPIA_REF_EXTERNAL`; unreadable targets, missing pointers, circular chains, sibling-on-scalar targets, and >512-level expansion fail typed; reverse conversion emits the bundled single file and never re-splits | one predictable grammar keeps resolution deterministic (P-1/P-4) with zero network access or directory walking, while object/text inputs keep their original semantics byte-for-byte |
 
 ## 🔗 Back to
 

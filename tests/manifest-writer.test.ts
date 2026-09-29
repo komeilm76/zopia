@@ -2,7 +2,7 @@ import { useTemporaryDirectories } from './test-temporary-directories';
 import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { planApiDocsFiles } from '../src/conversions/api-docs-plan';
+import { planApiDocsFiles, planWebhookDocsFiles } from '../src/conversions/api-docs-plan';
 import { manifestToOpenApi } from '../src/conversions/manifest-to-openapi';
 import {
   createZopiaManifest,
@@ -88,7 +88,7 @@ function build(source = richOpenApi(), insertComponents = true): GeneratedZopiaM
     mode: 'directory',
     insertComponents,
     useComponentAsReference: insertComponents,
-  });
+  }, planWebhookDocsFiles(source));
 }
 
 describe('dedicated manifest writer', () => {
@@ -107,8 +107,18 @@ describe('dedicated manifest writer', () => {
     expect(manifest.documentOverlay).toEqual({
       externalDocs: source.externalDocs,
       jsonSchemaDialect: source.jsonSchemaDialect,
-      webhooks: source.webhooks,
       'x-document': source['x-document'],
+    });
+    expect(manifest.webhookOrder).toEqual(['event']);
+    expect(manifest.webhooksOverlay).toEqual({});
+    expect(manifest.webhooks ?? []).toHaveLength(1);
+    expect(manifest.webhooks![0]).toMatchObject({
+      name: 'event',
+      method: 'post',
+      sourceOperation: source.webhooks.event.post,
+      refs: [],
+      overlay: [],
+      responseOverlay: [],
     });
     expect(manifest.pathsOverlay).toEqual({});
     expect(manifest.servers).toEqual(source.servers);
@@ -120,9 +130,12 @@ describe('dedicated manifest writer', () => {
       parameters: source.components.parameters,
       responses: source.components.responses,
     });
-    expect(manifest.components.map(({ name, file }) => ({ name, file }))).toEqual([
+    expect(manifest.components.map(({ name, file, kind }) => kind === undefined ? { name, file } : { name, file, kind })).toEqual([
       { name: 'Alpha', file: 'components/Alpha/index.ts' },
       { name: 'Zed', file: 'components/Zed/index.ts' },
+      // Reusable parameters get their own component entries (D-18); the schema-less `Problem`
+      // response renders `z.void()` at use sites and intentionally has no manifest entry.
+      { name: 'Trace', file: 'components/parameters/Trace/index.ts', kind: 'parameter' },
     ]);
     expect(manifest.components[0].schema).toEqual(source.components.schemas.Alpha);
     expect(Array.isArray(manifest.components[0].overlay)).toBe(true);

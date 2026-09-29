@@ -242,6 +242,25 @@
         "title": "User",
         "type": "object"
       }
+    },
+    {
+      "file": "components/parameters/TraceId/index.ts",
+      "kind": "parameter",
+      "name": "TraceId",
+      "overlay": [],
+      "schema": {
+        "type": "string"
+      }
+    },
+    {
+      "file": "components/responses/Problem/index.ts",
+      "kind": "response",
+      "name": "Problem",
+      "overlay": [],
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
     }
   ],
   "componentsOverlay": {
@@ -367,5 +386,5 @@
       "name": "users"
     }
   ],
-  "zopiaVersion": "0.1.0"
+  "zopiaVersion": "0.3.0"
 }
