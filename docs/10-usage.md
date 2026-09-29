@@ -191,15 +191,21 @@ resolve through their manifests:
 
 ```ts
 import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+import type { ApiDocsFlat, ApiDocsTree } from './api_docs/.zopia-tree';
 
 // Nested: exact URL path segments, lowercase method leaf, default-export config
-const apiDocs = await createApiDocs('api_docs');
+const apiDocs = await createApiDocs<ApiDocsTree>('api_docs');
 const getUser = apiDocs.users['{userId}'].get;   // the makeApiConfig object
 
 // Flat: keyed by operationId (derived with the generator's own naming rules)
-const endpoints = flattenApiDocs(apiDocs);
+const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);
 endpoints.getUser === getUser;                    // → true
 ```
+
+The type import is optional — without it the results stay permissively typed —
+but with it every key is exact: `apiDocs.users.` autocompletes `{userId}`,
+`endpoints.` autocompletes the endpoint names, and misspelled keys are compile
+errors.
 
 Failures are typed `ZopiaError`s with `at`/`hint` — see
 [API docs → Runtime tree consumption](07-api-docs.md#-runtime-tree-consumption--createapidocs).

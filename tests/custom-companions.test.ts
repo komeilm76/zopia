@@ -20,7 +20,7 @@ describe('merge-safe custom companions and incremental regeneration (D-24, S-90)
   it('S-90: emits one custom.ts scaffold per endpoint and webhook, never listed as a generated file', async () => {
     const outputDir = await temporaryDirectory();
     const files = await generateApiDocsFiles(spec as any, { outputDir, custom: true });
-    expect(files.map((file) => file.file).sort()).toEqual(['.zopia-manifest.json', 'ping/get/index.ts', 'webhooks/signed/post/index.ts']);
+    expect(files.map((file) => file.file).sort()).toEqual(['.zopia-manifest.json', '.zopia-tree.d.ts', 'ping/get/index.ts', 'webhooks/signed/post/index.ts']);
     for (const directory of ['ping/get', 'webhooks/signed/post']) {
       expect((await readdir(join(outputDir, directory))).sort()).toEqual(['custom.ts', 'index.ts']);
       const scaffold = await readFile(join(outputDir, directory, 'custom.ts'), 'utf8');

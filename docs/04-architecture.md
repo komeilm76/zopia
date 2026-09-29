@@ -36,6 +36,7 @@ release-blocking defect under the
 │       ├── api-docs-layout.ts          #    directory/flat path mapping
 │       ├── api-docs-plan.ts            #    collision-safe file planning
 │       ├── api-docs-names.ts           #    shared export-identifier rules (R-732)
+│       ├── api-docs-tree-types.ts      #    generated exact-tree declaration (S-95)
 │       ├── api-docs-facade.ts          #    ergonomic access-path helper
 │       ├── api-docs-generate.ts        # ③ rendering + guarded writes
 │       ├── openapi-to-api-docs-public.ts # public Engine ③ wrapper

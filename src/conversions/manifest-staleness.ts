@@ -1,6 +1,7 @@
 import { lstat, readFile, realpath, rmdir, rm, stat } from 'node:fs/promises';
 import { asZopiaError } from '../errors';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { ZOPIA_TREE_TYPES_FILE } from './api-docs-tree-types';
 import type { ApiDocsMode } from './api-docs-layout';
 import {
   validateZopiaManifest,
@@ -55,7 +56,8 @@ function compareText(left: string, right: string): number {
 const isManifestComponent = (value: unknown): value is { kind?: string; file?: unknown } => typeof value === 'object' && value !== null;
 
 function collectOwnedFiles(manifest: GeneratedZopiaManifest): string[] {
-  const files = new Set<string>([ZOPIA_MANIFEST_FILE]);
+  // The exact-tree declaration is written and pruned together with the manifest.
+  const files = new Set<string>([ZOPIA_MANIFEST_FILE, ZOPIA_TREE_TYPES_FILE]);
   for (const api of manifest.apis) files.add(api.file);
   for (const webhook of manifest.webhooks ?? []) files.add(webhook.file);
   for (const component of manifest.components) if (component.file !== null) files.add(component.file);
@@ -110,7 +112,7 @@ export async function inspectZopiaManifestStaleness(outputDir: string, identity:
     return {
       status: 'stale',
       reasons: ['invalid-manifest', ...(!identity.manifest ? ['manifest-disabled' as const] : [])],
-      ownedFiles: [ZOPIA_MANIFEST_FILE],
+      ownedFiles: [ZOPIA_MANIFEST_FILE, ZOPIA_TREE_TYPES_FILE],
     };
   }
 

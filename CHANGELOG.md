@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+### ✨ Added
+- 🧠 **Exact IntelliSense for runtime tree consumption (S-95).** Every tree
+  generated with a manifest now also carries a types-only
+  **`.zopia-tree.d.ts`** declaration beside the manifest, and
+  `createApiDocs` / `flattenApiDocs` accept it as a type argument — turning the
+  permissive runtime typing into **exact** typing:
+  ```ts
+  import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+  import type { ApiDocsTree, ApiDocsFlat } from './api_docs/.zopia-tree';
+
+  const apiDocs = await createApiDocs<ApiDocsTree>('./api_docs');
+  apiDocs.users['{userId}'].get.pathShape;   // literal "/users/{userId}", autocompleted
+  const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);
+  endpoints.getUser;                          // exact key, same leaf object
+  ```
+  Segment and method keys autocomplete exactly (unknown keys are **compile
+  errors**, not `any`), every leaf is typed as the generated module's own
+  `makeApiConfig()` export (literal `method`/`pathShape`, exact Zod request /
+  response shapes), and the flat record's keys derive through the same shared
+  naming rules as the generator's export identifiers (camelize,
+  reserved-word guard, `2`/`3`… collision suffixes) — parity with the runtime
+  keys is pinned by tests. The declaration is emitted in both layouts and in
+  every preset bucket root, follows the manifest lifecycle (pruned when
+  manifests are disabled, refreshed on regeneration, and a deleted declaration
+  reports `ZOPIA_WARN_STALE_TREE`), and is types-only: it imports nothing
+  beyond the tree itself (R-502 holds). `zopia generate` results report the
+  file with a new `kind: 'types'`. Conflicting paths that cannot share one
+  nested tree (below a method leaf, trailing-slash twins) render the
+  permissive intersection shape — matching the runtime's typed
+  `ZOPIA_SPEC_INVALID` failure. The shared deterministic tree ordering
+  (path segments, then canonical method order) moved to
+  `src/conversions/api-docs-layout.ts` so the runtime resolver and the
+  declaration emitter enumerate identically.
+
 ## [0.4.0] - 2026-09-29
 
 ### 🔄 Changed

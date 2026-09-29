@@ -10,7 +10,7 @@ describe('API docs endpoint generation', () => {
   it('S-32: generates component files and a sorted barrel', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, components: { schemas: { Zebra: true, Alpha: { type: 'object', properties: { name: { type: 'string' } } } } }, paths: {} }, { outputDir, insertComponents: true });
-    expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts', 'components/index.ts', '.zopia-manifest.json']);
+    expect(files.map((file) => file.file)).toEqual(['components/Alpha/index.ts', 'components/Zebra/index.ts', 'components/index.ts', '.zopia-manifest.json', '.zopia-tree.d.ts']);
     const barrel = await readFile(join(outputDir, 'components/index.ts'), 'utf8');
     expect(barrel).toContain('export { AlphaSchema } from "./Alpha/index";');
     expect(barrel).not.toContain('\\n');
@@ -95,6 +95,7 @@ describe('API docs endpoint generation', () => {
       'components/index.ts',
       'components-2/get/index.ts',
       '.zopia-manifest.json',
+      '.zopia-tree.d.ts',
     ]);
     const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8'));
     expect(manifest.components[0].file).toBe('components/get/index.ts');
@@ -450,7 +451,7 @@ describe('API docs endpoint generation', () => {
   it('writes a complete endpoint file', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     const files = await generateApiDocsFiles({ openapi: '3.1.0', info: { title: 'Test', version: '1' }, paths: { '/users/{id}': { get: { operationId: 'getUser', summary: 'Get user', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'ok', content: { 'application/json': { schema: { type: 'object' }, example: { id: 'u1' } } } } } } } } }, { outputDir });
-    expect(files).toHaveLength(2);
+    expect(files).toHaveLength(3);
     const content = await readFile(join(outputDir, 'users', '{id}', 'get', 'index.ts'), 'utf8');
     expect(content).toContain("import { makeApiConfig } from 'km-api';");
     expect(content).toContain('export const getUser');

@@ -17,6 +17,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { asZopiaError, ZopiaError } from '../errors';
 import { endpointExportName, uniqueEndpointName } from '../conversions/api-docs-names';
+import { apiDocsPathSegments, compareApiDocsEntries } from '../conversions/api-docs-layout';
 import { deriveOperationId, OPENAPI_METHODS, type OpenApiMethod } from '../conversions/openapi-to-api-docs';
 import { ZOPIA_MANIFEST_FILE } from '../conversions/manifest-writer';
 
@@ -65,11 +66,7 @@ interface DiscoveredManifest {
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 const isMissingFileError = (error: unknown): boolean => isRecord(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
-
-/** Split one OpenAPI path template into its literal segment keys (empty segments dropped, so `/` has none). */
-function pathSegments(path: string): string[] {
-  return path.split('/').filter(Boolean);
-}
+const isSupportedApiDocsMethod = (method: string): boolean => (OPENAPI_METHODS as readonly string[]).includes(method);
 
 /** Guard one manifest file reference: relative, POSIX-separated, and unable to escape the tree root. */
 function isSafeTreeFile(file: string): boolean {
@@ -87,7 +84,7 @@ function manifestApiEntries(manifest: unknown, manifestPath: string): Array<{ fi
     if (!isRecord(api)
       || typeof api.file !== 'string' || !isSafeTreeFile(api.file)
       || typeof api.path !== 'string' || !api.path.startsWith('/')
-      || typeof api.method !== 'string' || !(OPENAPI_METHODS as readonly string[]).includes(api.method)) {
+      || typeof api.method !== 'string' || !isSupportedApiDocsMethod(api.method)) {
       throw new ZopiaError('ZOPIA_MANIFEST_INVALID', `invalid zopia manifest API entry ${index}: ${manifestPath}`, { at: `${manifestPath}#apis/${index}`, hint: 'regenerate the tree to rebuild a valid manifest' });
     }
     entries.push({ file: api.file, path: api.path, method: api.method });
@@ -152,19 +149,7 @@ function mergeApiEntries(manifests: readonly DiscoveredManifest[]): MergedApiEnt
       merged.push({ root, file: api.file, path: api.path, method: api.method });
     }
   }
-  return merged.sort((left, right) => {
-    const leftSegments = pathSegments(left.path);
-    const rightSegments = pathSegments(right.path);
-    const depth = Math.min(leftSegments.length, rightSegments.length);
-    for (let index = 0; index < depth; index += 1) {
-      const order = compareText(leftSegments[index], rightSegments[index]);
-      if (order !== 0) return order;
-    }
-    const lengthOrder = leftSegments.length - rightSegments.length;
-    if (lengthOrder !== 0) return lengthOrder;
-    const methods = OPENAPI_METHODS as readonly string[];
-    return methods.indexOf(left.method) - methods.indexOf(right.method);
-  });
+  return merged.sort((left, right) => compareApiDocsEntries(left, right));
 }
 
 /** Import one generated endpoint module through its file URL — `pathToFileURL` keeps absolute (Windows-style) paths safe. */
@@ -231,6 +216,17 @@ function isEndpointConfig(value: unknown): value is ApiDocsEndpointConfig & Reco
  * tree always enumerates its keys in the same order. The tree is only read and
  * imported — nothing on disk is written.
  *
+ * **Exact IntelliSense (S-95):** every tree generated with a manifest also
+ * carries a `.zopia-tree.d.ts` declaration. Pass its `ApiDocsTree` type as the
+ * type argument to type the result exactly — literal path-segment keys,
+ * method-leaf configs typed as the generated module's own `makeApiConfig()`
+ * export, and unknown keys become compile errors:
+ *
+ * ```ts
+ * import type { ApiDocsTree } from './api_docs/.zopia-tree';
+ * const apiDocs = await createApiDocs<ApiDocsTree>('./api_docs');
+ * ```
+ *
  * @param docsDir Generated api-docs output directory (tree root or preset bucket root; absolute or relative).
  * @returns Nested tree keyed by exact URL path segments with lowercase-method leaves holding the endpoint configs.
  * @throws {ZopiaError} `ZOPIA_CONFIG_INVALID` when `docsDir` is not a usable path.
@@ -242,13 +238,14 @@ function isEndpointConfig(value: unknown): value is ApiDocsEndpointConfig & Reco
  * ```ts
  * import { createApiDocs } from './src/runtime';
  *
- * const apiDocs = await createApiDocs('api_docs');
- * const endpoint = apiDocs.users['{userId}'].get;
- * console.log(endpoint.method, endpoint.pathShape);
+ * // Exact typing: pass the generated `.zopia-tree.d.ts` tree type.
+ * type MyTree = { readonly users: { readonly get: { readonly pathShape: string } } };
+ * const apiDocs = await createApiDocs<MyTree>('api_docs');
+ * console.log(apiDocs.users.get.pathShape);
  * ```
  * @see [docs/07-api-docs.md → Runtime tree consumption](../../docs/07-api-docs.md)
  */
-export async function createApiDocs(docsDir: string): Promise<ApiDocsTree> {
+export async function createApiDocs<TTree extends object = ApiDocsTree>(docsDir: string): Promise<TTree> {
   if (typeof docsDir !== 'string' || docsDir.trim() === '' || docsDir.includes('\0')) {
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'docsDir must be a non-empty directory path', { at: 'docsDir', hint: 'provide the generated api-docs output directory (tree root or preset bucket root)' });
   }
@@ -265,9 +262,9 @@ export async function createApiDocs(docsDir: string): Promise<ApiDocsTree> {
     if (!isRecord(config)) {
       throw new ZopiaError('ZOPIA_DOCS_IMPORT_FAILED', `generated endpoint module has no default export: ${entry.file}`, { at: entry.file, hint: "regenerate the tree, or restore the module's default endpoint-config export" });
     }
-    insertEndpoint(tree, pathSegments(entry.path), entry.method, config, entry.file);
+    insertEndpoint(tree, apiDocsPathSegments(entry.path), entry.method, config, entry.file);
   }
-  return tree as ApiDocsTree;
+  return tree as unknown as TTree;
 }
 
 /**
@@ -283,20 +280,31 @@ export async function createApiDocs(docsDir: string): Promise<ApiDocsTree> {
  * a null prototype, so even an `operationId` spelled `__proto__` stays a plain
  * own key.
  *
- * @param apiDocs Nested tree returned by {@link createApiDocs}.
+ * **Exact IntelliSense (S-95):** pass the generated `.zopia-tree.d.ts`
+ * `ApiDocsFlat` type as the type argument to key the record exactly —
+ * `endpoints.getUser` autocompletes and unknown names become compile errors:
+ *
+ * ```ts
+ * import type { ApiDocsFlat } from './api_docs/.zopia-tree';
+ * const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);
+ * ```
+ *
+ * @param apiDocs Nested tree returned by {@link createApiDocs} (exact generated tree types are accepted).
  * @returns Flat record of every endpoint config keyed by its derived endpoint name, in tree leaf order.
  * @throws {ZopiaError} `ZOPIA_CONFIG_INVALID` when `apiDocs` is not the nested tree object (a non-object input or a non-tree value inside it).
  * @throws {ZopiaError} `ZOPIA_SPEC_INVALID` when a leaf without a usable `operationId` cannot be named (its `pathShape` is not an OpenAPI `/`-rooted template or its `method` is not one of the eight standard methods).
  * @example
  * ```ts
- * import { createApiDocs, flattenApiDocs } from './src/runtime';
+ * import { createApiDocs, flattenApiDocs, type ApiDocsEndpointConfig } from './src/runtime';
  *
- * const endpoints = flattenApiDocs(await createApiDocs('api_docs'));
+ * // Exact typing: pass the generated `.zopia-tree.d.ts` flat type.
+ * type MyFlat = { readonly getUser: ApiDocsEndpointConfig };
+ * const endpoints = flattenApiDocs<MyFlat>(await createApiDocs('api_docs'));
  * console.log(endpoints.getUser.pathShape);
  * ```
  * @see [docs/07-api-docs.md → Runtime tree consumption](../../docs/07-api-docs.md)
  */
-export function flattenApiDocs(apiDocs: ApiDocsTree): Record<string, ApiDocsEndpointConfig> {
+export function flattenApiDocs<TFlat extends Record<string, ApiDocsEndpointConfig> = Record<string, ApiDocsEndpointConfig>>(apiDocs: object): TFlat {
   if (!isRecord(apiDocs)) {
     throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'flattenApiDocs expects the tree object returned by createApiDocs', { at: 'apiDocs', hint: 'pass the createApiDocs result (a nested object of endpoint configs)' });
   }
@@ -317,5 +325,5 @@ export function flattenApiDocs(apiDocs: ApiDocsTree): Record<string, ApiDocsEndp
     }
   };
   walk(apiDocs);
-  return flat;
+  return flat as unknown as TFlat;
 }

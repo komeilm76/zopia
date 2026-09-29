@@ -7,6 +7,7 @@ import { deriveReusableParameterSchema, deriveReusableResponseSchema, extractOpe
 import { jsonSchemaToZod } from './json-schema-to-zod';
 import { assertUniqueOperationIdsAcrossScopes, planApiDocsFiles, planWebhookDocsFiles, webhookRuntimePath, type ApiDocsFilePlan } from './api-docs-plan';
 import { isPortableApiDocsSegment, type ApiDocsMode } from './api-docs-layout';
+import { renderApiDocsTreeTypes, ZOPIA_TREE_TYPES_FILE } from './api-docs-tree-types';
 import type { OpenApiDocument } from './openapi';
 import { createZopiaManifest, hashOpenApiDocument, writeZopiaManifest, ZOPIA_MANIFEST_FILE } from './manifest-writer';
 import { inspectZopiaManifestStaleness, removeObsoleteManifestFiles } from './manifest-staleness';
@@ -452,7 +453,11 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
       reservedFiles.push(`${directory}/index.ts`, ...names.map((name) => `${directory}/${name}/index.ts`));
     }
   }
-  if (retainManifest) reservedFiles.push(ZOPIA_MANIFEST_FILE);
+  if (retainManifest) {
+    reservedFiles.push(ZOPIA_MANIFEST_FILE);
+    // The exact-tree declaration is emitted beside the manifest and shares its lifecycle.
+    reservedFiles.push(ZOPIA_TREE_TYPES_FILE);
+  }
   const plans = avoidReservedFileCollisions(planApiDocsFiles(source, mode), reservedFiles);
   const webhookPlans = avoidReservedFileCollisions(planWebhookDocsFiles(source, mode), [...reservedFiles, ...plans.map((plan) => plan.file)]);
   // OpenAPI requires operationId to be unique document-wide; $ref aliases can make the
@@ -555,6 +560,14 @@ async function generateApiDocsFilesInternal(input: OpenApiDocument | string, opt
   if (manifest) {
     const manifestPath = await writeZopiaManifest(root, manifest);
     generated.push({ file: ZOPIA_MANIFEST_FILE, absolutePath: manifestPath, operationId: 'manifest' });
+    // Exact IntelliSense: the declaration mirrors the runtime tree/flat shapes (S-95).
+    const treeTypesPath = await writeGeneratedFile(root, ZOPIA_TREE_TYPES_FILE, renderApiDocsTreeTypes(plans.map((plan) => ({
+      file: plan.file,
+      path: plan.path,
+      method: plan.method,
+      operationId: plan.operationId,
+    }))), previouslyOwned);
+    generated.push({ file: ZOPIA_TREE_TYPES_FILE, absolutePath: treeTypesPath, operationId: 'tree-types' });
   }
   await removeObsoleteManifestFiles(root, previous.ownedFiles, generated.map(({ file }) => file));
   return generated;

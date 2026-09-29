@@ -114,7 +114,7 @@ describe('runtime api-docs tree consumption (S-94)', () => {
         '/c': { put: { operationId: 'cPut', tags: ['two'], responses: { '200': { description: 'ok' } } } },
       },
     }, { preset: 'multi-tag', outDir: root });
-    expect((await readdir(root)).sort()).toEqual(['.zopia-manifest.json', 'a', 'b', 'one', 'two']);
+    expect((await readdir(root)).sort()).toEqual(['.zopia-manifest.json', '.zopia-tree.d.ts', 'a', 'b', 'one', 'two']);
 
     const apiDocs = await createApiDocs(root);
     // The root manifest wins the /a#get duplicate; bucket two supplies /c#put; /b#post survives.

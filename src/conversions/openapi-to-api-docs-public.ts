@@ -12,6 +12,7 @@ import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
 import { parseYaml } from './yaml';
 import { jsonSchemaToZod, type JsonSchema } from './json-schema-to-zod';
 import { hashOpenApiDocument, ZOPIA_MANIFEST_FILE } from './manifest-writer';
+import { ZOPIA_TREE_TYPES_FILE } from './api-docs-tree-types';
 import { formatManifestStaleness, inspectZopiaManifestStaleness } from './manifest-staleness';
 import { join } from 'node:path';
 import { planPresetBuckets, ZOPIA_GENERATE_PRESETS, type ZopiaGeneratePreset, type ZopiaPresetTree } from './api-docs-presets';
@@ -39,7 +40,7 @@ export interface ZopiaGeneratedFile {
   /** Portable path relative to `outDir`. */
   path: string;
   /** Generated artifact category. */
-  kind: 'endpoint' | 'component' | 'manifest';
+  kind: 'endpoint' | 'component' | 'manifest' | 'types';
 }
 
 /** Result returned by the Engine ③ public API. */
@@ -459,7 +460,7 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
     : []);
   const files: ZopiaGeneratedFile[] = generated.map(({ file }): ZopiaGeneratedFile => ({
     path: file,
-    kind: file === ZOPIA_MANIFEST_FILE ? 'manifest' : componentFiles.has(file) ? 'component' : 'endpoint',
+    kind: file === ZOPIA_MANIFEST_FILE ? 'manifest' : file === ZOPIA_TREE_TYPES_FILE ? 'types' : componentFiles.has(file) ? 'component' : 'endpoint',
   })).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const warningCollector = new ZopiaWarningCollector(); warningCollector.addAll(warnings);
   return { files, warnings: warningCollector.toArray(), ...(config.manifest ? { manifestPath: ZOPIA_MANIFEST_FILE } : {}) };

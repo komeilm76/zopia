@@ -26,6 +26,7 @@ describe('openApiToApiDocs public API', () => {
     expect(result).toEqual({
       files: [
         { path: '.zopia-manifest.json', kind: 'manifest' },
+        { path: '.zopia-tree.d.ts', kind: 'types' },
         { path: 'a/post/index.ts', kind: 'endpoint' },
         { path: 'components/Thing/index.ts', kind: 'component' },
         { path: 'components/index.ts', kind: 'component' },
@@ -178,7 +179,7 @@ describe('operationId identity (round 9 coverage)', () => {
         '/b': { get: { operationId: 'getA', responses: { '200': { description: 'ok' } } } },
       },
     } as any, { outDir: outputDir });
-    expect(result.files.map((file) => file.path).sort()).toEqual(['.zopia-manifest.json', 'a/get/index.ts', 'b/get/index.ts']);
+    expect(result.files.map((file) => file.path).sort()).toEqual(['.zopia-manifest.json', '.zopia-tree.d.ts', 'a/get/index.ts', 'b/get/index.ts']);
     // the generation-internal rename is visible in the manifest; the source
     // truth (op without operationId) round-trips back EXACTLY as authored
     const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')) as { apis: { operationId?: string }[] };

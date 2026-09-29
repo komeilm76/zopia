@@ -51,7 +51,7 @@ describe('S-83: zopia.config.ts project configuration (D-19)', () => {
     finally { process.chdir(cwd); }
 
     const files = await readdir(join(directory, 'docs-out'));
-    expect(files.sort()).toEqual(['.zopia-manifest.json', 'components', 'items']);
+    expect(files.sort()).toEqual(['.zopia-manifest.json', '.zopia-tree.d.ts', 'components', 'items']);
     // `--mode` came from the config: flat layout has no per-method directory nesting.
     expect(JSON.parse(await readFile(join(directory, 'docs-out/.zopia-manifest.json'), 'utf8'))).toMatchObject({
       mode: 'flat',
@@ -105,7 +105,7 @@ describe('S-83: zopia.config.ts project configuration (D-19)', () => {
     try { await runCli(['generate', 'openapi.json', '--config', 'custom/zopia.config.ts'], capture.output); }
     finally { process.chdir(cwd); }
     // Named `config` export is honored when no default export exists; flat mode comes through.
-    expect((await readdir(join(directory, 'named-export-out'))).sort()).toEqual(['.zopia-manifest.json', 'components', 'items'].filter((name) => name !== 'components'));
+    expect((await readdir(join(directory, 'named-export-out'))).sort()).toEqual(['.zopia-manifest.json', '.zopia-tree.d.ts', 'components', 'items'].filter((name) => name !== 'components'));
     void spec;
 
     await expect(runCli(['generate', 'openapi.json', 'out', '--config', 'nope.config.ts'], capture.output)).rejects.toMatchObject({

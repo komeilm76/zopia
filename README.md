@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-✅ **Status — Phase 3 complete · v0.4.0 released**
+✅ **Status — Phase 3 complete · v0.5.0 released**
 
 </div>
 
@@ -100,15 +100,20 @@ all resolve through their manifests):
 
 ```ts
 import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+import type { ApiDocsFlat, ApiDocsTree } from './api_docs/.zopia-tree';
 
 // Nested: URL path segments → lowercase method → the makeApiConfig object
-const apiDocs = await createApiDocs('api_docs');
+const apiDocs = await createApiDocs<ApiDocsTree>('api_docs');
 const getUser = apiDocs.users['{userId}'].get;   // default export of that index.ts
 
 // Flat freebie: keyed by operationId, same leaf objects, deterministic order
-const endpoints = flattenApiDocs(apiDocs);
+const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);
 endpoints.getUser === getUser;                    // → true
 ```
+
+Every generated tree also ships a types-only `.zopia-tree.d.ts` — pass its
+types as shown and IntelliSense becomes **exact**: keys autocomplete, and
+misspelled segments, methods, or endpoint names are compile errors.
 
 Generation output is untouched — the resolver only reads manifests and imports
 modules. See [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs.md#-runtime-tree-consumption--createapidocs).
