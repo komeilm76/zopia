@@ -125,9 +125,10 @@ See [Conversions → Engine ①](06-conversions.md)
 
 ```text
 zopia generate <spec.json> <output-dir> [--mode <directory|flat>]
-    [--insert-components] [--use-component-as-reference] [--no-manifest] [--watch]
+    [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest] [--watch]
 zopia reverse  <docs-dir>  [--out <file.json>] [--version <2.0|3.0|3.1>]
-zopia validate <spec|docs-dir>   (no options yet; `--config path` accepted for parity)
+zopia validate <spec|docs-dir>             (no options yet; `--config path` accepted for parity)
+zopia diff <old-spec> <new-spec>          (no options yet; `--config path` accepted for parity)
 ```
 
 | 🚩 Flag | ⚙️ Option |
@@ -136,6 +137,7 @@ zopia validate <spec|docs-dir>   (no options yet; `--config path` accepted for p
 | `--mode <directory\|flat>` | `mode` |
 | `--insert-components` | `insertComponents: true` |
 | `--use-component-as-reference` | `useComponentAsReference: true` |
+| `--custom` | `custom: true` |
 | `--no-manifest` | `manifest: false` |
 | `--watch` | no config equivalent — CLI-only; watches the spec file's parent directory (survives atomic editor saves) and regenerates on change |
 | `--out <file.json>` (reverse) | output file path |

@@ -166,7 +166,12 @@ The v0.1.0 release satisfies all of the following:
   custom layer (D-24, S-90) exports a `custom` companion namespace per
   endpoint/webhook scaffolded once and never overwritten (`--custom`,
   `generate.custom`, or the `custom` generate option)
-- 🔍 **Diff tool** — `zopia diff old.json new.json` → human-readable changes
+- 🔍 **Diff tool** — ✅ `zopia diff old.json new.json` + `diffOpenApiSpecs()`
+  API (S-91): semantic comparison of dialect, info, endpoints (with
+  parameter/request-body/response details), webhooks, schema components,
+  document fields, and `x-` extensions; key order is ignored; deterministic
+  `+`/`-`/`~` human-readable lines with a summary; differences are data on
+  stdout, so the CLI exits `0` for changed pairs
 - 🧩 **Presets** — monorepo / multi-server / multi-tag layouts
 - 🧑‍💻 **VS Code extension** — navigate spec ↔ generated code both ways
 

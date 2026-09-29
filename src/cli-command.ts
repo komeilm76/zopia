@@ -6,6 +6,7 @@ import { asZopiaError, ZopiaError } from './errors';
 import { openApiToApiDocs } from './conversions/openapi-to-api-docs-public';
 import { apiDocsToOpenApi } from './conversions/manifest-to-openapi';
 import { validateZopia, type ZopiaValidationResult } from './validation';
+import { diffOpenApiSpecs, type ZopiaDiffResult } from './diff';
 import { formatZopiaWarning, type ZopiaWarning } from './warnings';
 
 /** Output channels used by the CLI command runner. */
@@ -50,10 +51,17 @@ interface ValidateArguments {
   config?: string;
 }
 
+interface DiffArguments {
+  before: string;
+  after: string;
+  config?: string;
+}
+
 const HELP_TEXT = `Usage:
   zopia generate <spec.json|spec.yaml> [output-dir] [--mode directory|flat] [--insert-components] [--use-component-as-reference] [--custom] [--no-manifest] [--watch] [--config path]
   zopia reverse <docs-dir|manifest.json> [--out file] [--version 2.0|3.0|3.1] [--config path]
   zopia validate <spec.json|spec.yaml|docs-dir> [--config path]
+  zopia diff <old.json|old.yaml> <new.json|new.yaml> [--config path]
 
 Global options:
   -h, --help                       Show this help.
@@ -79,6 +87,12 @@ Validate options:
                                    or a generated tree for manifest problems, reverse dry-run failures, and km-api
                                    drift. Diagnostics print to stdout; exit status is 1 when any error-severity
                                    diagnostic was found.
+
+Diff options:
+  (none)                           Compares two specs: dialect, info, endpoints (+/-/~ with parameter,
+                                   request-body, and response details), webhooks, schema components, and
+                                   document fields. Changes print to stdout with a summary line; differences
+                                   are data, so a non-identical pair still exits 0.
 
 Security: reverse executes generated TypeScript referenced by the manifest and the config file is executed
 JavaScript; use only trusted trees and trusted config files.
@@ -220,6 +234,29 @@ function parseValidate(argv: string[]): ValidateArguments {
   return { input: positional[0], config };
 }
 
+function parseDiff(argv: string[]): DiffArguments {
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let config: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      markOption(seen, argument);
+      config = optionValue(argv, index, argument);
+      index += 1;
+    } else if (argument.startsWith('-')) {
+      invalid(`unknown diff option: ${argument}`, argument, "run 'zopia diff --help' for supported options");
+    } else {
+      positional.push(argument);
+    }
+  }
+
+  if (positional.length < 2) invalid('diff requires <old.json|old.yaml> and <new.json|new.yaml>', 'argv', 'provide both spec paths or documents to compare');
+  if (positional.length > 2) invalid(`unexpected diff argument: ${positional[2]}`, positional[2], 'remove the extra positional argument');
+  return { before: positional[0], after: positional[1], config };
+}
+
 function printValidation(result: ZopiaValidationResult, output: ZopiaCliOutput): void {
   for (const issue of result.diagnostics) {
     output.stdout(`${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.code}${issue.at ? ` ${issue.at}` : ''}: ${issue.message}\n`);
@@ -227,6 +264,15 @@ function printValidation(result: ZopiaValidationResult, output: ZopiaCliOutput):
   const errors = result.diagnostics.filter((issue) => issue.severity === 'error').length;
   const warnings = result.diagnostics.length - errors;
   output.stdout(`zopia validate ${result.kind} ${result.target}: ${errors === 0 ? 'ok' : 'failed'} (${errors} errors, ${warnings} warnings)\n`);
+}
+
+function printDiff(result: ZopiaDiffResult, before: string, after: string, output: ZopiaCliOutput): void {
+  const glyphs = { added: '+', removed: '-', changed: '~' } as const;
+  for (const entry of result.changes) output.stdout(`${'  '.repeat(entry.depth)}${glyphs[entry.kind]} ${entry.message}\n`);
+  const total = result.changes.length;
+  output.stdout(result.identical
+    ? `zopia diff ${before} ${after}: identical (0 changes)\n`
+    : `zopia diff ${before} ${after}: ${total} change${total === 1 ? '' : 's'} (${result.counts.added} added, ${result.counts.removed} removed, ${result.counts.changed} changed)\n`);
 }
 
 /**
@@ -361,6 +407,16 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     return;
   }
 
+  if (command === 'diff') {
+    const parsed = parseDiff(commandArguments);
+    // `--config` is accepted for grammar parity (D-19) — diff currently has no
+    // configurable defaults, the project file only needs to load when explicitly named.
+    await loadZopiaConfig({ file: parsed.config });
+    const result = await diffOpenApiSpecs(parsed.before, parsed.after);
+    printDiff(result, parsed.before, parsed.after, output);
+    return;
+  }
+
   if (command === 'reverse') {
     const parsed = parseReverse(commandArguments);
     const project = await loadZopiaConfig({ file: parsed.config });
@@ -376,7 +432,7 @@ export async function runCli(argv: string[], output: ZopiaCliOutput = processOut
     return;
   }
 
-  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', 'zopia validate', or 'zopia --help'");
+  invalid(`unknown CLI command: ${command}`, command, "use 'zopia generate', 'zopia reverse', 'zopia validate', 'zopia diff', or 'zopia --help'");
 }
 
 /**

@@ -67,3 +67,12 @@ export {
   type ZopiaValidationIssue,
   type ZopiaValidationResult,
 } from './validation';
+export {
+  diffOpenApiDocuments,
+  diffOpenApiSpecs,
+  type ZopiaDiffArea,
+  type ZopiaDiffCounts,
+  type ZopiaDiffEntry,
+  type ZopiaDiffKind,
+  type ZopiaDiffResult,
+} from './diff';
