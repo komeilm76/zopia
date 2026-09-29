@@ -61,6 +61,23 @@ describe('spec ↔ tree navigation (Phase 3, S-93)', () => {
     expect(bucket.locations().map((location) => location.kind)).toEqual(['manifest', 'endpoint']);
   });
 
+  it('S-93: item-level pointers enumerate every routed operation of the item (round 8)', async () => {
+    const outputDir = await temporaryDirectory();
+    await openApiToApiDocs(SPEC as any, { outDir: outputDir, custom: true });
+    const index = await loadNavigationIndex(outputDir);
+    // '#/paths/<path>' is documented to answer every method of the item — and does
+    expect(index.specToLocations('#/paths/~1pets').map((location) => `${location.file}:${location.pointer}`)).toEqual([
+      'pets/get/custom.ts:#/paths/~1pets/get',
+      'pets/get/index.ts:#/paths/~1pets/get',
+      'pets/post/custom.ts:#/paths/~1pets/post',
+      'pets/post/index.ts:#/paths/~1pets/post',
+    ]);
+    expect(index.specToLocations('#/webhooks/signed').map((location) => location.pointer)).toEqual(['#/webhooks/signed/post', '#/webhooks/signed/post']);
+    // unknown items stay typed errors; over-deep pointers stay unsupported
+    expect(() => index.specToLocations('#/paths/~1nope')).toThrow(/spec pointer has no generated module/);
+    expect(() => index.specToLocations('#/paths/~1pets/get/extra')).toThrow(/unsupported spec pointer/);
+  });
+
   it('S-93: unknown pointers and files fail with typed, actionable errors', async () => {
     const outputDir = await temporaryDirectory();
     await openApiToApiDocs(SPEC as any, { outDir: outputDir });

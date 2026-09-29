@@ -143,7 +143,18 @@ export function navigationIndexFromManifest(manifest: ZopiaManifest): ZopiaNavig
       const [section, ...rest] = segments;
       if (section === 'paths' || section === 'webhooks') {
         const [name, method, ...extra] = rest;
-        if (name === undefined || method === undefined || extra.length > 0) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: `use '${section === 'paths' ? '#/paths/<path>/<method>' : '#/webhooks/<name>/<method>'}'` });
+        if (name === undefined || extra.length > 0) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: `use '${section === 'paths' ? '#/paths/<path>/<method>' : '#/webhooks/<name>/<method>'}'` });
+        if (method === undefined) {
+          // Item-level pointer: every routed operation of the item (plus companions).
+          const collected: ZopiaNavigationLocation[] = [];
+          for (const location of locationsSorted) {
+            if (!location.pointer.startsWith(`${pointer}/`)) continue;
+            if (location.pointer.slice(pointer.length + 1).includes('/')) continue;
+            collected.push(location);
+          }
+          if (collected.length > 0) return collected;
+          throw new ZopiaError('ZOPIA_CONFIG_INVALID', `spec pointer has no generated module: ${pointer}`, { at: pointer, hint: 'check the item name, or regenerate from a newer source document' });
+        }
         const hits = byPointer.get(pointer);
         if (hits && hits.length > 0) return hits;
         // exact pointer has no implementation — distinguish unheard targets from disabled sections
