@@ -117,8 +117,12 @@ function collectPresetOperations(document: OpenApiDocument, preset: ZopiaGenerat
             ...(tags.length > 1 ? { notice: { code: 'ZOPIA_WARN_PRESET_PRIMARY_TAG' as const, at, message: `operation has ${tags.length} tags; using primary tag "${primary}" for --preset multi-tag` } } : {}),
           });
         } else {
-          const effective = [operation.servers, resolved.servers, servers].find((list) => Array.isArray(list) && list.length > 0) as unknown[] | undefined;
-          const server = effective && effective.length > 0 ? effective[0] : undefined;
+          // An explicit `servers` array at the nearest level is decisive — even
+          // an EMPTY one (which the specification treats as the default server
+          // `/`), so it routes to the default-server bucket instead of silently
+          // inheriting the parent/document servers.
+          const level = Array.isArray(operation.servers) ? operation.servers : Array.isArray(resolved.servers) ? resolved.servers : Array.isArray(servers) ? servers : undefined;
+          const server = level !== undefined && level.length > 0 ? level[0] : undefined;
           operations.push({
             key: server === undefined ? 'server:' : `server:${serverKey(server)}`,
             name: server === undefined ? '(default server)' : serverName(server),
@@ -134,11 +138,17 @@ function collectPresetOperations(document: OpenApiDocument, preset: ZopiaGenerat
   return operations;
 }
 
+/** Recognized operation methods present on one resolved path/webhook item. */
+function operationMethodsOf(resolved: Record<string, any> | undefined): OpenApiMethod[] {
+  if (!resolved) return [];
+  return OPENAPI_METHODS.filter((method) => resolved[method] && typeof resolved[method] === 'object' && !Array.isArray(resolved[method]));
+}
+
 /** Keep only the routed methods of one item; `$ref`s stay verbatim unless the route takes a proper subset of the item's operations (then the resolved item is inlined). */
 function filteredItem(document: OpenApiDocument, item: unknown, routed: Set<OpenApiMethod>): unknown {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
   const resolved = resolveForRouting(document, item) ?? {};
-  const allMethods = OPENAPI_METHODS.filter((method) => resolved[method] && typeof resolved[method] === 'object' && !Array.isArray(resolved[method]));
+  const allMethods = operationMethodsOf(resolved);
   // When the route covers the item's whole operation set the original stays
   // verbatim (`$ref`s survive for manifest-faithful reverse conversion); a
   // partial route would leak the other operations through the `$ref`, so the
@@ -202,7 +212,14 @@ export function planPresetBuckets(document: OpenApiDocument, preset: ZopiaGenera
     for (const [path, item] of Object.entries((document.paths ?? {}) as Record<string, unknown>)) {
       if (path.startsWith('x-')) { paths[path] = item; continue; }
       const methods = routed.get(`paths ${path}`);
-      if (!methods) continue;
+      if (!methods) {
+        // Operations that routed elsewhere are dropped here, but an item with
+        // NO operations (shared `parameters`, `summary`/`x-` metadata, or an
+        // unresolved `$ref` when planning an unvalidated document directly)
+        // travels with every bucket — dropping it would silently lose facts.
+        if (operationMethodsOf(resolveForRouting(document, item)).length === 0) paths[path] = item;
+        continue;
+      }
       const filtered = filteredItem(document, item, methods);
       if (filtered && typeof filtered === 'object') paths[path] = filtered;
     }
@@ -212,7 +229,10 @@ export function planPresetBuckets(document: OpenApiDocument, preset: ZopiaGenera
       for (const [name, item] of Object.entries((document.webhooks ?? {}) as Record<string, unknown>)) {
         if (name.startsWith('x-')) { webhooks[name] = item; continue; }
         const methods = routed.get(`webhooks ${name}`);
-        if (!methods) { continue; }
+        if (!methods) {
+          if (operationMethodsOf(resolveForRouting(document, item)).length === 0) webhooks[name] = item;
+          continue;
+        }
         const filtered = filteredItem(document, item, methods);
         if (filtered && typeof filtered === 'object') webhooks[name] = filtered;
       }

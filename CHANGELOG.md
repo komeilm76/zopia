@@ -5,8 +5,14 @@ All notable changes to **zopia** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### ✨ Added
+## [Unreleased]
 
+### 🐛 Fixed
+- 🧰 Preset routing holes (round 7): op-less path/webhook items — shared `parameters` blocks, `summary`/item `x-` metadata, `x-` webhook-map entries' namesakes — silently disappeared from **every** preset bucket (documented as traveling verbatim like components and `x-` map entries; they now ride with every bucket), and an explicit empty `servers: []` override on an operation or path item was treated as *inherit the parent servers* instead of the specification-mandated default server `/` (an unlucky set could silently collapse the whole multi-server split into a fallthrough); the nearest explicit `servers` array is now decisive, empty or not. The presets added entry from the previous commit was also seated in a floating `### ✨ Added` block **outside** `## [Unreleased]` and has been moved into it.
+- 🔍 Diff coverage holes (round 6): changes to the named component registries — `components.parameters`/`responses`/`securitySchemes`/`requestBodies`/`headers`/`links`/`callbacks`/`examples`/`pathItems` (3.x) and `parameters`/`responses`/`securityDefinitions` (Swagger 2.0, cross-dialect aligned with side-appropriate pointers — an auth-scheme change reported nothing) — plus path-item and webhook-item metadata (`summary`/`description`/`servers`, item `x-` keys, resolved through `@ref` chains with sibling-wins semantics and the generation-era typed failures) and `x-` extension entries inside `paths`/`webhooks` are now reported instead of silently invisible.
+- 🛡️ Custom companion hardening (round 5): a **directory** at a companion's `custom.ts` path (which would shadow the sibling module's `./custom` import) now fails with a typed `ZOPIA_FS_OUTSIDE_OUTDIR` instead of silently emitting a broken tree; companion paths are derived through a dedicated helper that rejects endpoint modules not living in their own directory; path segments literally named `custom.ts` keep working both layouts through planner renaming and now have scaffold coverage asserting every generated module's companion is a real file.
+
+### ✨ Added
 - 🧰 **Split-generation presets (S-92).** `openApiToApiDocs` gains a `preset`
   option — `multi-tag` routes each operation by its primary tag and
   `multi-server` by the effective first server (operation → path item →
@@ -27,14 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > See [docs/12-standards.md → Changelog convention](docs/12-standards.md#-changelog-convention).
 
 ---
-
-## [Unreleased]
-
-### 🐛 Fixed
-- 🔍 Diff coverage holes (round 6): changes to the named component registries — `components.parameters`/`responses`/`securitySchemes`/`requestBodies`/`headers`/`links`/`callbacks`/`examples`/`pathItems` (3.x) and `parameters`/`responses`/`securityDefinitions` (Swagger 2.0, cross-dialect aligned with side-appropriate pointers — an auth-scheme change reported nothing) — plus path-item and webhook-item metadata (`summary`/`description`/`servers`, item `x-` keys, resolved through `@ref` chains with sibling-wins semantics and the generation-era typed failures) and `x-` extension entries inside `paths`/`webhooks` are now reported instead of silently invisible.
-- 🛡️ Custom companion hardening (round 5): a **directory** at a companion's `custom.ts` path (which would shadow the sibling module's `./custom` import) now fails with a typed `ZOPIA_FS_OUTSIDE_OUTDIR` instead of silently emitting a broken tree; companion paths are derived through a dedicated helper that rejects endpoint modules not living in their own directory; path segments literally named `custom.ts` keep working both layouts through planner renaming and now have scaffold coverage asserting every generated module's companion is a real file.
-
-### ✨ Added
 - 🔍 **Spec diff tool (Phase 3, S-91)** — new `zopia diff old.json new.json` CLI command plus `diffOpenApiSpecs()` / `diffOpenApiDocuments()` APIs: semantic comparison of two Swagger 2.0 / OpenAPI 3.0/3.1 inputs (JSON paths, YAML paths, inline text, or objects — loaded with the same rules as generation). Changes are grouped and deterministically ordered: dialect, `info` fields, endpoints (added/removed labeled `METHOD path (operationId)` in path-primary order; shared operations emit a header plus scalar `->` transitions, parameter add/remove/change, request-body presence/content, response status adds/removals/changes, security, tags, and `x-` extensions), webhooks, schema components (dialect-aligned `#/definitions/…` vs `#/components/schemas/…` pointers), document fields, and root extensions. Object-key order never counts as a change; detected changes print as `+`/`-`/`~` lines with a `zopia diff …: N changes (A added, R removed, C changed)` summary to stdout, stderr stays silent, and changed pairs exit `0` (differences are data). Unreadable/invalid inputs fail with the existing typed `ZOPIA_SPEC_*` codes.
 - ♻️ **Incremental regeneration + merge-safe custom companions (Phase 3, D-24, S-90)** — generation now writes only files whose rendered bytes differ: byte-identical endpoints, components, and the manifest keep their mtimes, so watch mode and bundler caches stop churning on no-op regenerations. The opt-in `custom` layer (generate option `custom: true`, CLI `--custom`, config `generate.custom`) appends `export * as custom from './custom';` to every endpoint and webhook module and scaffolds a sibling `custom.ts` exactly once — an existing file or symlink at that path is never touched, custom files are never manifest-owned (staleness pruning can't delete them), and toggling the option off removes only the export line via the normal skip-aware rewrite. The manifest records `options.custom` only when enabled; toggling it reports the new `ZOPIA_WARN_STALE_TREE` reason `custom-companions-changed`. Non-boolean `custom` values fail with `ZOPIA_CONFIG_INVALID` at every layer.
 - 🧹 **`zopia validate` (Phase 3, S-89)** — new CLI command and `validateZopia()` API: specs are checked for dialect validity, broken local `$ref`s (error at the offending pointer), endpoint-planning failures (name collisions, cross-namespace duplicate `operationId`s), and components no operation can reach — transitively, covering OpenAPI `components.schemas` and Swagger `definitions` with stable `ZOPIA_VALIDATE_UNREACHABLE_COMPONENT` warnings. Generated trees are checked for manifest presence/validity, a complete reverse dry-run, and km-api peer drift (`ZOPIA_VALIDATE_KM_API_DRIFT` — outside the declared `^0.4.1` range or unresolvable near the tree; warning-severity, never blocking). Findings return as deterministic sorted diagnostics `{ severity, code, at, message }`; the CLI prints them to stdout with a summary line and exits `1` only when an error-severity finding exists. Also exported: `readOpenApiSourceInput`, `validateOpenApiReferences`, and `assertUniqueOperationIdsAcrossScopes` (shared between generation and validation).
@@ -188,7 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📚 Published the Phase 0 documentation and standards baseline.
 - 📦 Switched to the published `km-api@^0.4.0` npm dependency.
 - 🧭 Established the Phase 1 public API and implementation contract.
-
 
 ### ✨ Added
 

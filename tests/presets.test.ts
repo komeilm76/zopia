@@ -140,6 +140,63 @@ describe('split-generation presets (Phase 3, S-92)', () => {
     expect(() => planPresetBuckets({} as any, 'nope' as any)).toThrow('unsupported generate preset: nope');
   });
 
+  it('S-92: op-less path items travel with every bucket instead of disappearing (round 7)', async () => {
+    const spec = {
+      openapi: '3.1.0',
+      info: { title: 'T', version: '1' },
+      paths: {
+        '/a': { get: { operationId: 'aGet', tags: ['one'], responses: { '200': { description: 'ok' } } } },
+        '/b': { get: { operationId: 'bGet', tags: ['two'], responses: { '200': { description: 'ok' } } } },
+        '/shared': { parameters: [{ name: 'tenant', in: 'header', schema: { type: 'string' } }], 'x-internal': true },
+      },
+      webhooks: { note: { 'x-internal': true } },
+      components: { schemas: {} },
+    };
+    const buckets = planPresetBuckets(spec as any, 'multi-tag') ?? [];
+    expect(buckets.map((bucket) => bucket.directory).sort()).toEqual(['one', 'two']);
+    for (const bucket of buckets) {
+      expect(bucket.document.paths['/shared']).toEqual(spec.paths['/shared']);
+      // op-less webhook metadata entries travel everywhere too
+      expect(bucket.document.webhooks).toEqual({ note: { 'x-internal': true } });
+    }
+    // and the retained item survives a public preset round-trip into the bucket manifest
+    const outputDir = await temporaryDirectory();
+    await openApiToApiDocs(spec as any, { outDir: outputDir, preset: 'multi-tag' });
+    const reversed = await apiDocsToOpenApi(join(outputDir, 'one'));
+    const reversedPaths = (reversed.openapi.paths ?? {}) as Record<string, unknown>;
+    expect(reversedPaths['/shared']).toHaveProperty('parameters', spec.paths['/shared'].parameters);
+    expect(reversedPaths['/shared']).toHaveProperty('x-internal', true);
+  });
+
+  it('S-92: an explicit empty servers array is decisive — routed to the default-server bucket (round 7)', () => {
+    const buckets = planPresetBuckets({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://a.example.com' }],
+      paths: {
+        '/a': { get: { operationId: 'aGet', responses: { '200': { description: 'ok' } } } },
+        '/b': { get: { operationId: 'bGet', servers: [], responses: { '200': { description: 'ok' } } } },
+      },
+    } as any, 'multi-server') ?? [];
+    expect(buckets.map((bucket) => `${bucket.directory}:${bucket.name}`)).toEqual(['default-server:(default server)', 'https-a.example.com:https://a.example.com']);
+    expect(Object.keys((buckets.find((bucket) => bucket.name === '(default server)')?.document.paths ?? {}))).toEqual(['/b']);
+    expect(Object.keys((buckets.find((bucket) => bucket.name === 'https://a.example.com')?.document.paths ?? {}))).toEqual(['/a']);
+  });
+
+  it('S-92: Swagger 2.0 documents fall through multi-server and webhooks are ignored defensively (round 7)', () => {
+    expect(planPresetBuckets({
+      swagger: '2.0', info: { title: 'T', version: '1' }, host: 'h.example.com',
+      paths: { '/z': { get: { operationId: 'z', responses: { '200': { description: 'ok' } } } } },
+      webhooks: { sneaky: { post: { operationId: 'h', tags: ['w'], responses: { '202': { description: 'ok' } } } } },
+    } as any, 'multi-server')).toBeUndefined();
+    const taggedTwo = planPresetBuckets({
+      swagger: '2.0', info: { title: 'T', version: '1' }, host: 'h.example.com',
+      paths: { '/z': { get: { operationId: 'z', tags: ['one'], responses: { '200': { description: 'ok' } } } } },
+      webhooks: { sneaky: { post: { operationId: 'h', tags: ['w'], responses: { '202': { description: 'ok' } } } } },
+    } as any, 'multi-tag');
+    expect(taggedTwo).toBeUndefined();
+  });
+
   function captureOutput(): { output: ZopiaCliOutput; stdout: string[]; stderr: string[] } {
     const stdout: string[] = [];
     const stderr: string[] = [];
