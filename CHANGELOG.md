@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🐛 Fixed
+- 🔍 Diff coverage holes (round 6): changes to the named component registries — `components.parameters`/`responses`/`securitySchemes`/`requestBodies`/`headers`/`links`/`callbacks`/`examples`/`pathItems` (3.x) and `parameters`/`responses`/`securityDefinitions` (Swagger 2.0, cross-dialect aligned with side-appropriate pointers — an auth-scheme change reported nothing) — plus path-item and webhook-item metadata (`summary`/`description`/`servers`, item `x-` keys, resolved through `@ref` chains with sibling-wins semantics and the generation-era typed failures) and `x-` extension entries inside `paths`/`webhooks` are now reported instead of silently invisible.
 - 🛡️ Custom companion hardening (round 5): a **directory** at a companion's `custom.ts` path (which would shadow the sibling module's `./custom` import) now fails with a typed `ZOPIA_FS_OUTSIDE_OUTDIR` instead of silently emitting a broken tree; companion paths are derived through a dedicated helper that rejects endpoint modules not living in their own directory; path segments literally named `custom.ts` keep working both layouts through planner renaming and now have scaffold coverage asserting every generated module's companion is a real file.
 
 ### ✨ Added

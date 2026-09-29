@@ -1,6 +1,7 @@
 import { ZopiaError } from './errors';
 import { collectOpenApiOperations, collectOpenApiWebhookOperations, type OpenApiOperation } from './conversions/openapi-to-api-docs';
 import { normalizeOpenApiDocument, type OpenApiDocument, type OpenApiVersion } from './conversions/openapi';
+import { resolveOpenApiLocalRef } from './conversions/openapi-ref';
 import { readOpenApiSourceInput } from './conversions/openapi-to-api-docs-public';
 
 /** Category of one reported change. */
@@ -100,6 +101,99 @@ const responseStatusOrder = (keys: string[]): string[] => {
 };
 
 interface OperationPair { key: string; older?: OpenApiOperation; newer?: OpenApiOperation; }
+
+/**
+ * Field-change phrasing for path-item and webhook-item metadata lines:
+ * scalar pairs transit as `"a" -> "b"`, add/remove carry their scalar when short.
+ */
+function itemPhrase(kind: ZopiaDiffKind, before: unknown, after: unknown): string {
+  if (kind === 'added') { const value = scalar(after); return value !== undefined ? `${value} added` : 'added'; }
+  if (kind === 'removed') { const value = scalar(before); return value !== undefined ? `${value} removed` : 'removed'; }
+  return transition(before, after);
+}
+
+/** Resolve one path/webhook item through local `$ref` chains — sibling keys win, same as generation. */
+function resolveItem(document: OpenApiDocument, item: unknown, name: string, kind: 'path' | 'webhook'): Record<string, any> | undefined {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
+  let resolved: any = item;
+  const seen = new Set<string>();
+  while ('$ref' in resolved) {
+    if (typeof resolved.$ref !== 'string' || !resolved.$ref) throw new ZopiaError('ZOPIA_SPEC_PATH_REF', `Invalid ${kind}-item $ref: ${name}`);
+    if (seen.has(resolved.$ref)) throw new ZopiaError('ZOPIA_SPEC_PATH_REF', `Circular ${kind}-item $ref: ${resolved.$ref}`);
+    seen.add(resolved.$ref);
+    const target = resolveOpenApiLocalRef(document, resolved.$ref);
+    if (!target || typeof target !== 'object' || Array.isArray(target)) throw new ZopiaError('ZOPIA_SPEC_PATH_REF', `Invalid ${kind}-item $ref: ${resolved.$ref}`);
+    resolved = { ...target, ...Object.fromEntries(Object.entries(resolved).filter(([key]) => key !== '$ref')) };
+  }
+  return resolved;
+}
+
+/** Item-level metadata fields (operation bodies are compared by the operation sections, parameters are already merged there). */
+function diffItemMetadata(collect: (e: ZopiaDiffEntry) => void, area: ZopiaDiffArea, section: 'paths' | 'webhooks', label: 'path item' | 'webhook', fields: readonly string[], older: OpenApiDocument, newer: OpenApiDocument): void {
+  const olderMap = (older[section] ?? {}) as Record<string, unknown>;
+  const newerMap = (newer[section] ?? {}) as Record<string, unknown>;
+  for (const name of unionKeys(olderMap, newerMap)) {
+    const itemAt = `#/${section}/${escapePointer(name)}`;
+    if (name.startsWith('x-')) {
+      const extensionLabel = label === 'webhook' ? 'webhook extension' : 'path extension';
+      const before = olderMap[name]; const after = newerMap[name];
+      if (before === undefined) collect({ kind: 'added', area, at: itemAt, message: `${extensionLabel} ${name} added`, depth: 0 });
+      else if (after === undefined) collect({ kind: 'removed', area, at: itemAt, message: `${extensionLabel} ${name} removed`, depth: 0 });
+      else if (canonical(before, itemAt) !== canonical(after, itemAt)) collect({ kind: 'changed', area, at: itemAt, message: `${extensionLabel} ${name} changed`, depth: 0 });
+      continue;
+    }
+    if (!(name in olderMap) || !(name in newerMap)) continue; // add/remove is reported per operation by the operation sections
+    const kind = section === 'webhooks' ? 'webhook' : 'path';
+    const before = resolveItem(older, olderMap[name], name, kind);
+    const after = resolveItem(newer, newerMap[name], name, kind);
+    if (!before || !after) continue;
+    const extensions = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((key) => key.startsWith('x-')).sort();
+    for (const field of [...fields, ...extensions]) {
+      const fieldAt = `${itemAt}/${escapePointer(field)}`;
+      if (before[field] === undefined && after[field] === undefined) continue;
+      if (before[field] === undefined) collect({ kind: 'added', area, at: fieldAt, message: `${label} ${name}: ${field} ${itemPhrase('added', undefined, after[field])}`, depth: 0 });
+      else if (after[field] === undefined) collect({ kind: 'removed', area, at: fieldAt, message: `${label} ${name}: ${field} ${itemPhrase('removed', before[field], undefined)}`, depth: 0 });
+      else if (canonical(before[field], fieldAt) !== canonical(after[field], fieldAt)) collect({ kind: 'changed', area, at: fieldAt, message: `${label} ${name}: ${field} ${itemPhrase('changed', before[field], after[field])}`, depth: 0 });
+    }
+  }
+}
+
+/** Named component registries compared per entry; aligned across dialects (Swagger 2.0 top-level maps ↔ OpenAPI 3.x `components.*`). */
+const diffRegistries: ReadonlyArray<{ label: string; key2?: string; key3: string }> = [
+  { label: 'parameter', key2: 'parameters', key3: 'parameters' },
+  { label: 'response', key2: 'responses', key3: 'responses' },
+  { label: 'security scheme', key2: 'securityDefinitions', key3: 'securitySchemes' },
+  { label: 'request body', key3: 'requestBodies' },
+  { label: 'header', key3: 'headers' },
+  { label: 'link', key3: 'links' },
+  { label: 'callback', key3: 'callbacks' },
+  { label: 'example', key3: 'examples' },
+  { label: 'path item', key3: 'pathItems' },
+];
+
+/** Dialect-aware registry map plus its pointer prefix (`undefined` when the dialect has no such container). */
+function registryOf(document: OpenApiDocument, version: OpenApiVersion, key3: string, key2?: string): { map: Record<string, unknown>; at: string } | undefined {
+  if (version === '2.0') {
+    if (!key2) return undefined;
+    return { map: (document[key2] ?? {}) as Record<string, unknown>, at: `#/${escapePointer(key2)}` };
+  }
+  return { map: ((document.components?.[key3] ?? {}) as Record<string, unknown>), at: `#/components/${escapePointer(key3)}` };
+}
+
+/** Emit per-registry per-name component differences, in registry declaration order for determinism. */
+function diffRegistriesSection(collect: (e: ZopiaDiffEntry) => void, olderVersion: OpenApiVersion, newerVersion: OpenApiVersion, older: OpenApiDocument, newer: OpenApiDocument): void {
+  for (const registry of diffRegistries) {
+    const olderRegistry = registryOf(older, olderVersion, registry.key3, registry.key2);
+    const newerRegistry = registryOf(newer, newerVersion, registry.key3, registry.key2);
+    const olderMap = olderRegistry?.map ?? {}; const newerMap = newerRegistry?.map ?? {};
+    for (const name of unionKeys(olderMap, newerMap)) {
+      const at = `${(name in newerMap ? newerRegistry?.at : undefined) ?? olderRegistry?.at ?? newerRegistry?.at}/${escapePointer(name)}`;
+      if (!(name in olderMap)) collect({ kind: 'added', area: 'component', at, message: `${registry.label} ${name}`, depth: 0 });
+      else if (!(name in newerMap)) collect({ kind: 'removed', area: 'component', at, message: `${registry.label} ${name}`, depth: 0 });
+      else if (canonical(olderMap[name], at) !== canonical(newerMap[name], at)) collect({ kind: 'changed', area: 'component', at, message: `${registry.label} ${name} changed`, depth: 0 });
+    }
+  }
+}
 
 /** Human label of one operation: `GET /pets (listPets)`. */
 function operationLabel(operation: OpenApiOperation): string {
@@ -214,7 +308,9 @@ export function diffOpenApiDocuments(before: OpenApiDocument, after: OpenApiDocu
     else if (canonical(olderInfo[field], at) !== canonical(newerInfo[field], at)) collect({ kind: 'changed', area: 'info', at, message: `info.${field}: ${transition(olderInfo[field], newerInfo[field])}`, depth: 0 });
   }
 
+  diffItemMetadata(collect, 'endpoint', 'paths', 'path item', ['summary', 'description', 'servers'], older.document, newer.document);
   diffOperationSections(collect, 'endpoint', 'paths', collectOpenApiOperations(older.document), collectOpenApiOperations(newer.document));
+  diffItemMetadata(collect, 'webhook', 'webhooks', 'webhook', ['summary', 'description'], older.document, newer.document);
   diffOperationSections(collect, 'webhook', 'webhooks', collectOpenApiWebhookOperations(older.document), collectOpenApiWebhookOperations(newer.document));
 
   const olderSchemas = schemaContainer(older.document, older.version); const newerSchemas = schemaContainer(newer.document, newer.version);
@@ -224,6 +320,7 @@ export function diffOpenApiDocuments(before: OpenApiDocument, after: OpenApiDocu
     else if (!(name in newerSchemas.map)) collect({ kind: 'removed', area: 'component', at, message: `component ${name}`, depth: 0 });
     else if (canonical(olderSchemas.map[name], at) !== canonical(newerSchemas.map[name], at)) collect({ kind: 'changed', area: 'component', at, message: `component ${name}: schema changed`, depth: 0 });
   }
+  diffRegistriesSection(collect, older.version, newer.version, older.document, newer.document);
 
   const rootKeys = new Set([...Object.keys(older.document), ...Object.keys(newer.document)]);
   const extensions = [...rootKeys].filter((key) => key.startsWith('x-')).sort();

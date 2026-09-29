@@ -143,6 +143,79 @@ describe('spec diff (Phase 3, S-91)', () => {
     expect(result.changes).toEqual([{ kind: 'removed', area: 'webhook', at: '#/webhooks/signed/post', message: 'webhook POST signed (hookSigned)', depth: 0 }]);
   });
 
+  it('S-91: component registries are compared per name with dialect-aligned pointers (round 6)', () => {
+    const oldSpec = {
+      swagger: '2.0', info: { title: 'T', version: '1' }, paths: {},
+      securityDefinitions: { key: { type: 'basic' } }, parameters: { P: { name: 'p', in: 'query', type: 'string' } },
+    };
+    const newSpec = {
+      openapi: '3.1.0', info: { title: 'T', version: '1' }, paths: {},
+      components: {
+        securitySchemes: { key: { type: 'http', scheme: 'bearer' } },
+        parameters: { P: { name: 'p', in: 'query', schema: { type: 'string' } } },
+        requestBodies: { R: { content: { 'application/json': {} } } },
+        schemas: {},
+      },
+    };
+    const result = diffOpenApiDocuments(oldSpec as any, newSpec as any);
+    expect(result.changes).toEqual([
+      { kind: 'changed', area: 'dialect', at: '#', message: 'dialect: swagger 2.0 -> openapi 3.1.0', depth: 0 },
+      { kind: 'changed', area: 'component', at: '#/components/parameters/P', message: 'parameter P changed', depth: 0 },
+      { kind: 'changed', area: 'component', at: '#/components/securitySchemes/key', message: 'security scheme key changed', depth: 0 },
+      { kind: 'added', area: 'component', at: '#/components/requestBodies/R', message: 'request body R', depth: 0 },
+    ]);
+    const backwards = diffOpenApiDocuments(newSpec as any, oldSpec as any);
+    expect(backwards.changes.find((change) => change.message === 'request body R')).toMatchObject({ kind: 'removed', at: '#/components/requestBodies/R' });
+    // same-dialect 2.0 change keeps the 2.0 pointer on both sides
+    const two = diffOpenApiDocuments(oldSpec as any, { ...oldSpec, securityDefinitions: { key: { type: 'apiKey', in: 'header', name: 'X' } } } as any);
+    expect(two.changes).toEqual([{ kind: 'changed', area: 'component', at: '#/securityDefinitions/key', message: 'security scheme key changed', depth: 0 }]);
+  });
+
+  it('S-91: path-item and webhook-item metadata, path extensions, and x- webhook entries are visible (round 6)', () => {
+    const oldSpec = {
+      openapi: '3.1.0', info: { title: 'T', version: '1' },
+      paths: {
+        '/a': { summary: 'A group', description: 'docs', get: { operationId: 'aGet', responses: { '200': { description: 'ok' } } } },
+        '/b': { $ref: '#/components/pathItems/P' },
+        'x-note': 'hi',
+      },
+      components: { pathItems: { P: { summary: 'older-path-item', get: { operationId: 'bGet', responses: { '200': { description: 'ok' } } } } }, schemas: {} },
+      webhooks: { signed: { summary: 'A', post: { operationId: 'hook', responses: { '202': { description: 'ok' } } } }, 'x-empty': {} },
+    };
+    const newer = JSON.parse(JSON.stringify(oldSpec));
+    newer.paths['/a'].summary = 'Renamed group';
+    newer.paths['/a'] = { ...newer.paths['/a'], 'x-extra': true };
+    newer.components.pathItems.P.summary = 'newer-path-item';
+    newer.webhooks.signed.summary = 'B';
+    delete newer.paths['x-note'];
+    delete newer.webhooks['x-empty'];
+    const result = diffOpenApiDocuments(oldSpec as any, newer as any);
+    const messages = result.changes.map((change) => `${change.kind} ${change.message}`);
+    expect(messages).toContain('changed path item /a: summary "A group" -> "Renamed group"');
+    expect(messages).toContain('added path item /a: x-extra true added');
+    expect(messages).toContain('changed path item /b: summary "older-path-item" -> "newer-path-item"');
+    expect(messages).toContain('removed path extension x-note removed');
+    expect(messages).toContain('changed webhook signed: summary "A" -> "B"');
+    expect(messages).toContain('removed webhook extension x-empty removed');
+    expect(messages).toContain('changed path item P changed');
+    // deterministic section order: path metadata before operations, registries after schemas
+    const pathItem = result.changes.findIndex((change) => change.message.startsWith('path item /a:'));
+    const registry = result.changes.findIndex((change) => change.message === 'path item P changed');
+    expect(pathItem).toBeGreaterThanOrEqual(0);
+    expect(registry).toBeGreaterThan(pathItem);
+  });
+
+  it('S-91: broken $ref chains in compared items fail with the generation-era typed codes (round 6)', () => {
+    expect(() => diffOpenApiDocuments(
+      { openapi: '3.0.3', info: { title: 'T', version: '1' }, paths: { '/a': { $ref: '#/components/pathItems/NOPE' } }, components: { pathItems: { X: { get: { operationId: 'x', responses: { '200': { description: 'ok' } } } } } } } as any,
+      { openapi: '3.0.3', info: { title: 'T', version: '1' }, paths: {} } as any,
+    )).toThrowError(expect.objectContaining({ code: 'ZOPIA_REF_NOT_FOUND' }));
+    expect(() => diffOpenApiDocuments(
+      { openapi: '3.0.3', info: { title: 'T', version: '1' }, paths: { '/a': { summary: 'x', get: { operationId: 'x', responses: { '200': { description: 'ok' } } } } }, components: { pathItems: { X: { get: { operationId: 'x', responses: { '200': { description: 'ok' } } } } } } } as any,
+      { openapi: '3.0.3', info: { title: 'T', version: '1' }, paths: { '/a': { $ref: '#/paths/~1a' } }, components: { pathItems: {} } } as any,
+    )).toThrowError(expect.objectContaining({ code: 'ZOPIA_SPEC_PATH_REF' }));
+  });
+
   it('S-91: unreadable or invalid inputs fail with typed errors at the offending input', async () => {
     const missing = await diffOpenApiSpecs('/nonexistent/old-spec.json', JSON.stringify(base)).then(
       () => { throw new Error('must throw'); },
