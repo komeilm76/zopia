@@ -585,6 +585,21 @@ describe('jsonSchemaToZod', () => {
       expect(generated.safeParse(value).success).toBe(false);
     }
   });
+  it('emits a toJSON guard that typechecks for primitive element types (issue #5)', () => {
+    // The helper is invoked per item with the item's own type, so a bare `value.toJSON`
+    // narrows to never under strict mode (TS2339); Object(value) keeps the access valid.
+    const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
+    expect(result.code).toContain('typeof Object(value).toJSON');
+    expect(result.code).not.toMatch(/typeof value\.toJSON/);
+    // uniqueItems is intentionally reported as refinement + overlay for exact reverse conversion
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_UNIQUE_ITEMS', at: '#' })]);
+
+    // The generated code stays plain JavaScript and keeps validating uniqueness.
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+    expect(generated.safeParse(['a', 'b']).success).toBe(true);
+    expect(generated.safeParse(['a', 'a']).success).toBe(false);
+    expect(generated.safeParse([{ toJSON: () => 'coerced' }, { toJSON: () => 'coerced' }]).success).toBe(false);
+  });
   it('enforces required keys even without property declarations', () => {
     const result = jsonSchemaToZod({ type: 'object', required: ['id'] });
     expect(result.schema.safeParse({}).success).toBe(false);

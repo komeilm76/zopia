@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-30
+
+### 🐛 Fixed
+- 🐛 **`toJSON` property error in generated `index.ts` files (#5).** The
+  canonical-JSON helper emitted into schemas using `uniqueItems` (and object
+  `const`/`enum` comparisons) guarded against `toJSON` methods with
+  `typeof value.toJSON === 'function'`. Because the helper is invoked per
+  item with the item's own type, primitive element types (e.g.
+  `uniqueItems` on a string array) let TypeScript narrow `value` to `never`,
+  and editors reported `TS2339: Property 'toJSON' does not exist on type
+  'never'`. The guard now reads `typeof Object(value).toJSON === 'function'`
+  — identical runtime behavior (short-circuited for non-objects,
+  `Object(obj) === obj` for objects), but valid TypeScript for every element
+  type. Generated code stays plain JavaScript (no type annotations were
+  added), and a new suite typechecks generated endpoints end-to-end under
+  `strict: true` with `ts.createProgram`, so generated files are now held to
+  the same compile-cleanly bar as the IntelliSense declarations.
+
 ## [0.5.1] - 2026-09-30
 
 ### 🐛 Fixed
