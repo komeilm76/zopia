@@ -1,6 +1,6 @@
 {
   "name": "zopia",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Type-safe OpenAPI, JSON Schema, and Zod conversion toolkit.",
   "keywords": [
     "api-docs",

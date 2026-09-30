@@ -684,11 +684,17 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       }
     }
     if ((node.format === 'int32' || node.format === 'int64') && (node.type === 'integer' || node.type === 'number')) {
-      const integer = (result.schema as any).int(); const code = `${result.code}.int()`;
-      result = node.format === 'int32' ? { schema: integer.min(-2147483648).max(2147483647), code: `${code}.min(-2147483648).max(2147483647)` } : { schema: integer, code };
+      // `integer` schemas already carry .int() from the type switch above — appending it again
+      // duplicated the call in generated code (issue #4); only `number` schemas need it added here.
+      const alreadyInteger = node.type === 'integer';
+      const integer = alreadyInteger ? result.schema : (result.schema as any).int();
+      const code = alreadyInteger ? result.code : `${result.code}.int()`;
+      result = node.format === 'int32' ? { schema: (integer as any).min(-2147483648).max(2147483647), code: `${code}.min(-2147483648).max(2147483647)` } : { schema: integer, code };
     }
     if ((node.format === 'uint32' || node.format === 'uint64') && (node.type === 'integer' || node.type === 'number')) {
-      const integer = (result.schema as any).int().nonnegative(); const code = `${result.code}.int().nonnegative()`;
+      const alreadyInteger = node.type === 'integer';
+      const integer = alreadyInteger ? (result.schema as any).nonnegative() : (result.schema as any).int().nonnegative();
+      const code = alreadyInteger ? `${result.code}.nonnegative()` : `${result.code}.int().nonnegative()`;
       result = node.format === 'uint32' ? { schema: integer.max(4294967295), code: `${code}.max(4294967295)` } : { schema: integer, code };
     }
     if (node.format && node.type === 'string') {

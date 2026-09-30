@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-30
+
+### 🐛 Fixed
+- 🐛 **Duplicate `.int()` in generated Zod schemas for `int32` and `int64`
+  formats (#4).** Integer properties carrying an integer format emitted
+  `z.number().int().int()...` — the `integer` type already appends `.int()`
+  and the format branch appended it again. Now every combination
+  (`integer`/`number` × `int32`/`int64`/`uint32`/`uint64`) emits exactly one
+  `.int()`, with bounds (`int32` → `-2147483648...2147483647`,
+  `uint32` → `0...4294967295`) and `.nonnegative()` for the unsigned formats
+  unchanged. Runtime validation, warning codes, and reverse-conversion
+  overlays are untouched; covered by new unit and end-to-end regression
+  tests that assert the emitted code (not just parse behavior).
+
 ## [0.5.0] - 2026-09-29
 
 ### ✨ Added
