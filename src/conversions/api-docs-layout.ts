@@ -5,6 +5,47 @@ import { OPENAPI_METHODS, type OpenApiMethod } from './openapi-to-api-docs';
 export type ApiDocsMode = 'directory' | 'flat';
 
 /**
+ * Split one OpenAPI path template into its literal segment keys.
+ *
+ * Empty segments are dropped, so the root path `/` has no segments and its
+ * methods nest directly at the tree root. This is the single segmentation rule
+ * shared by the runtime tree resolver and the generated `.zopia-tree.d.ts`.
+ *
+ * @param path OpenAPI path template beginning with `/`.
+ * @returns Path segments in order, including literal `{param}` segments.
+ */
+export function apiDocsPathSegments(path: string): string[] {
+  return path.split('/').filter(Boolean);
+}
+
+/**
+ * Compare two endpoint entries by the canonical deterministic tree order:
+ * URL path segments lexically, shorter segment chains first, then the
+ * canonical method order (`get, post, put, delete, head, options, patch, trace`).
+ *
+ * The runtime tree resolver inserts keys in this order and the generated
+ * `.zopia-tree.d.ts` declares them in this order, so both surfaces enumerate
+ * identically (R-732/S-94).
+ *
+ * @param left Endpoint entry with an OpenAPI `path` and lowercase `method`.
+ * @param right Endpoint entry with an OpenAPI `path` and lowercase `method`.
+ * @returns Negative when `left` sorts first, positive when `right` does, zero when equal.
+ */
+export function compareApiDocsEntries(left: { path: string; method: string }, right: { path: string; method: string }): number {
+  const leftSegments = apiDocsPathSegments(left.path);
+  const rightSegments = apiDocsPathSegments(right.path);
+  const depth = Math.min(leftSegments.length, rightSegments.length);
+  for (let index = 0; index < depth; index += 1) {
+    const order = leftSegments[index] < rightSegments[index] ? -1 : leftSegments[index] > rightSegments[index] ? 1 : 0;
+    if (order !== 0) return order;
+  }
+  const lengthOrder = leftSegments.length - rightSegments.length;
+  if (lengthOrder !== 0) return lengthOrder;
+  const methods = OPENAPI_METHODS as readonly string[];
+  return methods.indexOf(left.method) - methods.indexOf(right.method);
+}
+
+/**
  * Return whether one generated-tree path segment is portable across supported filesystems.
  *
  * @param segment Candidate path segment without separators.

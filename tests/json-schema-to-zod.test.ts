@@ -357,6 +357,45 @@ describe('jsonSchemaToZod', () => {
     expect(result.overlays).toEqual([{ at: '', set: { format }, remove: ['minimum', 'maximum'] }]);
   });
   it.each([
+    ['integer', 'int32', 'z.number().int().min(-2147483648).max(2147483647)'],
+    ['integer', 'int64', 'z.number().int()'],
+    ['integer', 'uint32', 'z.number().int().nonnegative().max(4294967295)'],
+    ['integer', 'uint64', 'z.number().int().nonnegative()'],
+    ['number', 'int32', 'z.number().int().min(-2147483648).max(2147483647)'],
+    ['number', 'int64', 'z.number().int()'],
+    ['number', 'uint32', 'z.number().int().nonnegative().max(4294967295)'],
+    ['number', 'uint64', 'z.number().int().nonnegative()'],
+  ] as const)('emits a single .int() for %s with format %s (issue #4)', (type, format, expected) => {
+    const result = jsonSchemaToZod({ type, format });
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.code).toContain(expected);
+    expect(result.code).not.toContain('.int().int()');
+    expect(generated.safeParse(12).success).toBe(true);
+    expect(generated.safeParse(12.5).success).toBe(false);
+  });
+  it('generates exactly one .int() per int32/int64 property of an object (issue #4)', () => {
+    const result = jsonSchemaToZod({
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        id: { type: 'integer', format: 'int32' },
+        title: { type: ['string', 'null'] },
+        score: { type: 'number', format: 'float' },
+        questionId: { type: 'integer', format: 'int64' },
+      },
+    });
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+
+    expect(result.code).toContain('z.number().int().min(-2147483648).max(2147483647).optional()');
+    expect(result.code).toContain('z.number().int().optional()');
+    expect(result.code).not.toContain('.int().int()');
+    expect(generated.safeParse({ id: 1, title: null, score: 1.5, questionId: 2 }).success).toBe(true);
+    expect(generated.safeParse({ id: 2147483648, title: null, score: 1.5, questionId: 2 }).success).toBe(false);
+    expect(generated.safeParse({ id: 1, title: null, score: 1.5, questionId: 12.5 }).success).toBe(false);
+    expect(generated.safeParse({ id: 1, title: null, score: 1.5, questionId: 2, extra: true }).success).toBe(false);
+  });
+  it.each([
     ['string', 'password', 'secret', 42],
     ['string', 'binary', '0101', false],
     ['number', 'float', 1.5, '1.5'],
@@ -545,6 +584,21 @@ describe('jsonSchemaToZod', () => {
       expect(result.schema.safeParse(value).success).toBe(false);
       expect(generated.safeParse(value).success).toBe(false);
     }
+  });
+  it('emits a toJSON guard that typechecks for primitive element types (issue #5)', () => {
+    // The helper is invoked per item with the item's own type, so a bare `value.toJSON`
+    // narrows to never under strict mode (TS2339); Object(value) keeps the access valid.
+    const result = jsonSchemaToZod({ type: 'array', uniqueItems: true, items: { type: 'string' } });
+    expect(result.code).toContain('typeof Object(value).toJSON');
+    expect(result.code).not.toMatch(/typeof value\.toJSON/);
+    // uniqueItems is intentionally reported as refinement + overlay for exact reverse conversion
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_UNIQUE_ITEMS', at: '#' })]);
+
+    // The generated code stays plain JavaScript and keeps validating uniqueness.
+    const generated = new Function('z', `${result.code}\nreturn schema;`)(z);
+    expect(generated.safeParse(['a', 'b']).success).toBe(true);
+    expect(generated.safeParse(['a', 'a']).success).toBe(false);
+    expect(generated.safeParse([{ toJSON: () => 'coerced' }, { toJSON: () => 'coerced' }]).success).toBe(false);
   });
   it('enforces required keys even without property declarations', () => {
     const result = jsonSchemaToZod({ type: 'object', required: ['id'] });

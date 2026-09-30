@@ -107,7 +107,7 @@ interface ZopiaReverseOptions {
 
 ## 📄 `ZodToJsonSchemaOptions` — engine ①
 
-See [Conversions → Engine ①](06-conversions.md)
+See [Conversions → Engine ①](https://github.com/komeilm76/zopia/blob/main/docs/06-conversions.md)
 (`target`, `$schema`, `io`).
 
 ## 📄 `JsonSchemaToZodOptions` — engine ②
@@ -164,4 +164,4 @@ zopia diff <old-spec> <new-spec>          (no options yet; `--config path` accep
 ## 🔗 Next
 
 - 🚀 How options are used end-to-end → [Usage](10-usage.md)
-- 📂 What each option changes in the tree → [API docs format](07-api-docs.md) · [Components](08-components.md)
+- 📂 What each option changes in the tree → [API docs format](07-api-docs.md) · [Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md)

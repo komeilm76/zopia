@@ -310,7 +310,7 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
     const normalized = JSON.parse(literal);
     return JSON.stringify(normalized, (_key, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
   };
-  const generatedCanonicalJson = `(value) => { if (value && typeof value === 'object' && typeof value.toJSON === 'function') return undefined; try { return JSON.stringify(value, (_key, item) => { if (item === null || typeof item === 'string' || typeof item === 'boolean') return item; if (typeof item === 'number') { if (!Number.isFinite(item)) throw new Error('non-JSON number'); return item; } if (!item || typeof item !== 'object' || Object.getOwnPropertySymbols(item).length || (!Array.isArray(item) && ![Object.prototype, null].includes(Object.getPrototypeOf(item)))) throw new Error('non-JSON value'); const children = Array.isArray(item) ? item : Object.values(item); if (children.some((child) => child && typeof child === 'object' && typeof child.toJSON === 'function')) throw new Error('non-JSON toJSON'); if (Array.isArray(item)) { if (Object.keys(item).length !== item.length || !item.every((_child, index) => Object.prototype.hasOwnProperty.call(item, index))) throw new Error('non-JSON array'); return item; } return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)); }); } catch { return undefined; } }`;
+  const generatedCanonicalJson = `(value) => { if (value && typeof value === 'object' && typeof Object(value).toJSON === 'function') return undefined; try { return JSON.stringify(value, (_key, item) => { if (item === null || typeof item === 'string' || typeof item === 'boolean') return item; if (typeof item === 'number') { if (!Number.isFinite(item)) throw new Error('non-JSON number'); return item; } if (!item || typeof item !== 'object' || Object.getOwnPropertySymbols(item).length || (!Array.isArray(item) && ![Object.prototype, null].includes(Object.getPrototypeOf(item)))) throw new Error('non-JSON value'); const children = Array.isArray(item) ? item : Object.values(item); if (children.some((child) => child && typeof child === 'object' && typeof child.toJSON === 'function')) throw new Error('non-JSON toJSON'); if (Array.isArray(item)) { if (Object.keys(item).length !== item.length || !item.every((_child, index) => Object.prototype.hasOwnProperty.call(item, index))) throw new Error('non-JSON array'); return item; } return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)); }); } catch { return undefined; } }`;
   let source: JsonSchema;
   try {
     if (typeof input !== 'string') source = input;
@@ -684,11 +684,17 @@ function jsonSchemaToZodInternal(input: JsonSchema | string, options: JsonSchema
       }
     }
     if ((node.format === 'int32' || node.format === 'int64') && (node.type === 'integer' || node.type === 'number')) {
-      const integer = (result.schema as any).int(); const code = `${result.code}.int()`;
-      result = node.format === 'int32' ? { schema: integer.min(-2147483648).max(2147483647), code: `${code}.min(-2147483648).max(2147483647)` } : { schema: integer, code };
+      // `integer` schemas already carry .int() from the type switch above — appending it again
+      // duplicated the call in generated code (issue #4); only `number` schemas need it added here.
+      const alreadyInteger = node.type === 'integer';
+      const integer = alreadyInteger ? result.schema : (result.schema as any).int();
+      const code = alreadyInteger ? result.code : `${result.code}.int()`;
+      result = node.format === 'int32' ? { schema: (integer as any).min(-2147483648).max(2147483647), code: `${code}.min(-2147483648).max(2147483647)` } : { schema: integer, code };
     }
     if ((node.format === 'uint32' || node.format === 'uint64') && (node.type === 'integer' || node.type === 'number')) {
-      const integer = (result.schema as any).int().nonnegative(); const code = `${result.code}.int().nonnegative()`;
+      const alreadyInteger = node.type === 'integer';
+      const integer = alreadyInteger ? (result.schema as any).nonnegative() : (result.schema as any).int().nonnegative();
+      const code = alreadyInteger ? `${result.code}.nonnegative()` : `${result.code}.int().nonnegative()`;
       result = node.format === 'uint32' ? { schema: integer.max(4294967295), code: `${code}.max(4294967295)` } : { schema: integer, code };
     }
     if (node.format && node.type === 'string') {

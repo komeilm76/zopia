@@ -1,5 +1,6 @@
 import { ZopiaError } from '../errors';
 import { normalizeOpenApiDocument, type OpenApiDocument } from './openapi';
+import { uniqueEndpointName } from './api-docs-names';
 import { resolveOpenApiLocalRef } from './openapi-ref';
 
 /** Canonical km-api/OpenAPI operation method order. */
@@ -107,15 +108,12 @@ export function collectOpenApiOperations(input: OpenApiDocument | string): OpenA
         const previous = owners.get(operationId);
         if (previous) {
           if (previous.operation.operationId !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId: ${operationId}`);
-          let replacement = previous.operationId; let suffix = 1;
-          while (ids.has(replacement)) replacement = `${operationId}${++suffix}`;
+          const replacement = uniqueEndpointName(operationId, ids);
           ids.delete(previous.operationId); owners.delete(previous.operationId);
           previous.operationId = replacement; ids.add(replacement); owners.set(replacement, previous);
         }
       } else {
-        const base = deriveOperationId(path, method);
-        operationId = base; let suffix = 1;
-        while (ids.has(operationId)) operationId = `${base}${++suffix}`;
+        operationId = uniqueEndpointName(deriveOperationId(path, method), ids);
       }
       const collected = { path, method, operation, operationId, parameters: mergedParameters };
       ids.add(operationId); owners.set(operationId, collected); operations.push(collected);
@@ -185,15 +183,12 @@ export function collectOpenApiWebhookOperations(document: OpenApiDocument): Open
         const previous = owners.get(operationId);
         if (previous) {
           if (previous.operation.operationId !== undefined) throw new ZopiaError('ZOPIA_SPEC_INVALID', `Duplicate operationId: ${operationId}`);
-          let replacement = previous.operationId; let suffix = 1;
-          while (ids.has(replacement)) replacement = `${operationId}${++suffix}`;
+          const replacement = uniqueEndpointName(operationId, ids);
           ids.delete(previous.operationId); owners.delete(previous.operationId);
           previous.operationId = replacement; ids.add(replacement); owners.set(replacement, previous);
         }
       } else {
-        const base = `${method}${pascalPath(name)}`;
-        operationId = base; let suffix = 1;
-        while (ids.has(operationId)) operationId = `${base}${++suffix}`;
+        operationId = uniqueEndpointName(`${method}${pascalPath(name)}`, ids);
       }
       const collected = { path: name, method, operation, operationId, parameters: mergedParameters };
       ids.add(operationId); owners.set(operationId, collected); operations.push(collected);

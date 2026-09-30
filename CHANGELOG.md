@@ -7,7 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-30
+
+### 🐛 Fixed
+- 🐛 **`toJSON` property error in generated `index.ts` files (#5).** The
+  canonical-JSON helper emitted into schemas using `uniqueItems` (and object
+  `const`/`enum` comparisons) guarded against `toJSON` methods with
+  `typeof value.toJSON === 'function'`. Because the helper is invoked per
+  item with the item's own type, primitive element types (e.g.
+  `uniqueItems` on a string array) let TypeScript narrow `value` to `never`,
+  and editors reported `TS2339: Property 'toJSON' does not exist on type
+  'never'`. The guard now reads `typeof Object(value).toJSON === 'function'`
+  — identical runtime behavior (short-circuited for non-objects,
+  `Object(obj) === obj` for objects), but valid TypeScript for every element
+  type. Generated code stays plain JavaScript (no type annotations were
+  added), and a new suite typechecks generated endpoints end-to-end under
+  `strict: true` with `ts.createProgram`, so generated files are now held to
+  the same compile-cleanly bar as the IntelliSense declarations.
+
+## [0.5.1] - 2026-09-30
+
+### 🐛 Fixed
+- 🐛 **Duplicate `.int()` in generated Zod schemas for `int32` and `int64`
+  formats (#4).** Integer properties carrying an integer format emitted
+  `z.number().int().int()...` — the `integer` type already appends `.int()`
+  and the format branch appended it again. Now every combination
+  (`integer`/`number` × `int32`/`int64`/`uint32`/`uint64`) emits exactly one
+  `.int()`, with bounds (`int32` → `-2147483648...2147483647`,
+  `uint32` → `0...4294967295`) and `.nonnegative()` for the unsigned formats
+  unchanged. Runtime validation, warning codes, and reverse-conversion
+  overlays are untouched; covered by new unit and end-to-end regression
+  tests that assert the emitted code (not just parse behavior).
+
+## [0.5.0] - 2026-09-29
+
 ### ✨ Added
+- 🧠 **Exact IntelliSense for runtime tree consumption (S-95).** Every tree
+  generated with a manifest now also carries a types-only
+  **`.zopia-tree.d.ts`** declaration beside the manifest, and
+  `createApiDocs` / `flattenApiDocs` accept it as a type argument — turning the
+  permissive runtime typing into **exact** typing:
+  ```ts
+  import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+  import type { ApiDocsTree, ApiDocsFlat } from './api_docs/.zopia-tree';
+
+  const apiDocs = await createApiDocs<ApiDocsTree>('./api_docs');
+  apiDocs.users['{userId}'].get.pathShape;   // literal "/users/{userId}", autocompleted
+  const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);
+  endpoints.getUser;                          // exact key, same leaf object
+  ```
+  Segment and method keys autocomplete exactly (unknown keys are **compile
+  errors**, not `any`), every leaf is typed as the generated module's own
+  `makeApiConfig()` export (literal `method`/`pathShape`, exact Zod request /
+  response shapes), and the flat record's keys derive through the same shared
+  naming rules as the generator's export identifiers (camelize,
+  reserved-word guard, `2`/`3`… collision suffixes) — parity with the runtime
+  keys is pinned by tests. The declaration is emitted in both layouts and in
+  every preset bucket root, follows the manifest lifecycle (pruned when
+  manifests are disabled, refreshed on regeneration, and a deleted declaration
+  reports `ZOPIA_WARN_STALE_TREE`), and is types-only: it imports nothing
+  beyond the tree itself (R-502 holds). `zopia generate` results report the
+  file with a new `kind: 'types'`. Conflicting paths that cannot share one
+  nested tree (below a method leaf, trailing-slash twins) render the
+  permissive intersection shape — matching the runtime's typed
+  `ZOPIA_SPEC_INVALID` failure. The shared deterministic tree ordering
+  (path segments, then canonical method order) moved to
+  `src/conversions/api-docs-layout.ts` so the runtime resolver and the
+  declaration emitter enumerate identically.
+
+## [0.4.0] - 2026-09-29
+
+### 🔄 Changed
+- 📦 **Slimmer npm package — practical docs only.** The published archive now
+  ships just the user-facing guides (`docs/07-api-docs.md`,
+  `docs/09-configuration.md`, `docs/10-usage.md`) next to `README.md` /
+  `CHANGELOG.md`; the development documentation (overview, targets, roadmap,
+  architecture, concepts, conversions, components, testing, standards, the
+  docs map, and the publish-workflow example) stays in the GitHub repository
+  and is linked from the README — npm users installing the package get
+  usage/installation docs, not project management artifacts. The tarball
+  shrinks **239 KB → 182 KB packed (915 KB → 750 KB unpacked, 50 → 39
+  files)**; `npm` force-includes `README*` from any directory, so the docs map
+  is explicitly negated (`!docs/README.md`) in `files`. `package:check` and
+  the release contract now enforce the slim archive: a missing practical doc
+  fails, and any development doc leaking into the pack fails. The release
+  standard (R-192) and the docs map describe the split.
+
+### ✨ Added
+- 🌳 **Runtime tree consumption — `zopia/runtime` (S-94).** New opt-in subpath
+  export (`import { createApiDocs, flattenApiDocs } from 'zopia/runtime'`) that
+  turns a generated api-docs directory into the objects an application
+  consumes, with **zero changes to generation output**. `createApiDocs(dir)` —
+  the entire consumer DX — discovers the root `.zopia-manifest.json` plus every
+  one-level-deep preset bucket manifest (`multi-tag`/`multi-server`), merges
+  them (deduplicating by `${path}#${method}`, root manifest first), sorts
+  deterministically (path segments, then the canonical method order), and
+  returns one nested object keyed by the exact URL path segments with the
+  lowercase method as leaf key holding the endpoint module's `export default`
+  (loaded via `pathToFileURL`, Windows-safe). `flattenApiDocs(tree)` is the
+  flat freebie: a `Record<string, config>` keyed by `operationId`, deriving
+  missing names and collision suffixes through the **same shared rules the
+  generator uses for its export identifiers** (extracted to
+  `src/conversions/api-docs-names.ts`: camelize, reserved-word guard,
+  leading-numeric guard, `2`/`3`… suffixing — `await` → `awaitEndpoint`).
+  Missing/garbled manifests, unsafe manifest paths, import failures, and
+  modules without default exports fail typed (`ZOPIA_DOCS_MISSING_MANIFEST`,
+  `ZOPIA_MANIFEST_INVALID`, `ZOPIA_DOCS_IMPORT_FAILED`); paths that cannot
+  share one nested tree (below a method leaf, trailing-slash twins) fail typed
+  `ZOPIA_SPEC_INVALID`. Documented in
+  [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs.md).
 - 📦 **npm publish pipeline** — `.github/workflows/publish.yml` publishes on GitHub Release creation (or manually) with the pinned Bun toolchain, verifies the release tag matches `package.json`'s version, and runs `npm publish --provenance --access public`. Its only credential is the repository-secret `NODE_AUTH_TOKEN` (npm `NPM_TOKEN`) — never handled in chat or commits; npm trusted-publishing (OIDC) is supported by the declared `id-token` permission.
 
 ### 🐛 Fixed

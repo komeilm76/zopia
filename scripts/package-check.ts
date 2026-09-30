@@ -67,11 +67,15 @@ try {
   if (name !== packageManifest.name || version !== packageManifest.version) throw new Error(`unexpected package identity: ${name}@${version}`);
 
   const paths = files.map((file) => file.path);
-  const required = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'bin/zopia.js', 'src/index.ts', 'docs/README.md'];
+  const packedDocs = ['docs/07-api-docs.md', 'docs/09-configuration.md', 'docs/10-usage.md'];
+  const required = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'bin/zopia.js', 'src/index.ts', 'src/runtime.ts', ...packedDocs];
   for (const path of required) if (!paths.includes(path)) throw new Error(`package archive is missing ${path}`);
-  const allowed = /^(?:package\.json|README\.md|CHANGELOG\.md|LICENSE|bin\/|src\/|docs\/)/;
+  const allowed = /^(?:package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$|bin\/|src\/|docs\/(?:07-api-docs|09-configuration|10-usage)\.md$)/;
   const unexpected = paths.filter((path) => !allowed.test(path));
   if (unexpected.length) throw new Error(`package archive contains private files: ${unexpected.join(', ')}`);
+  // npm users get practical usage/installation docs only — development docs stay on GitHub.
+  const internalDocs = paths.filter((path) => /^docs\//.test(path) && !packedDocs.includes(path));
+  if (internalDocs.length) throw new Error(`package archive contains development-only docs: ${internalDocs.join(', ')}`);
   if (paths.some((path) => /^(?:tests|scripts|coverage|km-api-promts)\//.test(path) || /(?:^|\/)(?:bun\.lock|package-lock\.json|tsconfig\.json|vitest\.config\.mts)$/.test(path))) {
     throw new Error('package archive contains development-only files');
   }
@@ -120,6 +124,19 @@ try {
   await run('Packed CLI help', 'node', [binary, '--help'], consumer);
   await run('Packed CLI generation', 'node', [binary, 'generate', specification, generated], consumer);
   await run('Packed CLI reverse conversion', 'node', [binary, 'reverse', generated, '--out', reversed], consumer);
+
+  // The opt-in runtime subpath must work from the packed archive: load the generated
+  // tree into the nested/flat objects and hand a leaf back to km-api-level checks.
+  await writeFile(join(consumer, 'smoke-runtime.ts'), [
+    "import { createApiDocs, flattenApiDocs } from 'zopia/runtime';",
+    "const apiDocs = await createApiDocs('api-docs');",
+    "const endpoint = apiDocs.health.get;",
+    "const endpoints = flattenApiDocs(apiDocs);",
+    "if (endpoint.pathShape !== '/health' || endpoint.method !== 'GET') throw new Error('packed runtime tree access failed');",
+    "if (endpoints.getHealth !== endpoint) throw new Error('packed runtime flatten failed');",
+    '',
+  ].join('\n'));
+  await run('Packed runtime subpath import', process.execPath, ['run', 'smoke-runtime.ts'], consumer);
   const output = JSON.parse(await readFile(reversed, 'utf8')) as Record<string, unknown>;
   const info = output.info as Record<string, unknown> | undefined;
   const pathsObject = output.paths as Record<string, unknown> | undefined;

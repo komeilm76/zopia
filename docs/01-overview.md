@@ -38,6 +38,13 @@ flowchart LR
   developer edits to the generated code become the new spec.
 - **① / ②** are the two primitive schema converters the other engines are built on.
 
+For applications that wire endpoints dynamically instead of importing the files
+one by one, the opt-in **`zopia/runtime`** subpath turns any generated tree
+directory into one nested object (URL path segments → methods → the
+`makeApiConfig` objects) or a flat `operationId`-keyed record —
+`await createApiDocs('api_docs')` is the whole API, and generation output is
+untouched ([API docs → Runtime tree consumption](07-api-docs.md#-runtime-tree-consumption--createapidocs)).
+
 ## 🎯 The promise
 
 > **Fast and valid developing.** A developer gets **valid, documented,

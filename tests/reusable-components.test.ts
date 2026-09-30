@@ -41,6 +41,7 @@ describe('S-81: reusable parameters and responses generate their own component m
 
     expect(await treeFiles(outDir)).toEqual([
       '.zopia-manifest.json',
+      '.zopia-tree.d.ts',
       'components/CursorToken/index.ts',
       'components/Widget/index.ts',
       'components/index.ts',
@@ -100,6 +101,7 @@ describe('S-81: reusable parameters and responses generate their own component m
 
     expect(await treeFiles(outDir)).toEqual([
       '.zopia-manifest.json',
+      '.zopia-tree.d.ts',
       'components/index.ts',
       'components/parameters/FilterBody/index.ts',
       'components/parameters/Trace/index.ts',
@@ -203,6 +205,7 @@ describe('S-81: reusable parameters and responses generate their own component m
     await openApiToApiDocs(crossKind, { outDir, insertComponents: true, useComponentAsReference: true });
     expect(await treeFiles(outDir)).toEqual([
       '.zopia-manifest.json',
+      '.zopia-tree.d.ts',
       'components/Trace/index.ts',
       'components/index.ts',
       'components/parameters/Trace/index.ts',

@@ -26,6 +26,7 @@ describe('openApiToApiDocs public API', () => {
     expect(result).toEqual({
       files: [
         { path: '.zopia-manifest.json', kind: 'manifest' },
+        { path: '.zopia-tree.d.ts', kind: 'types' },
         { path: 'a/post/index.ts', kind: 'endpoint' },
         { path: 'components/Thing/index.ts', kind: 'component' },
         { path: 'components/index.ts', kind: 'component' },
@@ -48,6 +49,51 @@ describe('openApiToApiDocs public API', () => {
     expect(result.manifestPath).toBeUndefined();
   });
 
+  it('generates exactly one .int() per int32/int64 property from OpenAPI 3.0 (issue #4)', async () => {
+    const outDir = await temporaryDirectory('zopia-issue4-');
+    const spec = {
+      openapi: '3.0.4',
+      info: { title: 'Issue 4 API', version: '1.0.0' },
+      paths: {
+        '/answers': {
+          post: {
+            operationId: 'createAnswer',
+            requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Answer' } } } },
+            responses: { '200': { description: 'ok' } },
+          },
+        },
+      },
+      components: { schemas: { Answer: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'integer', format: 'int32' },
+          title: { type: 'string', nullable: true },
+          score: { type: 'number', format: 'float' },
+          questionId: { type: 'integer', format: 'int64' },
+        },
+      } } },
+    };
+    const result = await openApiToApiDocs(spec as any, { outDir });
+
+    // int32/int64/float intentionally report format warnings (overlays keep reverse conversion exact)
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/components/schemas/Answer/properties/id', message: 'format `int32` requires an overlay for exact reverse conversion' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_CUSTOM_FORMAT', at: '#/components/schemas/Answer/properties/score', message: 'format `float` has no exact Zod representation for this schema type' }),
+      expect.objectContaining({ code: 'ZOPIA_WARN_INT64', at: '#/components/schemas/Answer/properties/questionId', message: 'format `int64` requires an overlay for exact reverse conversion' }),
+    ]));
+    const endpoint = await readFile(join(outDir, 'answers/post/index.ts'), 'utf8');
+    expect(endpoint).toContain('z.number().int().min(-2147483648).max(2147483647).optional()');
+    expect(endpoint).toContain('z.number().int().optional()');
+    expect(endpoint).toContain('z.string().nullable().optional()');
+    expect(endpoint).not.toContain('.int().int()');
+
+    // reverse conversion still carries the int32/int64 formats (overlays intact)
+    const reversed = await apiDocsToOpenApi(outDir);
+    const answer = ((reversed.openapi.components as any)?.schemas as Record<string, any>).Answer;
+    expect(answer.properties.id).toMatchObject({ type: 'integer', format: 'int32' });
+    expect(answer.properties.questionId).toMatchObject({ type: 'integer', format: 'int64' });
+  });
   it('classifies endpoint files under a components path as endpoints', async () => {
     const outDir = await temporaryDirectory('zopia-public-');
     const result = await openApiToApiDocs({
@@ -178,7 +224,7 @@ describe('operationId identity (round 9 coverage)', () => {
         '/b': { get: { operationId: 'getA', responses: { '200': { description: 'ok' } } } },
       },
     } as any, { outDir: outputDir });
-    expect(result.files.map((file) => file.path).sort()).toEqual(['.zopia-manifest.json', 'a/get/index.ts', 'b/get/index.ts']);
+    expect(result.files.map((file) => file.path).sort()).toEqual(['.zopia-manifest.json', '.zopia-tree.d.ts', 'a/get/index.ts', 'b/get/index.ts']);
     // the generation-internal rename is visible in the manifest; the source
     // truth (op without operationId) round-trips back EXACTLY as authored
     const manifest = JSON.parse(await readFile(join(outputDir, '.zopia-manifest.json'), 'utf8')) as { apis: { operationId?: string }[] };

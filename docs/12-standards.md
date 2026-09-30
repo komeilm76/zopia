@@ -198,7 +198,7 @@ active in shallow/source-only environments where the release boundary is absent.
 | # | Release-readiness rule |
 | --- | --- |
 | R-191 | **One release identity** — `package.json`, the manifest writer, lockfile, versioned changelog heading, and README status agree on the SemVer version |
-| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, `docs/`, and the package/legal markdown; the exact archive is installed in isolation and must pass library-import plus generate/reverse CLI smoke tests |
+| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, the practical guides (`docs/07-api-docs.md`, `docs/09-configuration.md`, `docs/10-usage.md`), and the package/legal markdown; the development documentation stays in the repository and is linked from the README via GitHub URLs. The exact archive is installed in isolation and must pass library-import, generate/reverse CLI, and `zopia/runtime` subpath smoke tests |
 | R-193 | **Publish guard** — `prepublishOnly` runs the pinned-Bun release gate, including typecheck, all tests, coverage, direct runtime checks, and R-192's packed-consumer check |
 
 Preparing these artifacts does not publish or tag a release. Those external steps

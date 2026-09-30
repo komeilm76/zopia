@@ -24,6 +24,12 @@ source of truth for *how zopia works, what it must do, and how it is built*.
 | 11 | 🧪 [Testing](11-testing.md) | You are **writing tests** — scenario matrix, fixtures, coverage gates |
 | 12 | 📏 [Standards](12-standards.md) | You are **consuming the project** — code, JSDoc, commits, changelog, decisions |
 
+> 📦 **What ships with the npm package** — only the practical guides install
+> with `zopia` itself: [API docs format](07-api-docs.md),
+> [Configuration](09-configuration.md), and [Usage](10-usage.md). Everything
+> else in this directory is development documentation and lives in the
+> repository (see [Standards → Release flow](12-standards.md#-release-flow)).
+
 ## 🧭 Suggested paths
 
 - 🆕 **New here** → [Overview](01-overview.md) → [Targets](02-targets.md) →
