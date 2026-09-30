@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-✅ **Status — Phase 3 complete · v0.5.2 released**
+✅ **Status — Phase 3 complete · v0.6.0 released**
 
 </div>
 

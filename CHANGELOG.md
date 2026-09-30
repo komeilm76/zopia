@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### 🐛 Fixed
 - 🐛 **Swagger 2.0 `collectionFormat` was dropped when reversing to OpenAPI
   3.x.** Array parameters generated from a Swagger 2.0 source came back as
