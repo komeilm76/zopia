@@ -1,10 +1,37 @@
 import { useTemporaryDirectories } from './test-temporary-directories';
 import { describe, expect, it } from 'vitest';
-import { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles } from '../src';
-import { readFile, rename, symlink, utimes, writeFile } from 'node:fs/promises';
+import { apiDocsToOpenApi, manifestToOpenApi, manifestFileToOpenApi, generateApiDocsFiles, openApiToApiDocs, type ZopiaError } from '../src';
+import { mkdir, readFile, rename, symlink, utimes, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 const temporaryDirectory = useTemporaryDirectories();
+
+/** Swagger 2.0 serialization fixture: a shared `collectionFormat` query parameter plus `formData` uploads. */
+const SERIALIZATION_SPEC = {
+  swagger: '2.0',
+  info: { title: 'Serialization API', version: '1.0.0' },
+  parameters: {
+    TagsParam: { name: 'tags', in: 'query', type: 'array', items: { type: 'string' }, collectionFormat: 'csv' },
+  },
+  paths: {
+    '/things': {
+      get: { operationId: 'listThings', parameters: [{ $ref: '#/parameters/TagsParam' }], responses: { '200': { description: 'OK' } } },
+    },
+    '/uploads': {
+      post: {
+        operationId: 'uploadForm',
+        consumes: ['multipart/form-data'],
+        parameters: [
+          { name: 'file', in: 'formData', type: 'file', required: true },
+          { name: 'labels', in: 'formData', type: 'array', items: { type: 'string' }, collectionFormat: 'multi' },
+          { name: 'flags', in: 'formData', type: 'array', items: { type: 'string' }, collectionFormat: 'pipes' },
+          { name: 'notes', in: 'formData', type: 'array', items: { type: 'integer' }, collectionFormat: 'ssv' },
+        ],
+        responses: { '201': { description: 'Created' } },
+      },
+    },
+  },
+};
 
 describe('manifest reverse conversion', () => {
   it('S-66: reconstructs the document frame and lossless operations', () => {
@@ -835,6 +862,106 @@ describe('manifest reverse conversion', () => {
   it('restores Swagger security definitions', () => {
     const result = manifestToOpenApi({ $schema: 'zopia:manifest@1', source: { kind: 'swagger-2.0', title: 'Test', version: '1' }, securitySchemes: { apiKey: { type: 'apiKey', name: 'X-Key', in: 'header' } }, apis: [] }) as any;
     expect(result.securityDefinitions.apiKey).toEqual({ type: 'apiKey', name: 'X-Key', in: 'header' });
+  });
+  it('S-96/S-97: restores Swagger 2.0 collectionFormat and file uploads in OpenAPI 3.x output', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    await openApiToApiDocs(SERIALIZATION_SPEC, { outDir: outputDir });
+
+    for (const version of ['3.1', '3.0'] as const) {
+      const { openapi, warnings } = await apiDocsToOpenApi(outputDir, { version });
+      const document = openapi as any;
+      expect(document.components.parameters.TagsParam).toEqual({
+        in: 'query',
+        name: 'tags',
+        style: 'form',
+        explode: false,
+        schema: { type: 'array', items: { type: 'string' } },
+      });
+      expect(document.paths['/uploads'].post.requestBody.content['multipart/form-data']).toEqual({
+        schema: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', format: 'binary' },
+            flags: { type: 'array', items: { type: 'string' } },
+            labels: { type: 'array', items: { type: 'string' } },
+            notes: { type: 'array', items: { type: 'integer' } },
+          },
+          required: ['file'],
+        },
+        encoding: {
+          labels: { style: 'form', explode: true },
+          flags: { style: 'form', explode: true, 'x-collectionFormat': 'pipes' },
+          notes: { style: 'form', explode: true, 'x-collectionFormat': 'ssv' },
+        },
+      });
+      expect(warnings).toEqual(expect.arrayContaining([
+        { code: 'ZOPIA_WARN_COLLECTION_FORMAT', at: '#/paths/~1uploads/post/requestBody/content/multipart~1form-data/encoding/flags', message: expect.stringContaining('pipes') },
+        { code: 'ZOPIA_WARN_COLLECTION_FORMAT', at: '#/paths/~1uploads/post/requestBody/content/multipart~1form-data/encoding/notes', message: expect.stringContaining('ssv') },
+      ]));
+      expect(warnings.filter((warning) => warning.code === 'ZOPIA_WARN_COLLECTION_FORMAT')).toHaveLength(2);
+    }
+
+    const legacy = await apiDocsToOpenApi(outputDir, { version: '2.0' });
+    const swagger = legacy.openapi as any;
+    expect(swagger.parameters.TagsParam).toEqual({ name: 'tags', in: 'query', type: 'array', items: { type: 'string' }, collectionFormat: 'csv' });
+    expect(swagger.paths['/things'].get.parameters).toEqual([{ $ref: '#/parameters/TagsParam' }]);
+    const formData = Object.fromEntries((swagger.paths['/uploads'].post.parameters as any[]).map((parameter) => [parameter.name, parameter]));
+    expect(formData.file).toEqual({ name: 'file', in: 'formData', required: true, type: 'file' });
+    expect(formData.labels.collectionFormat).toBe('multi');
+    expect(formData.flags.collectionFormat).toBe('pipes');
+    expect(formData.notes.collectionFormat).toBe('ssv');
+    expect(legacy.warnings.filter((warning) => warning.code === 'ZOPIA_WARN_COLLECTION_FORMAT')).toEqual([]);
+  });
+  it('S-98: reports a preset split root distinctly from a genuinely missing manifest', async () => {
+    const root = await temporaryDirectory('zopia-');
+    const outDir = join(root, 'api_docs');
+    await openApiToApiDocs({
+      openapi: '3.1.0',
+      info: { title: 'Preset root', version: '1.0.0' },
+      paths: {
+        '/users': { get: { operationId: 'listUsers', tags: ['users'], responses: { '200': { description: 'OK' } } } },
+        '/orders': { get: { operationId: 'listOrders', tags: ['orders'], responses: { '200': { description: 'OK' } } } },
+        '/health': { get: { operationId: 'health', responses: { '200': { description: 'OK' } } } },
+      },
+    }, { outDir, preset: 'multi-tag' });
+
+    const presetRootError = await apiDocsToOpenApi(outDir).catch((error: unknown) => error) as ZopiaError;
+    expect(presetRootError).toMatchObject({ code: 'ZOPIA_DOCS_PRESET_ROOT', at: outDir, hint: expect.any(String) });
+    expect(presetRootError.message).toContain('this directory is a preset split (3 trees: orders, untagged, users)');
+    expect(presetRootError.message).toContain('zopia reverse api_docs/orders');
+
+    const bucket = await apiDocsToOpenApi(join(outDir, 'users'));
+    expect(Object.keys((bucket.openapi as any).paths)).toEqual(['/users']);
+
+    const empty = await temporaryDirectory('zopia-');
+    await expect(apiDocsToOpenApi(empty)).rejects.toMatchObject({ code: 'ZOPIA_DOCS_MISSING_MANIFEST' });
+    const shallow = await temporaryDirectory('zopia-');
+    await mkdir(join(shallow, 'nested'), { recursive: true });
+    await expect(apiDocsToOpenApi(shallow)).rejects.toMatchObject({ code: 'ZOPIA_DOCS_MISSING_MANIFEST' });
+  });
+  it('S-99: round-trips an authored OpenAPI 3.1 inclusive/exclusive numeric bound pair', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    await openApiToApiDocs({
+      openapi: '3.1.0',
+      info: { title: 'Bounds API', version: '1.0.0' },
+      paths: {
+        '/things/{thingId}': {
+          get: {
+            operationId: 'getThing',
+            parameters: [{ name: 'thingId', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: { '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/Thing' } } } } },
+          },
+        },
+      },
+      components: { schemas: { Thing: { type: 'object', properties: { age: { type: 'integer', minimum: 0, exclusiveMinimum: 0, maximum: 150 } } } } },
+    }, { outDir: outputDir, insertComponents: true });
+
+    const generated = await readFile(join(outputDir, 'components', 'Thing', 'index.ts'), 'utf8');
+    expect(generated).toContain('.min(0)');
+    expect(generated).toContain('.gt(0)');
+
+    const { openapi } = await apiDocsToOpenApi(outputDir);
+    expect((openapi as any).components.schemas.Thing.properties.age).toEqual({ type: 'integer', minimum: 0, exclusiveMinimum: 0, maximum: 150 });
   });
   it('round-trips a generated manifest without losing the operation', async () => {
     const outputDir = await temporaryDirectory('zopia-');

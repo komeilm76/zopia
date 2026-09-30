@@ -257,6 +257,23 @@ describe('jsonSchemaToZod', () => {
     expect(result.warnings).toEqual([expect.objectContaining({ code: 'ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND', at: '#' })]);
     expect(result.overlays).toEqual([{ at: '', set: { exclusiveMaximum: true, maximum: 5 } }]);
   });
+  it('S-99: records an overlay for numeric bound pairs Zod subsumes', () => {
+    const minimum = jsonSchemaToZod({ type: 'integer', minimum: 0, exclusiveMinimum: 0, maximum: 150 });
+    expect(minimum.code).toContain('.min(0)');
+    expect(minimum.code).toContain('.gt(0)');
+    expect(minimum.overlays).toEqual([{ at: '', set: { exclusiveMinimum: 0, minimum: 0 } }]);
+    expect(minimum.warnings).toEqual([]);
+
+    const maximum = jsonSchemaToZod({ type: 'number', maximum: 10, exclusiveMaximum: 10 });
+    expect(maximum.overlays).toEqual([{ at: '', set: { exclusiveMaximum: 10, maximum: 10 } }]);
+
+    const nested = jsonSchemaToZod({ type: 'object', properties: { age: { type: 'integer', minimum: 0, exclusiveMinimum: 0, maximum: 150 } } });
+    expect(nested.overlays).toEqual([{ at: '/properties/age', set: { exclusiveMinimum: 0, minimum: 0 } }]);
+
+    // Only the subsumed pair is recorded: a lone bound stays a plain Zod check.
+    expect(jsonSchemaToZod({ type: 'integer', minimum: 0, maximum: 150 }).overlays).toEqual([]);
+    expect(jsonSchemaToZod({ type: 'integer', exclusiveMinimum: 0 }).overlays).toEqual([]);
+  });
   it('supports unevaluated property restrictions', () => {
     const strict = jsonSchemaToZod({ type: 'object', properties: { id: { type: 'string' } }, unevaluatedProperties: false });
     expect(strict.schema.safeParse({ id: 'x', extra: true }).success).toBe(false);

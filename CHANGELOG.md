@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+- 🐛 **Swagger 2.0 `collectionFormat` was dropped when reversing to OpenAPI
+  3.x.** Array parameters generated from a Swagger 2.0 source came back as
+  bare 3.x parameters, silently changing the wire format from (for example)
+  `?tags=a,b` to `?tags=a&tags=b`. Reverse conversion now maps the recorded
+  format onto its 3.x spelling: on `query` parameters `csv` →
+  `style: "form", explode: false`, `multi` → `style: "form", explode: true`,
+  `pipes` → `style: "pipeDelimited"`, `ssv` → `style: "spaceDelimited"`; on
+  `path`/`header` `csv` → `style: "simple", explode: false`. `formData`
+  array serialization now lands in the media type's `encoding` map
+  (`csv` → `form` + `explode: false`, `multi` → `form` + `explode: true`).
+  Inline parameters and shared `#/parameters/<Name>` declarations (which
+  reverse into `components.parameters`) take the same mapping. Formats with
+  no legal 3.x spelling — `tsv` anywhere, plus `pipes`/`ssv`/`tsv` inside
+  `encoding` objects or on `path`/`header` — keep the original value in an
+  `x-collectionFormat` extension and emit the new
+  `ZOPIA_WARN_COLLECTION_FORMAT` warning at the affected pointer instead of
+  discarding it (D-12). Reversing to `'2.0'` still restores every
+  `collectionFormat` verbatim and warning-free.
+- 🐛 **Swagger 2.0 `type: "file"` lost its binary format in 3.x output.**
+  Multipart file properties reversed to a plain `{ "type": "string" }`,
+  which describes a text field, because the version-rewrite pass stripped
+  the `format: "binary"` the operation builder had already produced.
+  Reversing to `'3.0'`/`'3.1'` now yields
+  `{ "type": "string", "format": "binary" }`; reversing to `'2.0'` still
+  restores `type: "file"`.
+- 🐛 **Reversing a `--preset` split root reported a misleading missing
+  manifest.** `apiDocsToOpenApi()` (and `zopia reverse`) pointed at a preset
+  root — where the manifests live one directory down, one per bucket —
+  failed with `ZOPIA_DOCS_MISSING_MANIFEST`, which reads as "you never
+  generated anything". It now fails with the new typed
+  `ZOPIA_DOCS_PRESET_ROOT` code, naming the bucket directories that actually
+  contain a manifest in alphabetical order plus the command for a single
+  bucket, e.g. `this directory is a preset split (3 trees: orders,
+  untagged, users). Reverse one bucket (zopia reverse api_docs/orders) to
+  convert a single tree.` Directories with no bucket manifest anywhere keep
+  `ZOPIA_DOCS_MISSING_MANIFEST`.
+- 🐛 **Authored numeric bound pairs were lost on the OpenAPI 3.1 round
+  trip.** A schema carrying both an inclusive and an exclusive bound on the
+  same side (e.g. `{ "minimum": 0, "exclusiveMinimum": 0 }`) generated the
+  correct Zod (`.min(0)` … `.gt(0)`), but `z.toJSONSchema()` keeps only the
+  tighter keyword, so reverse conversion emitted just
+  `{ "exclusiveMinimum": 0 }`. Generation now records the authored pair in
+  the manifest overlay — the same mechanism already used for legacy boolean
+  exclusive bounds — and reverse conversion restores both keywords verbatim
+  for endpoint-local **and** component schemas. Schemas with a single bound
+  on a side are unaffected and record no overlay.
+
 ## [0.5.2] - 2026-09-30
 
 ### 🐛 Fixed

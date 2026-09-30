@@ -2,6 +2,7 @@ import { asZopiaError, ZopiaError } from './errors';
 
 /** Stable warning codes emitted by zopia's conversion pipelines. */
 export const ZOPIA_WARNING_CODES = [
+  'ZOPIA_WARN_COLLECTION_FORMAT',
   'ZOPIA_WARN_CONTENT_ENCODING',
   'ZOPIA_WARN_CUSTOM_FORMAT',
   'ZOPIA_WARN_DEFAULT_INFO',
