@@ -28,10 +28,15 @@ const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);
 endpoints.getUser === getUser;                    // → true
 ```
 
-| 🔧 Function | 📏 Signature | 📝 What it does |
+| 🔧 Symbol | 📏 Signature / shape | 📝 What it does |
 | --- | --- | --- |
 | `createApiDocs<T>(dir)` | `(dir: string) => Promise<T>` | reads the directory's manifest, imports every endpoint module, and returns one nested object mirroring the URL structure |
 | `flattenApiDocs<T>(tree)` | `(tree: object) => T` | collapses that nested object into a flat record keyed by `operationId` |
+| `ApiDocsTree` | recursive index type | the nested shape: every segment is both a deeper branch and a possible endpoint, so `apiDocs.users['{userId}'].get` type-checks |
+| `ApiDocsEndpointConfig` | km-api config entry | the leaf type — exactly what a generated `index.ts` default-exports |
+
+Both types are also emitted per tree into `.zopia-tree` (as `ApiDocsTree` and
+`ApiDocsFlat`), which is what makes the exact-key autocompletion below work.
 
 ## 🧭 Which trees work
 

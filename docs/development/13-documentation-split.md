@@ -133,8 +133,11 @@ from the npm page even though the files are not packed).
 - [x] `README.md` and `docs/README.md` carry the two-audience map
 - [x] `package.json#files` packs `docs/user/**` and nothing else from `docs/`
 - [x] `scripts/package-check.ts` and the contract tests assert the new layout
-- [ ] R-202 leakage check automated in the documentation contract suite
-- [ ] Every public symbol audited against R-207 (tracked in [Roadmap → Phase 4](03-roadmap.md))
+- [x] R-202/R-204 leakage check automated in the documentation contract suite
+      (no relative links into `docs/development/`, no phase numbers, scenario
+      IDs, target IDs, coverage-gate talk, or `src/`/`tests/`/`scripts/` paths)
+- [x] Every public symbol, CLI command/flag, error code, warning code, and
+      option key audited against R-207 by `tests/contract/user-docs-coverage.test.ts`
 
 ## 🔗 Next
 

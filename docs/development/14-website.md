@@ -234,7 +234,9 @@ concurrency: { group: pages, cancel-in-progress: true }
 | `vitepress build` | dead internal links **fail the build** | build, CI |
 | `npm run audit` | base-path correctness, unique titles/descriptions, `<html lang>`, one `<h1>` and no skipped heading levels, `img` alt text, resolvable internal links, informative link text, no unrendered Markdown, HTML/asset weight budgets | CI |
 | `website-contract` test suite | project shape, `/zopia/` base, route coverage, ignored generated paths, deploy workflow, snapshot layout | `bun run test` |
-| `documentation-status` test suite | user/development split rules (R-201…R-209) | `bun run test` |
+| `documentation-status` test suite | user/development split rules (R-201…R-209), including the R-202/R-204 leakage check | `bun run test` |
+| `user-docs-coverage` test suite | R-207: every public export, CLI command/flag, error/warning code, and option key is documented | `bun run test` |
+| Example compilation | 🚧 planned — type-check the `ts` samples against the published package | — |
 | Lighthouse | the [quality floor](#-quality-floor) thresholds — needs a real browser, so it stays a manual/scheduled check against the deployed site | manual |
 
 > 📌 The audit exists because Lighthouse cannot run on every commit: it needs a
@@ -246,7 +248,7 @@ concurrency: { group: pages, cancel-in-progress: true }
 | # | 🎯 Milestone | 📦 Deliverable |
 | --- | --- | --- |
 | M1 | **Split** ✅ | `docs/user/` + `docs/development/`, maps updated, package allowlist updated |
-| M2 | **Coverage audit** | every symbol/flag/code documented per R-207; examples validated per R-208 |
+| M2 | **Coverage audit** ✅ | every public export, CLI command/flag, error/warning code, and option key documented and **enforced by a contract test**; examples reviewed per R-208 |
 | M3 | **Site skeleton** ✅ | `website/` VitePress project (`base: '/zopia/'`), `sync-content.mjs` pipeline, `npm run dev` / `npm run build` green with the dead-link gate on |
 | M4 | **Design pass** ✅ | landing page, brand layer, install tabs, dark mode, responsive layout, and the automated quality audit (`npm run audit`) — 27 pages, 2.5 MB of assets, all budgets respected. Lighthouse stays a manual check against the deployed site |
 | M5 | **CI deploy** 🚧 | workflow written as `docs/development/docs-workflow.yml.example` (D-26); a maintainer copies it to `.github/workflows/docs.yml`, creates the public site repository, and adds `PAGES_DEPLOY_TOKEN` |

@@ -31,7 +31,7 @@ All layout examples in this document derive from one spec — the **Admin API**
 
 ## 📂 Mode — `directory` (default)
 
-> 🎯 **T-5** — *convert API addresses to nested directories; the last level of
+> 🎯 *Convert API addresses to nested directories; the last level of
 > the path is a directory named after the method; inside it lives the `index` file.*
 
 Each path segment becomes a directory; **then** one more directory named after
@@ -57,12 +57,12 @@ api_docs/
 | --- | --- |
 | R-711 | 🛣️ Path segments (including `{param}` segments — braces preserved, so the path is recoverable from the tree alone) form the directory chain under `api_docs/` |
 | R-712 | 🧭 The method directory is **always** the child of the path-leaf directory, named with the **lowercase** method — the eight standard methods: `get`, `post`, `put`, `delete`, `head`, `options`, `patch`, `trace` (km-api ≥ 0.4.1) |
-| R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript (T-7) |
+| R-713 | 📄 The file is **always** named `index.ts` — `.ts` format, TypeScript |
 | R-714 | 🔀 A literal segment may equal a method name (e.g. path `/users/get`): within the endpoint area (outside `components/`, whose component dirs also hold an `index.ts`) the tree stays formally unambiguous — **a directory containing `index.ts` is a method directory; every other directory is a path segment** (method dirs hold exactly that one file, R-713). If another path would place directories beneath a method directory, the conflicting literal segment receives `-2`, `-3`, … regardless of source order. The manifest (D-06) remains the *authority* engine ④ reads, tree shape only a convenience |
 
 ## 📂 Mode — `flat`
 
-> 🎯 **T-6** — *one directory per API, then the method directory, then the
+> 🎯 *One directory per API, then the method directory, then the
 > `index` file.*
 
 The full path is flattened into **one** directory name: segments joined by
@@ -108,7 +108,7 @@ file-level API, and the manifest remains authoritative (D-06).
 
 ## 🌳 Runtime tree consumption — `createApiDocs`
 
-> 🎯 **S-94** — *an opt-in runtime API, shipped in the `zopia` package itself,
+> 🎯 *An opt-in runtime API, shipped in the `zopia` package itself,
 > converts a generated tree directory into the nested / flat objects an
 > application consumes. No generation output changes: the feature only reads
 > and imports.*
@@ -125,7 +125,7 @@ const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);        // the flat freeb
 endpoints.getExam;                                             // same leaf object
 ```
 
-**Exact IntelliSense (S-95).** Called without a type argument, the helpers
+**Exact IntelliSense.** Called without a type argument, the helpers
 return permissively typed results (every node is a branch ∪ config). Passing
 the generated **`.zopia-tree.d.ts`** types — written beside every retained
 manifest, in both layouts and every preset bucket root — makes the result
@@ -177,7 +177,7 @@ its `export const` identifiers** (R-732: camelize, reserved-word guard,
 leading-numeric guard, `2`/`3`… uniqueness suffix — `await` → `awaitEndpoint`,
 `get-a` + `getA` → `getA` + `getA2`), so the flat keys always match the
 modules' named exports. The shared rules live in
-`src/conversions/api-docs-names.ts` and both call-sites (generation and
+one shared naming module and both call-sites (generation and
 runtime) use them.
 
 **A small km-api hand-off** — every leaf *is* a `makeApiConfig()` object, so
@@ -210,7 +210,7 @@ components according to the selected component options.
 
 ## 📄 The `index.ts` contract
 
-Every endpoint file follows this generated shape (T-7 — *all practical content is
+Every endpoint file follows this generated shape (*all practical content is
 filled with the make function*). This is the checked-in canonical GET endpoint:
 
 ```ts
@@ -273,7 +273,7 @@ request/parameter/response expression (R-403). Cross-file imports appear
 
 ## 📦 The manifest — `.zopia-manifest.json`
 
-> 🎯 **T-10** — the manifest is what makes every conversion reversible (D-06).
+> 🎯 The manifest is what makes every conversion reversible.
 > It is written by default (the `manifest` option, on unless explicitly
 > disabled — [Configuration](configuration.md)), has no timestamps or
 > environment data (P-1), is always hidden (dotfile), and always versioned
@@ -414,7 +414,7 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 | Component export | `<ComponentName>Schema` (a name already ending in `Schema` is kept as-is) | `UserSchema` |
 | The file | always `index.ts` | — |
 
-## 🔄 Regeneration & manual edits (Phase 1 policy)
+## 🔄 Regeneration & manual edits
 
 | # | Rule |
 | --- | --- |

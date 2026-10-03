@@ -267,7 +267,7 @@ JSON; otherwise an unreadable-path-looking string is read as a file, and the
 extension picks the parser (`.json` → JSON, `.yaml`/`.yml` → YAML, anything
 else → JSON with YAML fallback). Multi-line non-JSON text and single-line
 mapping entries (`swagger: "2.0"`, …) are parsed as inline YAML. YAML is a
-deterministic, owned YAML 1.2 core-schema parser (`src/conversions/yaml.ts`):
+deterministic, owned YAML 1.2 core-schema parser:
 block/flow collections (comments, blank lines, and dedented closers inside
 multi-line flow; optional trailing commas), plain/single/double-quoted scalars,
 literal/folded block scalars (`#` lines indented as deeply as the content are
@@ -392,7 +392,7 @@ parameter/response declarations refreshed from their current modules
 Lays out files per the mode and emits code:
 
 - 📂 layout — [API docs format](api-docs-format.md) (trees, naming, collisions)
-- 📄 endpoint files — the **`index.ts` contract** ([07 → contract](api-docs-format.md#-the-indexts-contract)); every *practical* field of `makeApiConfig` is filled from the IR when the source provides it (T-7)
+- 📄 endpoint files — the **`index.ts` contract** ([the `index.ts` contract](api-docs-format.md#-the-indexts-contract)); every *practical* field of `makeApiConfig` is filled from the IR when the source provides it
 - 🧱 components — [Components](components.md)
 - 📦 manifest — [07 → The manifest](api-docs-format.md)
 
@@ -485,7 +485,7 @@ tested as a property for every fixture
 | `title`, `example(s)` | manifest → re-emitted verbatim |
 | non-primary media types | manifest → re-emitted as extra `content` entries |
 | keyword-level losses (`uniqueItems`, `discriminator`, `time`/`url` formats, boolean exclusive bounds, custom formats) | overlay `set`/`remove` → restored verbatim (R-635) |
-| structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate in Phase 1 (documented in the generated comment) |
+| structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate (documented in the generated comment) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, …) & response `headers` — no home in km-api (R-642) | overlay / `apis[].responseOverlay` → restored verbatim |
 | Swagger `collectionFormat` values with no 3.x spelling (`tsv`; `pipes`/`ssv`/`tsv` in `encoding` objects or on `path`/`header`) | best legal `style`/`explode` + the original value kept in `x-collectionFormat` + warning `ZOPIA_WARN_COLLECTION_FORMAT` (R-660) |
 | a `--preset` split root passed to reverse conversion | typed `ZOPIA_DOCS_PRESET_ROOT` listing the actual buckets — reverse converts one tree, `createApiDocs()` merges them all (R-661) |

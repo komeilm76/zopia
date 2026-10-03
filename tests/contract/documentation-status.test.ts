@@ -91,6 +91,22 @@ describe('documentation status contract', () => {
     }
   });
 
+  it('R-202/R-204: user documentation never leaks development-only material', () => {
+    const leaks: string[] = [];
+    for (const file of expectedUserDocumentationFiles) {
+      const content = markdown(join(userDocsRoot, file));
+      // Relative links into the development set would break on the website and
+      // in the npm archive, where those files do not exist (R-204).
+      if (content.includes('](../development/')) leaks.push(`${file}: relative link into docs/development/`);
+      // Internal planning vocabulary has no meaning for a package consumer (R-202).
+      for (const pattern of [/\bPhase \d\b/, /\bS-\d{2}\b/, /\bT-\d{1,2}\b/, /\bcoverage gate\b/i, /`(?:src|tests|scripts)\//]) {
+        const match = content.match(pattern);
+        if (match) leaks.push(`${file}: internal reference "${match[0]}"`);
+      }
+    }
+    expect(leaks).toEqual([]);
+  });
+
   it('R-184: every local Markdown link and heading anchor resolves', () => {
     const missing: string[] = [];
     for (const file of documentationFiles) {

@@ -54,10 +54,10 @@ depend on is fixed by [Documentation split plan](13-documentation-split.md).
 | --- | --- | --- | --- |
 | W-0 | **Audience split** — `docs/user/` (packed + website source) separated from `docs/development/` (repository-only), with enforced rules R-201…R-209 | [Documentation split](13-documentation-split.md) | ✅ |
 | W-1 | **Public documentation site** at <https://komeilm76.github.io/zopia/> — built in `website/`, published into the public user-site repository under `/zopia/` (D-26) | [Website plan](14-website.md) | 🚧 |
-| W-2 | **Every feature documented** — symbols, commands, flags, config keys, error/warning codes | [Split → R-207](13-documentation-split.md#-rules) | 🚧 |
-| W-3 | **Valid, standard examples** everywhere | [Split → R-208](13-documentation-split.md#-rules) | 🚧 |
-| W-4 | **Options documented as name · type · default · effect · failure mode** | [Website plan](14-website.md#-targets) | 🚧 |
-| W-5 | **5/5 UI & UX** against the published design bar — landing page, brand layer, search, dark mode, responsive layout, and an automated quality audit | [Website plan → Design bar](14-website.md#-design-bar) | 🚧 |
+| W-2 | **Every feature documented** — symbols, commands, flags, config keys, error/warning codes, enforced by `user-docs-coverage` | [Split → R-207](13-documentation-split.md#-rules) | ✅ |
+| W-3 | **Valid, standard examples** everywhere — complete, runnable snippets with real imports and option values (automated compilation of samples is still planned) | [Split → R-208](13-documentation-split.md#-rules) | 🚧 |
+| W-4 | **Options documented as name · type · default · effect · failure mode** | [Website plan](14-website.md#-targets) | ✅ |
+| W-5 | **5/5 UI & UX** against the published design bar — landing page, brand layer, search, dark mode, responsive layout, and an automated quality audit (Lighthouse verification runs against the deployed site) | [Website plan → Design bar](14-website.md#-design-bar) | 🚧 |
 | W-6 | **Versioned documentation** — latest plus the previous two minors, with a generated switcher and outdated-version banners | [Website plan → Versioning](14-website.md#-versioning) | ✅ |
 | W-7 | **Automatic updates after every npm release** | [Website plan → Release flow](14-website.md#-release-flow-integration) | 🚧 |
 | W-8 | **Reproducible site build** from a clean clone and in CI | [Website plan → Quality gates](14-website.md#-quality-gates) | 🚧 |

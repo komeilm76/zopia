@@ -64,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   informative link text, no unrendered Markdown, and HTML/asset weight
   budgets. The release path of the docs workflow now also snapshots the
   previous minor before rebuilding.
+- 🔍 **Complete, enforced user-documentation coverage.** The programmatic API
+  page now documents the **entire** public surface — validation, diff,
+  navigation, and every low-level building block, result type, and option
+  type — and the runtime page documents `ApiDocsTree` / `ApiDocsEndpointConfig`.
+  `tests/contract/user-docs-coverage.test.ts` fails the build when a new
+  export, CLI flag, error code, warning code, or option key is not documented
+  (R-207), and the documentation contract now also rejects internal planning
+  vocabulary (phase numbers, scenario/target IDs, `src/` paths) and relative
+  links into `docs/development/` from user pages (R-202/R-204).
 - 📦 The npm archive now packs the whole `docs/user/**` set instead of three
   individual guides, and `package.json#homepage` points at the documentation
   website. `scripts/package-check.ts` and the package/documentation contract

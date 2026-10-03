@@ -44,11 +44,11 @@ interface ZopiaGenerateOptions {
   /** 📂 Layout mode. @default 'directory' */
   mode?: 'directory' | 'flat';
 
-  /** 🧱 Write components/** with one file per component. @default false (T-8) */
+  /** 🧱 Write components/** with one file per component. @default false */
   insertComponents?: boolean;
 
   /** 🔗 Endpoints import components instead of inlining.
-   *  Requires insertComponents: true. @default false (T-9) */
+   *  Requires insertComponents: true. @default false */
   useComponentAsReference?: boolean;
 
   /** 📦 Write .zopia-manifest.json (needed by engine ④ — keep it on). @default true */
@@ -58,7 +58,7 @@ interface ZopiaGenerateOptions {
   custom?: boolean;
 
   /** 🧰 Split generation into per-bucket sub-trees: `multi-tag` (per primary tag)
-   *  or `multi-server` (per effective first server). @default undefined (S-92) */
+   *  or `multi-server` (per effective first server). @default undefined */
   preset?: 'multi-tag' | 'multi-server';
 }
 
@@ -66,7 +66,7 @@ interface ZopiaGenerateResult {
   files: GeneratedFile[];
   warnings: ZopiaWarning[];
   manifestPath?: string; // absent when manifest: false or a preset split ran
-  trees?: ZopiaPresetTree[]; // {name, directory, manifestPath?} per routed bucket (S-92)
+  trees?: ZopiaPresetTree[]; // {name, directory, manifestPath?} per routed bucket
 }
 ```
 
@@ -74,11 +74,11 @@ interface ZopiaGenerateResult {
 | --- | --- | --- | --- |
 | `outDir` | `string` | `'api_docs'` | relative or absolute; created if missing; **never deleted recursively without this exact dir** (safety R-406) |
 | `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](api-docs-format.md) |
-| `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` (schemas plus reusable `components/parameters/**` / `components/responses/**` modules, v0.2.x — D-18) |
-| `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
+| `insertComponents` | `boolean` | `false` | emits `components/**` (schemas plus reusable `components/parameters/**` / `components/responses/**` modules, v0.2.x — D-18) |
+| `useComponentAsReference` | `boolean` | `false` | imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
 | `custom` | `boolean` | `false` | D-24 — every endpoint/webhook module exports `export * as custom from './custom';` and a sibling `custom.ts` is scaffolded once and never overwritten; CLI flag `--custom`, config key `generate.custom` |
-| `preset` | `'multi-tag' \| 'multi-server'` | `undefined` | S-92 — splits generation into one api-docs sub-tree per routed bucket: `multi-tag` routes each operation by its primary tag (`tags[0]`, warning `ZOPIA_WARN_PRESET_PRIMARY_TAG` when several), `multi-server` by the effective first server (operation → path item → document). Untagged/default-server operations land in `untagged` / `https-default-server`-style buckets; the result gains `trees[]` and every bucket is an independently reverse-convertible tree with its own manifest. Collision-safe lowercase slugs; **nothing to split → the normal single tree** and no `trees[]` |
+| `preset` | `'multi-tag' \| 'multi-server'` | `undefined` | splits generation into one api-docs sub-tree per routed bucket: `multi-tag` routes each operation by its primary tag (`tags[0]`, warning `ZOPIA_WARN_PRESET_PRIMARY_TAG` when several), `multi-server` by the effective first server (operation → path item → document). Untagged/default-server operations land in `untagged` / `https-default-server`-style buckets; the result gains `trees[]` and every bucket is an independently reverse-convertible tree with its own manifest. Collision-safe lowercase slugs; **nothing to split → the normal single tree** and no `trees[]` |
 
 ### ✅ Validation rules
 
@@ -123,8 +123,8 @@ See [Conversions → Engine ①](https://github.com/komeilm76/zopia/blob/main/do
 {
   outDir: 'api_docs',
   mode: 'directory',
-  insertComponents: false,          // 🎯 T-8 default
-  useComponentAsReference: false,   // 🎯 T-9 default
+  insertComponents: false,          // 🎯 default
+  useComponentAsReference: false,   // 🎯 default
   manifest: true,
 }
 ```

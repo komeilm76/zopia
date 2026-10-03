@@ -144,44 +144,98 @@ const config = await loadZopiaConfig({ cwd: process.cwd() }); // same discovery 
 compile-time validation of the config shape. `loadZopiaConfig({ cwd?, file? })`
 performs the CLI's discovery rules (`zopia.config.ts`, then `zopia.config.mts`).
 
-## ✅ Validation
+## 🔍 Validation
 
 ```ts
-import { validateZopia } from 'zopia';
+import { validateZopia, ZOPIA_VALIDATION_CODES, type ZopiaValidationIssue } from 'zopia';
 
-const { ok, kind, target, diagnostics } = await validateZopia('openapi.yaml');
-for (const issue of diagnostics) console.log(issue.severity, issue.code, issue.at, issue.message);
+const result = await validateZopia('openapi.yaml', { kind: 'auto' });
 ```
 
-`kind` tells you whether a spec or a generated tree was inspected. `ok` is
-`false` exactly when an error-severity diagnostic exists — the same rule the
-CLI uses for its exit status.
+| 🔧 Symbol | 📏 Shape | 📝 What it is |
+| --- | --- | --- |
+| `validateZopia(input, options?)` | → `Promise<ZopiaValidationResult>` | lints a spec or checks a generated tree |
+| `ZopiaValidateOptions` | `{ kind?: 'spec' \| 'docs' \| 'auto' }` | forces the target classification instead of auto-detecting (**default** `'auto'`) |
+| `ZopiaValidationResult` | `{ ok, kind, target, diagnostics }` | `ok` is `false` exactly when an error-severity issue exists; `kind` is how the input was classified; `target` is the input as understood |
+| `ZopiaValidationIssue` | `{ severity, code, at?, message }` | one finding — `severity` is `'error' \| 'warning'` |
+| `ZopiaValidationCode` | union of `ZOPIA_VALIDATION_CODES` | stable lint codes; a finding may also carry an engine error or warning code |
+| `ZOPIA_VALIDATION_CODES` | frozen array | every lint code the validator can report |
 
-## 🔍 Diff
+## 🔁 Diff
 
 ```ts
-import { diffOpenApiSpecs } from 'zopia';
+import { diffOpenApiSpecs, type ZopiaDiffEntry } from 'zopia';
 
-const result = await diffOpenApiSpecs('v1.json', 'v2.yaml');
-// result.entries: { kind: '+' | '-' | '~', area, at, message }
-// result.counts:  per-area tallies
+const { identical, changes, counts } = await diffOpenApiSpecs('v1.json', 'v2.yaml');
 ```
 
-`diffOpenApiDocuments(before, after)` is the in-memory variant. Differences are
-**data**, never thrown errors.
+| 🔧 Symbol | 📏 Shape | 📝 What it is |
+| --- | --- | --- |
+| `diffOpenApiSpecs(before, after)` | → `Promise<ZopiaDiffResult>` | compares two spec inputs (paths, text, or objects) |
+| `diffOpenApiDocuments(before, after)` | → `ZopiaDiffResult` | the in-memory variant for already-parsed documents |
+| `ZopiaDiffResult` | `{ identical, changes, counts }` | `identical` ignores key order |
+| `ZopiaDiffEntry` | `{ kind, area, at, message }` | one change; `at` points into `after` for additions/changes and into `before` for removals |
+| `ZopiaDiffKind` | `'added' \| 'removed' \| 'changed'` | the `+` / `-` / `~` of the CLI output |
+| `ZopiaDiffArea` | `'dialect' \| 'info' \| 'endpoint' \| 'webhook' \| 'component' \| 'document'` | grouping used for deterministic ordering |
+| `ZopiaDiffCounts` | `{ added, removed, changed }` | per-kind tallies |
 
 ## 🧭 Navigation
 
 ```ts
-import { loadNavigationIndex, specPointerToLine } from 'zopia';
+import { loadNavigationIndex, navigationIndexFromManifest, specPointerToLine } from 'zopia';
 
 const index = await loadNavigationIndex('api_docs');
 ```
 
-The index maps spec JSON Pointers ↔ generated files (endpoints, webhooks,
-components, custom companions). `specPointerAtLine` / `specPointerToLine` /
-`specPointersToLines` translate between pointers and source-file lines —
-this is what editor integrations build on.
+| 🔧 Symbol | 📏 Shape | 📝 What it is |
+| --- | --- | --- |
+| `loadNavigationIndex(dir)` | → `Promise<ZopiaNavigationIndex>` | reads a tree's manifest and builds the spec ↔ code jump table |
+| `navigationIndexFromManifest(manifest)` | → `ZopiaNavigationIndex` | the same index from an in-memory manifest |
+| `ZopiaNavigationIndex` | `{ manifest, … }` | the manifest plus the pointer/file lookups |
+| `ZopiaNavigationLocation` | `{ kind, file, … }` | one navigation target in the tree |
+| `ZopiaNavigationKind` | `'endpoint' \| 'webhook' \| 'component' \| 'custom' \| 'manifest'` | category of the target file |
+| `specPointerToLine(...)` · `specPointersToLines(...)` · `specPointerAtLine(...)` | pointer ↔ line helpers | resolve JSON Pointers to source lines (and back) in one pass — what editor integrations build on |
+
+## 🧰 Low-level building blocks
+
+Everything above is built from these. They are public, stable, and pure — use
+them when you need one *step* of a pipeline rather than the whole engine.
+
+| 🔧 Symbol | 📏 Shape | 📝 What it does |
+| --- | --- | --- |
+| `normalizeOpenApiDocument(input)` | → `{ document, version, … }` | collapses Swagger 2.0 and OpenAPI 3.x into one dialect-neutral model |
+| `NormalizedOpenApiDocument` · `OpenApiDocument` · `OpenApiVersion` | types | the normalized model, a raw document, and `'2.0' \| '3.0' \| '3.1'` |
+| `readOpenApiSourceInput(input)` | → `ReadOpenApiSourceInputResult` | parses an object/text/path input and reports the source file so same-folder `$ref`s can resolve |
+| `ReadOpenApiSourceInputResult` | `{ document, sourceFile?, … }` | the parsed document plus its origin |
+| `validateOpenApiReferences(document)` | → `void` (throws) | checks the `$ref` graph before generating |
+| `collectOpenApiOperations(document)` | → `OpenApiOperation[]` | every path operation with parameters merged and an `operationId` assigned |
+| `collectOpenApiWebhookOperations(document)` | → `OpenApiOperation[]` | the same for `webhooks` entries |
+| `deriveOperationId(path, method)` | → `string` | the generator's own deterministic naming rule (`/users/{userId}` + `get` → `getUser`-style ids) |
+| `OPENAPI_METHODS` · `OpenApiMethod` | constant + type | the eight supported methods, including `trace` |
+| `OpenApiOperation` | type | one collected source operation |
+| `buildOpenApiOperationIR(operation)` | → `OpenApiOperationIR` | the intermediate representation an endpoint module is rendered from |
+| `extractOperationContracts(operation)` | → `OperationContracts` | the request/response contracts of one operation |
+| `resolveOpenApiLocalRef(document, pointer)` | → unknown | resolves one local `$ref` JSON Pointer |
+| `planApiDocsFiles(input, mode?)` | → `ApiDocsFilePlan[]` | decides which file each endpoint gets, without writing anything |
+| `planWebhookDocsFiles(input, mode?)` | → `ApiDocsFilePlan[]` | the same for webhooks |
+| `assertUniqueOperationIdsAcrossScopes(plans, webhookPlans)` | → `void` (throws) | guards the cross-namespace `operationId` collision rule |
+| `ApiDocsFilePlan` | `OpenApiOperation & { file }` | a planned endpoint module |
+| `endpointFilePath(...)` · `webhookRuntimePath(...)` | → `string` | the path rules behind `directory` and `flat` layouts |
+| `ApiDocsMode` | `'directory' \| 'flat'` | the layout union |
+| `generateApiDocsFiles(options)` | → `GeneratedApiDocsFile[]` | the low-level writer used by engine ③ |
+| `GenerateApiDocsOptions` | `{ outputDir, mode?, … }` | its options — `outputDir` is required here (no default) |
+| `GeneratedApiDocsFile` | `{ file, path, … }` | one written file, portable path plus absolute path |
+| `planPresetBuckets(document, preset)` | → `ZopiaPresetBucket[] \| undefined` | the pure preset router; `undefined` means "nothing to split" |
+| `ZOPIA_GENERATE_PRESETS` · `ZopiaGeneratePreset` | constant + type | `['multi-tag', 'multi-server']` |
+| `ZopiaPresetBucket` · `ZopiaPresetTree` | types | a routed bucket (name + sub-directory) and the resulting tree reported in `trees[]` |
+| `apiDocsFacadeAccess` | object | the internal façade the CLI and runtime share — exposed so advanced integrations do not re-implement it |
+| `ZopiaManifest` | type | the shape of `.zopia-manifest.json` |
+| `ZopiaGeneratedFile` · `ZopiaGenerateResult` · `ZopiaReverseResult` | types | engine ③ / ④ result shapes |
+| `ZopiaProjectConfig` · `ZopiaProjectGenerateConfig` · `ZopiaProjectReverseConfig` | types | the `zopia.config.ts` shape, split per command |
+| `ZopiaConfigLoadOptions` | `{ cwd?, file? }` | discovery options for `loadZopiaConfig()` |
+| `ZopiaErrorOptions` | `{ at?, hint?, cause? }` | the metadata accepted by the `ZopiaError` constructor |
+| `JsonSchema` · `JsonSchemaOverlay` · `JsonSchemaToZodOptions` · `JsonSchemaToZodResult` | types | engine ② inputs and outputs |
+| `ZodJsonSchemaTarget` · `ZodToJsonSchemaOptions` | types | engine ① target dialects and options |
 
 ## 🧯 Error handling
 
@@ -236,8 +290,8 @@ Zod expression itself is an approximation.
 | # | Practice | Rule |
 | --- | --- | --- |
 | R-101 | 📂 **Import, don't re-type** — your app imports the generated `index.ts` files; their Zod schemas *are* the validation | — |
-| R-102 | 🔄 **Spec or options changed?** re-run generation — output is idempotent; manifest staleness warns on source/config/incomplete-tree drift and safely prunes only obsolete manifest-owned files (`ZOPIA_WARN_STALE_TREE`) | [API docs format → Regeneration](api-docs-format.md#-regeneration--manual-edits-phase-1-policy) |
-| R-103 | ✍️ **Hand edits** — generated files are overwritten on regeneration (see the file banner); put hand-written code in the `custom.ts` companions (`custom: true`) | [API docs format → Regeneration](api-docs-format.md#-regeneration--manual-edits-phase-1-policy) |
+| R-102 | 🔄 **Spec or options changed?** re-run generation — output is idempotent; manifest staleness warns on source/config/incomplete-tree drift and safely prunes only obsolete manifest-owned files (`ZOPIA_WARN_STALE_TREE`) | [API docs format → Regeneration](api-docs-format.md#-regeneration--manual-edits) |
+| R-103 | ✍️ **Hand edits** — generated files are overwritten on regeneration (see the file banner); put hand-written code in the `custom.ts` companions (`custom: true`) | [API docs format → Regeneration](api-docs-format.md#-regeneration--manual-edits) |
 | R-104 | 🧪 **km-api helpers** — `makeFullPath`, `makeParams`, `convertResponseType`, … are available on every generated config for free | [Concepts → km-api](concepts.md#-km-api) |
 | R-105 | 🚫 **No zopia import in app code** — generated files depend only on `zod` + `km-api` | — |
 | R-106 | 🌳 **Runtime tree loading** — `createApiDocs()` from `zopia/runtime` turns a whole directory into one nested object | [Runtime](runtime.md) |

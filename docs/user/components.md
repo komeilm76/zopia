@@ -15,7 +15,7 @@ and reusable endpoint references are part of the full rendering phase.
 
 ## ⚙️ The two options
 
-> 🎯 **T-8 / T-9** — both options are **booleans, both default `false`**, and
+> 🎯 Both options are **booleans, both default `false`**, and
 > `useComponentAsReference` only makes sense when `insertComponents` is `true`.
 > Component files and exact endpoint schema-reference imports are implemented;
 > nested component-reference imports are recursively supported across the complete Engine ② schema surface, including objects, arrays, compositions, conditionals/refinements, nullable schemas, enums, constants, named schema maps, and additional-property schemas. Direct aliases retain distinct lazy identities for reverse conversion, and direct/mutual cyclic imports use lazy schemas.
@@ -200,12 +200,12 @@ manifest (`componentsOverlay` / Swagger globals).
 | R-824 | 📸 Component annotations and direct-`$ref` siblings are emitted as Zod metadata when a component file exists, so code remains authoritative; only `file: null` components use the manifest schema snapshot |
 | R-825 | ♻️ Reusable parameter/response modules reverse symmetrically (v0.2.x): the manifest component entry carries `kind: "parameter"` (or `"response"`) and the declaration (`#/components/parameters/<Name>`, Swagger 2.0 `#/parameters/<Name>`, responses likewise) is refreshed from the current module schema before assembly — developer edits win (R-821 semantics per kind). Use sites are restored **verbatim** from the manifest placement records, so every `$ref: "#/components/parameters/<Name>"` (and bare body/formData/response `$ref`s) reappears exactly where it was declared to be used; an import a developer adds at a *new* position simply inlines there |
 
-## 🚫 Phase 1 scope (documented limits)
+## 🚫 Documented limits
 
 Reusable non-schema objects (`components.parameters`, `components.responses`,
 `components.examples`, and Swagger globals) are resolved at endpoint use sites
 for generated km-api code. The manifest preserves their declarations and ref
-placements, so engine ④ restores reusable identity. Phase 2 is only needed to
+placements, so engine ④ restores reusable identity. A future release is only needed to
 emit those objects as standalone generated files.
 
 For file-path inputs, same-folder external refs are bundled inline before

@@ -201,9 +201,11 @@ The audience split and a first-class documentation site. Contracts:
 - [x] 📘 **User documentation set** — installation, quick start, CLI reference,
       programmatic API, configuration, conversions, output format, components,
       runtime, errors & warnings, concepts
-- [ ] 🔍 **Coverage audit (M2)** — every exported symbol, CLI command/flag,
-      config key, error code, and warning code documented with type, default,
-      and effect (R-207); every example valid and runnable (R-208)
+- [x] 🔍 **Coverage audit (M2)** — every exported symbol, CLI command/flag,
+      config key, error code, and warning code is documented with its type,
+      default, and effect, **enforced** by `tests/contract/user-docs-coverage.test.ts`;
+      user pages are free of internal planning vocabulary (R-202/R-204, also
+      enforced). Automated compilation of the `ts` samples remains open
 - [x] 🧱 **Site skeleton (M3)** — VitePress project in `website/`
       (`base: '/zopia/'`, local search, edit links), the `sync-content.mjs`
       pipeline that renders `docs/user/` + `CHANGELOG.md` into the site, and
