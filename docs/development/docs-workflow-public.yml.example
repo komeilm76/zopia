@@ -37,7 +37,9 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # A deployment in flight is never cancelled: Pages would be left pointing at
+  # a half-uploaded artifact.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -46,6 +48,10 @@ jobs:
       - name: Checkout zopia
         uses: actions/checkout@v4
         with:
+          # A `release` event checks out the tag in detached HEAD; the snapshot
+          # commit below has to land on `main`, and the site must be built from
+          # `main`, so the branch is requested explicitly.
+          ref: main
           fetch-depth: 0   # snapshots are cut from release tags
 
       - name: Install Node
@@ -68,7 +74,11 @@ jobs:
           if [ -z "$previous_tag" ]; then
             echo "No earlier release to snapshot."
           else
-            node scripts/snapshot-version.mjs "$previous_tag" || echo "Snapshot already exists — nothing to do (R-211)."
+            if [ -d "versions/$(echo "$previous_tag" | cut -d. -f1-2)" ]; then
+              echo "Snapshot already exists — nothing to do (R-211)."
+            else
+              node scripts/snapshot-version.mjs "$previous_tag"
+            fi
           fi
 
       - name: Commit new snapshots (releases only)

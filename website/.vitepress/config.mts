@@ -63,7 +63,11 @@ export default defineConfig({
   ignoreDeadLinks: false,
   srcExclude: ['**/README.md'],
 
+  // Emits sitemap.xml so search engines can discover every version route.
+  sitemap: { hostname: 'https://komeilm76.github.io/zopia/' },
+
   head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/zopia/favicon.svg' }],
     ['meta', { name: 'theme-color', content: '#6d5efc' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'zopia — type-safe OpenAPI ↔ Zod toolkit' }],
@@ -170,7 +174,24 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/komeilm76/zopia/edit/main/docs/user/:path',
+      /**
+       * Site routes do not mirror the source layout: `docs/user/cli.md` is
+       * served as `/guide/cli`, so the `:path` placeholder would produce
+       * `docs/user/guide/cli.md` — a 404 on every page. The mapping is done
+       * here instead, with pure string operations only: VitePress serializes
+       * this function into the client bundle, so it must not close over any
+       * outer variable.
+       */
+      pattern: ({ filePath }) => {
+        const edit = 'https://github.com/komeilm76/zopia/edit/main/';
+        // Frozen snapshots are immutable (R-211) and carry `editLink: false`
+        // in their frontmatter; this guard is the belt to that pair of braces.
+        if (/^v\d+\.\d+\//.test(filePath)) return '';
+        if (filePath === 'changelog.md') return `${edit}CHANGELOG.md`;
+        if (filePath === 'index.md') return `${edit}website/src/index.md`;
+        const source = filePath.replace(/^(?:guide|reference)\//, '').replace(/^introduction\.md$/, 'index.md');
+        return `${edit}docs/user/${source}`;
+      },
       text: 'Suggest changes to this page',
     },
 

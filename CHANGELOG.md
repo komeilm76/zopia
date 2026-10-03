@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+
+- 🔗 ✏️ The website's "Suggest changes to this page" links pointed at `docs/user/<section>/<page>.md`, a path that does not exist — every edit link was a 404. The route→source mapping is now explicit, the changelog page links to `CHANGELOG.md`, and frozen version snapshots carry no edit link at all (they are immutable, R-211).
+- ⏱️ `tests/watch-mode.test.ts` failed at random: two legitimate filesystem-watcher waits can exceed Vitest's 5 s default test timeout under parallel load. The suite now allows 30 s per test, and the stale-tree warning assertion no longer depends on how many change events the OS coalesces.
+- 📘 Two `ts` examples (`configuration.md` defaults, `conversions.md` engine ① output) were bare object literals that do not parse as TypeScript; they are now valid declarations.
+- 🧪 The km-api hand-off example in `api-docs-format.md` called `.parse()` on endpoint schemas, which km-api types structurally — the snippet did not compile. It now names the Zod type explicitly and typechecks.
+- 🏷️ The outdated-version banner linked old sources through `/blob/<tag>/docs`; directory listings use `/tree/` now.
+- 🚀 Both deploy workflow templates checked out the release **tag** on a `release` event, so the snapshot commit would have been pushed from a detached HEAD; they now check out `main` explicitly, skip snapshotting idempotently, and the public-repository template no longer cancels an in-flight Pages deployment.
+
 ### 🔄 Changed
 - ✂️ **The documentation set is split by audience.** `docs/user/` holds
   everything a consumer of the package needs — it ships inside the npm archive
@@ -163,6 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-09-29
 
 ### ✨ Added
+- 🧭 The website now emits `sitemap.xml` and ships a brand favicon, and documentation tables wrap instead of overflowing on phone-sized screens.
 - 🌐 Added `docs/development/docs-workflow-public.yml.example`, a second deployment template (D-26b) that publishes the website with the native GitHub Pages pipeline while the repository is public, and documented both paths in the website setup guide.
 - 🧠 **Exact IntelliSense for runtime tree consumption (S-95).** Every tree
   generated with a manifest now also carries a types-only

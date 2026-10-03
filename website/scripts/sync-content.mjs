@@ -35,7 +35,10 @@ const versionsRoot = join(websiteRoot, 'versions');
 const contentRoot = join(websiteRoot, 'src');
 
 const GITHUB_BLOB = 'https://github.com/komeilm76/zopia/blob/main/';
-const GITHUB_TREE = 'https://github.com/komeilm76/zopia/blob/';
+/** File link at an arbitrary ref — `…/blob/<tag>/<file>`. */
+const GITHUB_BLOB_AT = 'https://github.com/komeilm76/zopia/blob/';
+/** Directory listing at an arbitrary ref — `…/tree/<tag>/<dir>`. */
+const GITHUB_TREE_AT = 'https://github.com/komeilm76/zopia/tree/';
 
 /** Source file → { section, slug, title, description } for every user page. */
 const ROUTES = {
@@ -79,11 +82,11 @@ function rewriteTarget(target, pages, prefix, fallback) {
   return `${prefix}/${page.section}/${page.slug}${anchor ? `#${anchor}` : ''}`;
 }
 
-function frontmatter(title, description) {
-  return ['---', `title: ${JSON.stringify(title)}`, `description: ${JSON.stringify(description)}`, 'outline: [2, 3]', '---', '', ''].join('\n');
+function frontmatter(title, description, extra = []) {
+  return ['---', `title: ${JSON.stringify(title)}`, `description: ${JSON.stringify(description)}`, 'outline: [2, 3]', ...extra, '---', '', ''].join('\n');
 }
 
-function transform(markdown, { title, description, pages, prefix, fallback, banner }) {
+function transform(markdown, { title, description, pages, prefix, fallback, banner, frontmatterExtra }) {
   let body = markdown
     .replace(/\]\(([^)\s]+\.md(?:#[^)\s]*)?)\)/g, (_match, target) => `](${rewriteTarget(target, pages, prefix, fallback)})`)
     .trimEnd();
@@ -100,7 +103,7 @@ function transform(markdown, { title, description, pages, prefix, fallback, bann
     body = lines.join('\n');
   }
 
-  return `${frontmatter(title, description)}${body}\n`;
+  return `${frontmatter(title, description, frontmatterExtra)}${body}\n`;
 }
 
 /** Render `docs/user/` as the latest version. */
@@ -162,7 +165,7 @@ async function syncVersions(latestVersion) {
       const banner = [
         '::: warning YOU ARE READING OLD DOCUMENTATION',
         `This page documents zopia **v${meta.version}**. The latest version is **v${latestVersion}** —`,
-        `[read the current documentation](/guide/introduction) or [browse the v${meta.version} sources](${GITHUB_TREE}${meta.tag}/docs).`,
+        `[read the current documentation](/guide/introduction) or [browse the v${meta.version} sources](${GITHUB_TREE_AT}${meta.tag}/docs).`,
         ':::',
       ].join('\n');
 
@@ -173,8 +176,10 @@ async function syncVersions(latestVersion) {
           description: `${page.title} — zopia ${meta.version} documentation snapshot.`,
           pages,
           prefix,
-          fallback: `${GITHUB_TREE}${meta.tag}/docs/`,
+          fallback: `${GITHUB_BLOB_AT}${meta.tag}/docs/`,
           banner,
+          // R-211 — a frozen page cannot be edited, so it offers no edit link.
+          frontmatterExtra: ['editLink: false'],
         }),
         'utf8',
       );

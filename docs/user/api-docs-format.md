@@ -184,15 +184,23 @@ runtime) use them.
 the km-api surface is available directly:
 
 ```ts
+import type { ZodObject, ZodType } from 'zod';
 import { createApiDocs } from 'zopia/runtime';
 
 const apiDocs = await createApiDocs('api_docs');
 const getUser = apiDocs.users['{userId}'].get;
 
-getUser.method;                          // "GET"
-getUser.pathShape;                       // "/users/{userId}"
-getUser.request.params.parse({ userId: '22ccbc6a-…' }); // ✅ Zod-validated path params
-getUser.response[200].parse({ id: 'u1', email: 'a@b.c' }); // ✅ Zod-validated response
+getUser.method;    // "GET"
+getUser.pathShape; // "/users/{userId}"
+
+// The schemas are real Zod schemas at runtime. km-api types the endpoint
+// fields *structurally* (it only requires `_zod` / `shape`), so TypeScript
+// does not expose the Zod methods on them — name the Zod type to use them.
+const params = getUser.request.params as unknown as ZodObject;
+const ok = getUser.response[200] as unknown as ZodType;
+
+params.parse({ userId: '22ccbc6a-436b-4b1c-9e64-7440ce63a90e' }); // ✅ validated path params
+ok.parse({ id: 'u1', email: 'a@b.c' });                           // ✅ validated response
 ```
 
 > 💡 Generated webhook modules are not URL-path endpoints and stay outside the

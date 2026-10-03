@@ -120,13 +120,13 @@ See [Conversions → Engine ①](https://github.com/komeilm76/zopia/blob/main/do
 
 ```ts
 // 🆔 The implicit default configuration of engine ③:
-{
+const defaults = {
   outDir: 'api_docs',
   mode: 'directory',
   insertComponents: false,          // 🎯 default
   useComponentAsReference: false,   // 🎯 default
   manifest: true,
-}
+};
 ```
 
 > 💡 The defaults produce the **simplest possible tree**: self-contained

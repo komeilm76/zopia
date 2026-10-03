@@ -84,6 +84,21 @@
   white-space: nowrap;
 }
 
+/* On phones, unbreakable cells push the table past the viewport and the page
+   scrolls sideways. Narrow screens get wrapping cells instead. */
+@media (max-width: 640px) {
+  .vp-doc table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .vp-doc th,
+  .vp-doc td code {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
 /* Anchor targets (error/warning codes) should not hide under the sticky nav. */
 .vp-doc :where(h2, h3, h4)[id] {
   scroll-margin-top: calc(var(--vp-nav-height) + 24px);

@@ -83,9 +83,9 @@ const user = z.object({
   role: z.enum(['admin', 'editor', 'viewer']).default('viewer'),
 });
 
-zodToJsonSchema(user, { target: 'openapi-3.1' });
-// ↓
-{
+const schema = zodToJsonSchema(user, { target: 'openapi-3.1' });
+// ↓ schema
+const expected = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   properties: {
@@ -96,7 +96,7 @@ zodToJsonSchema(user, { target: 'openapi-3.1' });
   },
   required: ['id', 'name', 'email', 'role'],
   additionalProperties: false,
-}
+};
 // ⤴ output-side semantics: Zod puts defaulted keys in `required`
 //   (role has a default but is always present in the output).
 //   Request schemas are converted with io: 'input' instead (R-615):
