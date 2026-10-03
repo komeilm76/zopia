@@ -11,7 +11,7 @@
     "typescript",
     "zod"
   ],
-  "homepage": "https://github.com/komeilm76/zopia#readme",
+  "homepage": "https://komeilm76.github.io/zopia/",
   "bugs": {
     "url": "https://github.com/komeilm76/zopia/issues"
   },
@@ -27,10 +27,9 @@
   "files": [
     "bin",
     "src",
-    "docs/07-api-docs.md",
-    "docs/09-configuration.md",
-    "docs/10-usage.md",
+    "docs/user",
     "!docs/README.md",
+    "!docs/development",
     "CHANGELOG.md",
     "LICENSE",
     "README.md"

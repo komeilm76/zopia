@@ -87,7 +87,7 @@ under `src/`, not only the package-root re-export list. The template:
  * ```ts
  * const r = await openApiToApiDocs('swagger.json', { mode: 'flat' });
  * ```
- * @see [docs/06-conversions.md → Engine ③](./06-conversions.md)
+ * @see [docs/06-conversions.md → Engine ③](../user/conversions.md)
  */
 export function openApiToApiDocs(
   input: string | Record<string, unknown>,
@@ -117,7 +117,7 @@ export function openApiToApiDocs(
 | # | Rule |
 | --- | --- |
 | R-151 | **outDir guard** (R-406) — canonicalize + prefix-check every path, reject symlinked generated ancestors, exclusively create manifest temporary files, and prune only paths owned by a validated prior manifest; unit-tested with traversal/symlink attempts |
-| R-152 | **Trusted-input contract (D-08)** — engine ④ imports generated `.ts`; the manifest is the trust marker. Documented loudly in [Usage](10-usage.md) and in the CLI help |
+| R-152 | **Trusted-input contract (D-08)** — engine ④ imports generated `.ts`; the manifest is the trust marker. Documented loudly in [CLI reference](../user/cli.md) and in the CLI help |
 | R-153 | **No secret handling** — zopia reads specs and writes docs; it never touches credentials, never sends data anywhere (no network at all) |
 | R-154 | **Predictable failure** — configuration, source, layout, and component-render validation happen before governed writes; every surfaced write/import failure is typed. Individual manifest replacement is atomic, while the generated tree is updated as ordered guarded file writes rather than as one directory transaction |
 
@@ -131,7 +131,7 @@ export function openApiToApiDocs(
 | Types/interfaces | `PascalCase` (`GenerateApiDocsOptions`, `OpenApiOperationIR`) |
 | Constants | `UPPER_SNAKE_CASE` (`ZOPIA_MANIFEST_SCHEMA`) |
 | Tests | centralized under `tests/` as `*.test.ts`; contract and round-trip suites use dedicated subdirectories; `it()` cites rules (R-122) |
-| Generated identifiers | fixed by [API docs → Naming](07-api-docs.md#-naming-conventions-fixed) |
+| Generated identifiers | fixed by [API docs → Naming](../user/api-docs-format.md#-naming-conventions-fixed) |
 
 ## 📜 Commit convention
 
@@ -179,9 +179,11 @@ active in shallow/source-only environments where the release boundary is absent.
 | R-181 | **docs ship with code** — a behaviour change and its doc change land in the same commit (R-161) |
 | R-182 | **Style** — emoji section headers, tables for anything list-like, code blocks with language tags, one idea per paragraph |
 | R-183 | **Numbering** — targets `T-…`, rules `R-…`, decisions `D-…`, warnings/errors `ZOPIA_…` — referenced from code & tests |
-| R-184 | **Cross-links** — every doc links forward & back; the map in [`docs/README.md`](README.md) stays current |
+| R-184 | **Cross-links** — every doc links forward & back; the map in [`docs/README.md`](../README.md) stays current |
 | R-185 | **Diagrams** — Mermaid for flow, ASCII trees for file layouts (both render on GitHub) |
 | R-186 | **Status honesty** — "planned/contract" is labeled 🚧 until implemented; never documented as done |
+| R-187 | **Audience split** — every document lives in `docs/user/` (packed with npm, source of the website) or `docs/development/` (repository-only). The boundary, the leakage rules (R-201…R-209), and the "where does a new page go" decision tree are fixed by [Documentation split plan](13-documentation-split.md) |
+| R-188 | **Feature coverage** — new public surface (export, CLI command/flag, config key, error/warning code) is not done until its `docs/user/` page documents its type, default, effect, and failure mode in the same commit |
 
 ## 🚢 Release flow
 
@@ -189,6 +191,8 @@ active in shallow/source-only environments where the release boundary is absent.
 1. 🔖 bump version (SemVer — [Roadmap → Versioning](03-roadmap.md#-versioning))
 2. 📜 CHANGELOG: [Unreleased] → [x.y.z] - YYYY-MM-DD
 3. 📝 README status banner updated to the new phase
+3b. 🌐 documentation website updated — `latest` rebuilt and the previous minor
+   snapshotted ([Website plan → Release flow](14-website.md#-release-flow-integration))
 4. 🚢 bun run release:check
 5. 🏷️ git tag v0.1.0
 6. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
@@ -198,7 +202,7 @@ active in shallow/source-only environments where the release boundary is absent.
 | # | Release-readiness rule |
 | --- | --- |
 | R-191 | **One release identity** — `package.json`, the manifest writer, lockfile, versioned changelog heading, and README status agree on the SemVer version |
-| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, the practical guides (`docs/07-api-docs.md`, `docs/09-configuration.md`, `docs/10-usage.md`), and the package/legal markdown; the development documentation stays in the repository and is linked from the README via GitHub URLs. The exact archive is installed in isolation and must pass library-import, generate/reverse CLI, and `zopia/runtime` subpath smoke tests |
+| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, the complete user documentation set (`docs/user/**`), and the package/legal markdown; the development documentation stays in the repository and is linked from the README via GitHub URLs. The exact archive is installed in isolation and must pass library-import, generate/reverse CLI, and `zopia/runtime` subpath smoke tests |
 | R-193 | **Publish guard** — `prepublishOnly` runs the pinned-Bun release gate, including typecheck, all tests, coverage, direct runtime checks, and R-192's packed-consumer check |
 
 Preparing these artifacts does not publish or tag a release. Those external steps
@@ -239,4 +243,4 @@ remain explicit maintainer actions after the committed release gate is green.
 
 ## 🔗 Back to
 
-- 🏠 [README](../README.md) · 📖 [Docs home](README.md)
+- 🏠 [README](../../README.md) · 📖 [Docs home](../README.md)

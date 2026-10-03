@@ -259,7 +259,7 @@ const schema = z.object({
 function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult>;
 ```
 
-Pipeline (see [Architecture → The pipeline](04-architecture.md#-the-pipeline)):
+Pipeline (see [Architecture → The pipeline](../development/04-architecture.md#-the-pipeline)):
 **detect → bundle external refs (file inputs, D-17) → normalize (v2 | v3) → refs → render (directory | flat) → manifest**.
 
 **Input parsing (v0.2.x, D-16):** text starting with `{`/`[` is parsed as
@@ -374,7 +374,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 
 ### 🔗 Step 3 — refs
 
-Per [Architecture → The reference graph](04-architecture.md#-the-reference-graph)
+Per [Architecture → The reference graph](../development/04-architecture.md#-the-reference-graph)
 (R-402): file-path inputs first bundle *same-folder* external refs inline
 (D-17, above); afterwards unknown → `ZOPIA_REF_NOT_FOUND`; remaining external
 → `ZOPIA_REF_EXTERNAL`; cycles → `z.lazy` plan. Refs to **non-schema** reusable objects (global
@@ -391,10 +391,10 @@ parameter/response declarations refreshed from their current modules
 
 Lays out files per the mode and emits code:
 
-- 📂 layout — [API docs format](07-api-docs.md) (trees, naming, collisions)
-- 📄 endpoint files — the **`index.ts` contract** ([07 → contract](07-api-docs.md#-the-indexts-contract)); every *practical* field of `makeApiConfig` is filled from the IR when the source provides it (T-7)
-- 🧱 components — [Components](08-components.md)
-- 📦 manifest — [07 → The manifest](07-api-docs.md)
+- 📂 layout — [API docs format](api-docs-format.md) (trees, naming, collisions)
+- 📄 endpoint files — the **`index.ts` contract** ([07 → contract](api-docs-format.md#-the-indexts-contract)); every *practical* field of `makeApiConfig` is filled from the IR when the source provides it (T-7)
+- 🧱 components — [Components](components.md)
+- 📦 manifest — [07 → The manifest](api-docs-format.md)
 
 **Result**
 
@@ -476,7 +476,7 @@ Engine ④ applies them in the fixed order **convert → refs → schema/operati
 (R-659). The union reproduces the original document; the only remaining
 difference is key order, which canonicalization (R-401) resolves. That is
 tested as a property for every fixture
-([Testing](11-testing.md#-round-trip-property-tests)).
+([Testing](../development/11-testing.md#-round-trip-property-tests)).
 
 ### ⚠️ Honest limits (documented, warned, manifest-recorded)
 
@@ -494,5 +494,5 @@ tested as a property for every fixture
 
 ## 🔗 Next
 
-- 📂 Where every file lands → [API docs format](07-api-docs.md)
-- 🧱 Component options in depth → [Components](08-components.md)
+- 📂 Where every file lands → [API docs format](api-docs-format.md)
+- 🧱 Component options in depth → [Components](components.md)

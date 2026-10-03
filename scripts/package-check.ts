@@ -67,10 +67,15 @@ try {
   if (name !== packageManifest.name || version !== packageManifest.version) throw new Error(`unexpected package identity: ${name}@${version}`);
 
   const paths = files.map((file) => file.path);
-  const packedDocs = ['docs/07-api-docs.md', 'docs/09-configuration.md', 'docs/10-usage.md'];
+  const packedDocs = [
+    'docs/user/api-docs-format.md', 'docs/user/cli.md', 'docs/user/components.md', 'docs/user/concepts.md',
+    'docs/user/configuration.md', 'docs/user/conversions.md', 'docs/user/errors-and-warnings.md',
+    'docs/user/index.md', 'docs/user/installation.md', 'docs/user/programmatic-api.md',
+    'docs/user/quick-start.md', 'docs/user/runtime.md',
+  ];
   const required = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'bin/zopia.js', 'src/index.ts', 'src/runtime.ts', ...packedDocs];
   for (const path of required) if (!paths.includes(path)) throw new Error(`package archive is missing ${path}`);
-  const allowed = /^(?:package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$|bin\/|src\/|docs\/(?:07-api-docs|09-configuration|10-usage)\.md$)/;
+  const allowed = /^(?:package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$|bin\/|src\/|docs\/user\/[a-z0-9-]+\.md$)/;
   const unexpected = paths.filter((path) => !allowed.test(path));
   if (unexpected.length) throw new Error(`package archive contains private files: ${unexpected.join(', ')}`);
   // npm users get practical usage/installation docs only — development docs stay on GitHub.

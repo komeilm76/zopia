@@ -43,7 +43,7 @@ one by one, the opt-in **`zopia/runtime`** subpath turns any generated tree
 directory into one nested object (URL path segments → methods → the
 `makeApiConfig` objects) or a flat `operationId`-keyed record —
 `await createApiDocs('api_docs')` is the whole API, and generation output is
-untouched ([API docs → Runtime tree consumption](07-api-docs.md#-runtime-tree-consumption--createapidocs)).
+untouched ([API docs → Runtime tree consumption](../user/api-docs-format.md#-runtime-tree-consumption--createapidocs)).
 
 ## 🎯 The promise
 
@@ -98,4 +98,4 @@ Being explicit about what zopia **does not do** keeps the scope honest:
 
 - 🎯 The completed public targets → [Targets](02-targets.md)
 - 🗺️ Release phases and deferred breadth → [Roadmap](03-roadmap.md)
-- 🧩 Words you will keep seeing → [Concepts](05-concepts.md)
+- 🧩 Words you will keep seeing → [Concepts](../user/concepts.md)

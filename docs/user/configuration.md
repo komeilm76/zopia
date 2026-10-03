@@ -73,7 +73,7 @@ interface ZopiaGenerateResult {
 | ⚙️ Option | 📏 Type | 🆔 Default | 📝 Notes |
 | --- | --- | --- | --- |
 | `outDir` | `string` | `'api_docs'` | relative or absolute; created if missing; **never deleted recursively without this exact dir** (safety R-406) |
-| `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](07-api-docs.md) |
+| `mode` | `'directory' \| 'flat'` | `'directory'` | the two layouts of [API docs format](api-docs-format.md) |
 | `insertComponents` | `boolean` | `false` | T-8 — emits `components/**` (schemas plus reusable `components/parameters/**` / `components/responses/**` modules, v0.2.x — D-18) |
 | `useComponentAsReference` | `boolean` | `false` | T-9 — imports exact structural component schema references in endpoints and recursively renders nested references through the complete Engine ② schema surface; literal `$ref`-looking data is untouched, aliases/cycles use lazy schemas, and valid `$ref` siblings keep their constraints; **requires** `insertComponents: true` |
 | `manifest` | `boolean` | `true` | disabling it makes engine ④ impossible for that tree — a deliberate escape hatch only; regeneration removes a previous manifest and warns that the tree configuration changed |
@@ -107,7 +107,7 @@ interface ZopiaReverseOptions {
 
 ## 📄 `ZodToJsonSchemaOptions` — engine ①
 
-See [Conversions → Engine ①](https://github.com/komeilm76/zopia/blob/main/docs/06-conversions.md)
+See [Conversions → Engine ①](https://github.com/komeilm76/zopia/blob/main/docs/user/conversions.md)
 (`target`, `$schema`, `io`).
 
 ## 📄 `JsonSchemaToZodOptions` — engine ②
@@ -163,5 +163,5 @@ zopia diff <old-spec> <new-spec>          (no options yet; `--config path` accep
 
 ## 🔗 Next
 
-- 🚀 How options are used end-to-end → [Usage](10-usage.md)
-- 📂 What each option changes in the tree → [API docs format](07-api-docs.md) · [Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md)
+- 🚀 How options are used end-to-end → [Quick start](quick-start.md)
+- 📂 What each option changes in the tree → [API docs format](api-docs-format.md) · [Components](https://github.com/komeilm76/zopia/blob/main/docs/user/components.md)

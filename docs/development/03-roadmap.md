@@ -26,23 +26,23 @@ implementation; it now describes the implemented v0.1.0 behavior and deferred sc
       dependencies; `zod` + `km-api ^0.4.1` peers from npm — D-15), strict `tsconfig`,
       Vitest/V8, pinned Bun, and checked-in `bun.lock`
 - [x] ① **Engine 1** — `zodToJsonSchema()` on top of `z.toJSONSchema()`
-      ([rules](06-conversions.md))
+      ([rules](../user/conversions.md))
 - [x] ② **Engine 2** — `jsonSchemaToZod()` recursive emitter
-      ([rules](06-conversions.md))
+      ([rules](../user/conversions.md))
 - [x] ③ **Engine 3** — `openApiToApiDocs()` — normalize v2/v3 → operation IR
       → render `directory` / `flat` trees of `index.ts` files
-      ([rules](06-conversions.md),
-      [format](07-api-docs.md))
+      ([rules](../user/conversions.md),
+      [format](../user/api-docs-format.md))
 - [x] ④ **Engine 4** — `apiDocsToOpenApi()` — manifest-driven reverse
       conversion to OpenAPI 3.0/3.1
-      ([rules](06-conversions.md))
+      ([rules](../user/conversions.md))
 - [x] 🧱 Component options — `insertComponents`, `useComponentAsReference`,
-      nested references, and direct/mutual cycles ([rules](08-components.md))
+      nested references, and direct/mutual cycles ([rules](../user/components.md))
 - [x] 📝 **YAML input** — owned deterministic YAML 1.2 core-schema parser,
       `.yaml`/`.yml` paths and inline YAML text, anchors/aliases/merge keys,
-      stable `ZOPIA_SPEC_INVALID_YAML` ([rules](06-conversions.md#engine-③--openapi--api-docs), D-16)
+      stable `ZOPIA_SPEC_INVALID_YAML` ([rules](../user/conversions.md#engine-③--openapi--api-docs), D-16)
 - [x] 🔗 **External `$ref`s** — same-folder references bundled inline for
-      spec file paths, byte-identical to inline twins ([rules](06-conversions.md#engine-③--openapi--api-docs), D-17)
+      spec file paths, byte-identical to inline twins ([rules](../user/conversions.md#engine-③--openapi--api-docs), D-17)
 - [x] 📦 Manifest writer/reader — `.zopia-manifest.json` (D-06)
 - [x] ⚠️ **Warnings pipeline** — stable typed codes, exact JSON Pointer locations,
       deterministic collection/callbacks, generated-code markers, and CLI stderr
@@ -64,7 +64,7 @@ implementation; it now describes the implemented v0.1.0 behavior and deferred sc
       (T-10/T-11/R-409)
 - [x] ⌨️ **CLI contract** — strict `generate` / `reverse` grammar, complete option
       mapping and help, isolated stdout/stderr channels, stable exit statuses,
-      trusted-tree disclosure, and direct/package execution ([usage](10-usage.md#-cli))
+      trusted-tree disclosure, and direct/package execution ([usage](../user/cli.md))
 - [x] 📸 **Golden generated-tree contract** — deliberate reproducible updates,
       complete byte-for-byte tree comparisons in all canonical layouts, and
       strict compilation against installed published `km-api@0.4.1`, including
@@ -188,6 +188,39 @@ The v0.1.0 release satisfies all of the following:
   operationId fallback) plus the `zopia navigate` CLI (`--to-code` /
   `--to-spec`) and a plain-JS extension package under `editors/vscode/`
   resolving the workspace's own zopia install
+
+## 📘 Phase 4 — Documentation & website (v0.7) 🚧
+
+The audience split and a first-class documentation site. Contracts:
+[Documentation split plan](13-documentation-split.md) ·
+[Website plan](14-website.md). Targets **W-1 … W-8**.
+
+- [x] ✂️ **Audience split** — `docs/user/` (packed with npm, powers the site)
+      and `docs/development/` (repository-only); maps in `README.md` and
+      `docs/README.md`; the npm allowlist packs `docs/user/**`
+- [x] 📘 **User documentation set** — installation, quick start, CLI reference,
+      programmatic API, configuration, conversions, output format, components,
+      runtime, errors & warnings, concepts
+- [ ] 🔍 **Coverage audit (M2)** — every exported symbol, CLI command/flag,
+      config key, error code, and warning code documented with type, default,
+      and effect (R-207); every example valid and runnable (R-208)
+- [ ] 🧱 **Site skeleton (M3)** — VitePress project in `website/`, the
+      `docs:sync` content pipeline, `bun run docs:dev`
+- [ ] 🎨 **Design pass (M4)** — landing page, brand layer, install tabs,
+      callouts, dark mode, responsive layout; the quality floor met
+      (Lighthouse ≥ 95 / a11y 100, zero dead links)
+- [ ] 🚀 **CI deploy (M5)** — `.github/workflows/docs.yml`, GitHub Pages,
+      `latest` live at <https://komeilm76.github.io/zopia/>
+- [ ] 🔖 **Versioned docs (M6)** — `latest` plus the previous two minors,
+      version switcher, outdated-version banner (R-211…R-215)
+- [ ] 🔁 **Release integration (M7)** — a published release updates the site
+      automatically and independently of `publish.yml` (R-221…R-224)
+
+> ⚠️ **Blocking decision** — GitHub Pages for a *private* repository requires a
+> paid plan. Before `komeilm76/zopia` is made private, pick one of: upgrade the
+> plan · deploy the built site to a separate public repository · publish under
+> the existing public `komeilm76.github.io` repository. See
+> [Website plan → Risks](14-website.md#-risks--decisions-needed).
 
 ## 🧮 Versioning
 

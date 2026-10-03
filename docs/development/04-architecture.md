@@ -191,7 +191,7 @@ the reader retains explicit compatibility allowances for older optional fields.
 > (P-1). Value-level normalizations (Zod sentinel bounds, const-union →
 > `enum`, the `io` input/output split for `required`/`default`) live with the
 > engines that apply them — see
-> [Conversions → R-615 / R-618 / R-654](06-conversions.md).
+> [Conversions → R-615 / R-618 / R-654](../user/conversions.md).
 
 ## 🔗 The reference graph
 
@@ -348,5 +348,5 @@ on stdout parseable.
 
 ## 🔗 Next
 
-- 🧩 Vocabulary used above → [Concepts](05-concepts.md)
-- 🔄 Engine-by-engine rules → [Conversions](06-conversions.md)
+- 🧩 Vocabulary used above → [Concepts](../user/concepts.md)
+- 🔄 Engine-by-engine rules → [Conversions](../user/conversions.md)

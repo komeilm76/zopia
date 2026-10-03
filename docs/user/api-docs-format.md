@@ -269,13 +269,13 @@ With the default options (`insertComponents: false`), every `index.ts` imports
 **only** `zod` and `km-api` (R-502): each component use is inlined into its
 request/parameter/response expression (R-403). Cross-file imports appear
 **only** when `useComponentAsReference` is `true` — see
-[Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md).
+[Components](https://github.com/komeilm76/zopia/blob/main/docs/user/components.md).
 
 ## 📦 The manifest — `.zopia-manifest.json`
 
 > 🎯 **T-10** — the manifest is what makes every conversion reversible (D-06).
 > It is written by default (the `manifest` option, on unless explicitly
-> disabled — [Configuration](09-configuration.md)), has no timestamps or
+> disabled — [Configuration](configuration.md)), has no timestamps or
 > environment data (P-1), is always hidden (dotfile), and always versioned
 > (`"$schema": "zopia:manifest@1"`). The dedicated writer validates the complete
 > writer-owned shape before output, recursively orders object keys, preserves
@@ -425,5 +425,5 @@ Security requirements remain manifest-owned because km-api stores only `auth: 'Y
 
 ## 🔗 Next
 
-- 🧱 What changes when components are emitted → [Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md)
-- ⚙️ Every option that shapes this output → [Configuration](09-configuration.md)
+- 🧱 What changes when components are emitted → [Components](https://github.com/komeilm76/zopia/blob/main/docs/user/components.md)
+- ⚙️ Every option that shapes this output → [Configuration](configuration.md)

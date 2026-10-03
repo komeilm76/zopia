@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -57,7 +57,7 @@ describe('package and release contract', () => {
       name: 'zopia',
       version: '0.6.0',
       description: expect.any(String),
-      homepage: 'https://github.com/komeilm76/zopia#readme',
+      homepage: 'https://komeilm76.github.io/zopia/',
       bugs: { url: 'https://github.com/komeilm76/zopia/issues' },
       repository: { type: 'git', url: 'git+https://github.com/komeilm76/zopia.git' },
       author: 'komeilm76',
@@ -116,7 +116,7 @@ describe('package and release contract', () => {
   });
 
   it('R-192: the npm archive is allowlisted, executable, and free of development files', () => {
-    expect(manifest.files).toEqual(['bin', 'src', 'docs/07-api-docs.md', 'docs/09-configuration.md', 'docs/10-usage.md', '!docs/README.md', 'CHANGELOG.md', 'LICENSE', 'README.md']);
+    expect(manifest.files).toEqual(['bin', 'src', 'docs/user', '!docs/README.md', '!docs/development', 'CHANGELOG.md', 'LICENSE', 'README.md']);
     const packed = dryRunPackage();
     expect({ name: packed.name, version: packed.version }).toEqual({ name: 'zopia', version: '0.6.0' });
 
@@ -130,16 +130,25 @@ describe('package and release contract', () => {
       'src/index.ts',
       'src/runtime.ts',
       'src/runtime/create-api-docs.ts',
-      'docs/07-api-docs.md',
-      'docs/09-configuration.md',
-      'docs/10-usage.md',
+      'docs/user/index.md',
+      'docs/user/installation.md',
+      'docs/user/quick-start.md',
+      'docs/user/cli.md',
+      'docs/user/programmatic-api.md',
+      'docs/user/configuration.md',
+      'docs/user/conversions.md',
+      'docs/user/api-docs-format.md',
+      'docs/user/components.md',
+      'docs/user/runtime.md',
+      'docs/user/errors-and-warnings.md',
+      'docs/user/concepts.md',
     ]));
-    expect(paths.filter((path) => !/^(?:package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$|bin\/|src\/|docs\/(?:07-api-docs|09-configuration|10-usage)\.md$)/.test(path))).toEqual([]);
-    // R-192: npm consumers ship with the practical docs only — the development
-    // documentation (overview/targets/roadmap/architecture/concepts/conversions/
-    // components/testing/standards, the docs map, the publish-workflow example)
-    // never enters the archive and is linked to GitHub from the README instead.
-    expect(paths.filter((path) => /^docs\//.test(path))).toEqual(['docs/07-api-docs.md', 'docs/09-configuration.md', 'docs/10-usage.md']);
+    expect(paths.filter((path) => !/^(?:package\.json$|README\.md$|CHANGELOG\.md$|LICENSE$|bin\/|src\/|docs\/user\/[a-z0-9-]+\.md$)/.test(path))).toEqual([]);
+    // R-192: npm consumers ship with the complete user documentation set only —
+    // the development documentation (overview/targets/roadmap/architecture/
+    // testing/standards/plans, the docs map, the publish-workflow example) never
+    // enters the archive and is linked to GitHub from the README instead.
+    expect(paths.filter((path) => /^docs\//.test(path)).sort()).toEqual(readdirSync(join(repositoryRoot, 'docs', 'user')).filter((file) => file.endsWith('.md')).sort().map((file) => `docs/user/${file}`));
     expect(paths.filter((path) => /^(?:tests|scripts|coverage|km-api-promts)\//.test(path)
       || /(?:^|\/)(?:bun\.lock|package-lock\.json|tsconfig\.json|vitest\.config\.mts)$/.test(path))).toEqual([]);
 

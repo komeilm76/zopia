@@ -69,7 +69,7 @@ artifact can be converted back, so nothing is ever lost.
 ## 📖 Quick look
 
 > The public API below is the **Phase 1 contract** and is covered by tests.
-> See [docs/10-usage.md](docs/10-usage.md).
+> See [docs/user/](docs/user/index.md).
 
 ```ts
 import {
@@ -116,37 +116,47 @@ types as shown and IntelliSense becomes **exact**: keys autocomplete, and
 misspelled segments, methods, or endpoint names are compile errors.
 
 Generation output is untouched — the resolver only reads manifests and imports
-modules. See [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs.md#-runtime-tree-consumption--createapidocs).
+modules. See [API docs format → Runtime tree consumption](docs/user/api-docs-format.md#-runtime-tree-consumption--createapidocs).
 
 ## 📚 Documentation
 
-The **practical guides ship inside the npm package** — usage, configuration,
-and the generated output format. The development documentation (project
-targets, roadmap, architecture, testing strategy, engineering standards)
-stays in the
-[GitHub repository](https://github.com/komeilm76/zopia/tree/main/docs).
+📖 **Full documentation website → [komeilm76.github.io/zopia](https://komeilm76.github.io/zopia/)**
 
-**📦 Packed with the npm package** (relative links, in `docs/`):
+The documentation is split by audience:
 
-| 📄 Document | Contents |
-| --- | --- |
-| 🚀 [Usage](docs/10-usage.md) | Installation, programmatic API, CLI, end-to-end example |
-| ⚙️ [Configuration](docs/09-configuration.md) | Full option reference, defaults, validation rules |
-| 📄 [API docs format](docs/07-api-docs.md) | `directory` & `flat` layouts, `index.ts` contract, manifest, runtime consumption |
+- 📘 **User documentation** — [`docs/user/`](docs/user/index.md) — ships inside
+  the npm package and powers the website
+- 🛠️ **Development documentation** — [`docs/development/`](https://github.com/komeilm76/zopia/tree/main/docs/development)
+  — repository-only: targets, roadmap, architecture, testing, standards
 
-**🐙 GitHub-only** (development docs, not packed):
+**📦 User guides (packed with npm, relative links in `docs/user/`):**
 
 | 📄 Document | Contents |
 | --- | --- |
-| 🧭 [Overview](https://github.com/komeilm76/zopia/blob/main/docs/01-overview.md) | What zopia is, the problem it solves, principles, non-goals |
-| 🎯 [Targets](https://github.com/komeilm76/zopia/blob/main/docs/02-targets.md) | The explicit, testable targets of this project |
-| 🗺️ [Roadmap](https://github.com/komeilm76/zopia/blob/main/docs/03-roadmap.md) | Phases, milestones, definition of done |
-| 🏗️ [Architecture](https://github.com/komeilm76/zopia/blob/main/docs/04-architecture.md) | Modules, pipeline, internal model, error model, safety |
-| 🧩 [Concepts](https://github.com/komeilm76/zopia/blob/main/docs/05-concepts.md) | Glossary — Swagger 2.0, OpenAPI 3.x, JSON Schema, `$ref`, Zod v4, km-api |
-| 🔄 [Conversions](https://github.com/komeilm76/zopia/blob/main/docs/06-conversions.md) | The four engines: algorithms, mapping tables, edge cases |
-| 🧱 [Components](https://github.com/komeilm76/zopia/blob/main/docs/08-components.md) | `insertComponents` / `useComponentAsReference`, `$ref` graphs |
-| 🧪 [Testing](https://github.com/komeilm76/zopia/blob/main/docs/11-testing.md) | Vitest strategy, scenario matrix, fixtures, coverage gates |
-| 📏 [Standards](https://github.com/komeilm76/zopia/blob/main/docs/12-standards.md) | Code, JSDoc, commits, changelog, releases, key decisions |
+| 📦 [Installation](docs/user/installation.md) | Requirements, peers, package managers, TypeScript setup |
+| ⚡ [Quick start](docs/user/quick-start.md) | Generate, consume, reverse, validate — in five minutes |
+| ⌨️ [CLI reference](docs/user/cli.md) | Every command, flag, default, exit code |
+| 🧑‍💻 [Programmatic API](docs/user/programmatic-api.md) | Every exported function and result shape |
+| ⚙️ [Configuration](docs/user/configuration.md) | Full option reference, defaults, validation rules |
+| 🔄 [Conversions](docs/user/conversions.md) | The four engines: algorithms, mapping tables, edge cases |
+| 📄 [API docs format](docs/user/api-docs-format.md) | `directory` & `flat` layouts, `index.ts` contract, manifest |
+| 🧱 [Components](docs/user/components.md) | `insertComponents` / `useComponentAsReference`, `$ref` graphs |
+| 🌳 [Runtime](docs/user/runtime.md) | `createApiDocs()` / `flattenApiDocs()` |
+| 🧯 [Errors & warnings](docs/user/errors-and-warnings.md) | Every stable code, cause, and fix |
+| 🧩 [Concepts](docs/user/concepts.md) | Glossary — Swagger 2.0, OpenAPI 3.x, JSON Schema, Zod v4, km-api |
+
+**🐙 GitHub-only (development docs, not packed):**
+
+| 📄 Document | Contents |
+| --- | --- |
+| 🧭 [Overview](https://github.com/komeilm76/zopia/blob/main/docs/development/01-overview.md) | What zopia is, the problem it solves, principles, non-goals |
+| 🎯 [Targets](https://github.com/komeilm76/zopia/blob/main/docs/development/02-targets.md) | The explicit, testable targets of this project |
+| 🗺️ [Roadmap](https://github.com/komeilm76/zopia/blob/main/docs/development/03-roadmap.md) | Phases, milestones, definition of done |
+| 🏗️ [Architecture](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md) | Modules, pipeline, internal model, error model, safety |
+| 🧪 [Testing](https://github.com/komeilm76/zopia/blob/main/docs/development/11-testing.md) | Vitest strategy, scenario matrix, fixtures, coverage gates |
+| 📏 [Standards](https://github.com/komeilm76/zopia/blob/main/docs/development/12-standards.md) | Code, JSDoc, commits, changelog, releases, key decisions |
+| ✂️ [Documentation split](https://github.com/komeilm76/zopia/blob/main/docs/development/13-documentation-split.md) | The user/development boundary and where a new page belongs |
+| 🌐 [Website plan](https://github.com/komeilm76/zopia/blob/main/docs/development/14-website.md) | Documentation website targets, IA, versioning, release flow |
 
 ## 🏗️ Project structure
 
@@ -156,27 +166,38 @@ zopia/
 ├── CHANGELOG.md              # 📜 Keep-a-Changelog history
 ├── LICENSE                   # 🔐 MIT
 ├── package.json              # 📦 npm dependency on km-api ^0.4.1
-├── docs/                     # 📚 Project documentation (the standard)
+├── docs/                     # 📚 Project documentation
 │   ├── README.md             #    📖 Documentation map
-│   ├── 01-overview.md        #    🧭 Overview
-│   ├── 02-targets.md         #    🎯 Targets
-│   ├── 03-roadmap.md         #    🗺️ Roadmap
-│   ├── 04-architecture.md    #    🏗️ Architecture
-│   ├── 05-concepts.md        #    🧩 Concepts & glossary
-│   ├── 06-conversions.md     #    🔄 Conversion engines
-│   ├── 07-api-docs.md        #    📄 API docs format
-│   ├── 08-components.md      #    🧱 Components
-│   ├── 09-configuration.md   #    ⚙️ Configuration
-│   ├── 10-usage.md           #    🚀 Usage
-│   ├── 11-testing.md         #    🧪 Testing
-│   └── 12-standards.md       #    📏 Engineering standards
+│   ├── user/                 #    📘 User docs (packed with npm + website source)
+│   │   ├── index.md          #       📘 User docs home
+│   │   ├── installation.md   #       📦 Installation
+│   │   ├── quick-start.md    #       ⚡ Quick start
+│   │   ├── cli.md            #       ⌨️ CLI reference
+│   │   ├── programmatic-api.md #     🧑‍💻 Programmatic API
+│   │   ├── configuration.md  #       ⚙️ Configuration
+│   │   ├── conversions.md    #       🔄 Conversion engines
+│   │   ├── api-docs-format.md #      📄 API docs format
+│   │   ├── components.md     #       🧱 Components
+│   │   ├── runtime.md        #       🌳 Runtime tree loading
+│   │   ├── errors-and-warnings.md #  🧯 Errors & warnings
+│   │   └── concepts.md       #       🧩 Concepts & glossary
+│   └── development/          #    🛠️ Development docs (repository-only)
+│       ├── 01-overview.md    #       🧭 Overview
+│       ├── 02-targets.md     #       🎯 Targets
+│       ├── 03-roadmap.md     #       🗺️ Roadmap
+│       ├── 04-architecture.md #      🏗️ Architecture
+│       ├── 11-testing.md     #       🧪 Testing
+│       ├── 12-standards.md   #       📏 Engineering standards
+│       ├── 13-documentation-split.md # ✂️ Documentation split plan
+│       └── 14-website.md     #       🌐 Website plan
+├── website/                  # 🌐 VitePress documentation site
 ├── src/                      # ⚙️ Published package source
 └── tests/                    # 🧪 Unit, integration, contract & round-trip suites
 ```
 
 ## 🧪 Development
 
-zopia is a **Bun-first** project (see [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/12-standards.md)):
+zopia is a **Bun-first** project (see [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/development/12-standards.md)):
 
 ```bash
 bun install --frozen-lockfile # 📦 reproducible install from bun.lock
@@ -194,7 +215,7 @@ bun run release:check         # 🚢 complete pinned-Bun prepublish gate
 
 ## 🤝 Contributing
 
-Read [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/12-standards.md) first — it defines code style,
+Read [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/development/12-standards.md) first — it defines code style,
 JSDoc rules, the commit convention, and the changelog rule. Every feature ships
 **with** its documentation in the same commit.
 

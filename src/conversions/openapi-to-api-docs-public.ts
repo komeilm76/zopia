@@ -381,7 +381,7 @@ export function validateOpenApiReferences(document: OpenApiDocument): void {
  * }, { outDir: 'api_docs', mode: 'flat' });
  * console.log(result.files);
  * ```
- * @see [docs/06-conversions.md → Engine ③](../../docs/06-conversions.md)
+ * @see [docs/user/conversions.md → Engine ③](../../docs/user/conversions.md)
  */
 export async function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult> {
   const config = validateOptions(options);

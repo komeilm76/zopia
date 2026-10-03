@@ -2,7 +2,7 @@
 
 > 🎯 **T-13** — *tests in all scenarios, with Vitest, run with Bun.*
 > Every rule in this project (R-…), every target (T-…), and every mapping row
-> in [Conversions](06-conversions.md) is **pinned by at least one test**.
+> in [Conversions](../user/conversions.md) is **pinned by at least one test**.
 
 ## 🛠️ Toolchain
 
@@ -271,4 +271,4 @@ a warning that never fires in tests is a red flag, not a shrug.
 ## 🔗 Next
 
 - 📏 The rules being tested → [Standards](12-standards.md)
-- 🔄 The engines' exact contracts → [Conversions](06-conversions.md)
+- 🔄 The engines' exact contracts → [Conversions](../user/conversions.md)

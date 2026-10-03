@@ -219,5 +219,5 @@ in the same rows.
 
 ## 🔗 Next
 
-- ⚙️ Options reference → [Configuration](09-configuration.md)
-- 🔄 How refs are resolved → [Architecture → The reference graph](04-architecture.md#-the-reference-graph)
+- ⚙️ Options reference → [Configuration](configuration.md)
+- 🔄 How refs are resolved → [Architecture → The reference graph](../development/04-architecture.md#-the-reference-graph)

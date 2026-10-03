@@ -185,7 +185,7 @@ remaining km-api gaps — **per-parameter metadata**
 
 The generated artifact: an `api_docs/` directory containing one `index.ts` per
 endpoint (plus optional `components/**` and the manifest). Defined fully in
-[API docs format](07-api-docs.md).
+[API docs format](api-docs-format.md).
 
 ### 📦 .zopia-manifest.json
 
@@ -195,21 +195,21 @@ engine ④ lossless: exact paths & methods per file, spec identity
 component schemas**, **`$ref` placement** (per-API ref pointers), and
 **non-representable facts** (overlay entries: titles, examples, custom
 formats, unsupported keywords). See
-[API docs format → The manifest](07-api-docs.md).
+[API docs format → The manifest](api-docs-format.md).
 
 ### 🧬 Stage-specific representations
 
 Engine ③ narrows a validated document into operation-level IR and normalized
 request/response contracts. Engine ④ combines imported runtime values with the
 versioned manifest instead of sharing one repository-wide model with engine ③.
-See [Architecture → The internal representations](04-architecture.md#-the-internal-representations).
+See [Architecture → The internal representations](../development/04-architecture.md#-the-internal-representations).
 
 ### 🔁 Round-trip
 
 For a spec `S`: `openApiToApiDocs(S) → apiDocsToOpenApi(...) ≈ S` — equal after
 **canonicalization** (R-401 order, whitespace-independent JSON equality, and
 documented metadata moves to the manifest). Round-trips are *tested as
-properties*, not by eye (see [Testing](11-testing.md#-round-trip-property-tests)).
+properties*, not by eye (see [Testing](../development/11-testing.md#-round-trip-property-tests)).
 
 ## ⚖️ Dialect comparison (the table that answers most "why?" questions)
 
@@ -235,5 +235,5 @@ properties*, not by eye (see [Testing](11-testing.md#-round-trip-property-tests)
 
 ## 🔗 Next
 
-- 🔄 How the IR is produced and consumed → [Conversions](06-conversions.md)
-- 🏗️ Where the IR lives in code → [Architecture](04-architecture.md)
+- 🔄 How the IR is produced and consumed → [Conversions](conversions.md)
+- 🏗️ Where the IR lives in code → [Architecture](../development/04-architecture.md)

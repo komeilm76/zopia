@@ -845,7 +845,7 @@ function parseDocumentRoot(ctx: ParserContext, first: SignificantLine | null): u
  * const document = parseYaml("paths:\n  /health:\n    get:\n      responses: {}\n");
  * console.log(document);
  * ```
- * @see [docs/06-conversions.md → Engine ③](../../docs/06-conversions.md)
+ * @see [docs/user/conversions.md → Engine ③](../../docs/user/conversions.md)
  */
 export function parseYaml(text: string): unknown {
   if (typeof text !== 'string' || text.trim() === '') {

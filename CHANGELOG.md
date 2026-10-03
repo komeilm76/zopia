@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Changed
+- ✂️ **The documentation set is split by audience.** `docs/user/` holds
+  everything a consumer of the package needs — it ships inside the npm archive
+  and is the single source of truth for the forthcoming documentation website.
+  `docs/development/` holds the repository-only material (overview, targets,
+  roadmap, architecture, testing, standards, plans). The boundary, its rules
+  (R-201…R-209), the migration map, and the "where does a new page go" decision
+  tree are specified in `docs/development/13-documentation-split.md`;
+  `README.md` and `docs/README.md` now carry the two-audience map, and the new
+  conventions are recorded as R-187/R-188.
+- 📘 **New and restructured user pages.** `docs/10-usage.md` was split into
+  `installation.md`, `quick-start.md`, `cli.md`, `programmatic-api.md`, and
+  `runtime.md`; `docs/user/index.md` and `docs/user/errors-and-warnings.md`
+  (every stable error and warning code with its cause and fix) are new;
+  `05-concepts`, `06-conversions`, `07-api-docs`, `08-components`, and
+  `09-configuration` moved to `docs/user/` under descriptive names. The CLI
+  reference now documents every command, flag, value, default, effect, and exit
+  code; the programmatic page maps the complete public export surface.
+- 🌐 **Documentation website planned.** `docs/development/14-website.md`
+  specifies the VitePress site for <https://komeilm76.github.io/zopia/> —
+  targets W-1…W-8, information architecture, design bar, versioning policy
+  (latest plus the previous two minors), content pipeline, release-flow
+  integration, quality gates, milestones, and the GitHub Pages visibility risk.
+  Phase 4 is tracked in the roadmap and targets.
+- 📦 The npm archive now packs the whole `docs/user/**` set instead of three
+  individual guides, and `package.json#homepage` points at the documentation
+  website. `scripts/package-check.ts` and the package/documentation contract
+  suites assert the new layout.
+
 ## [0.6.0] - 2026-09-30
 
 ### 🐛 Fixed
