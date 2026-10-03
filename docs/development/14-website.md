@@ -88,7 +88,7 @@ komeilm76/zopia  (private)                 komeilm76/komeilm76.github.io  (publi
   errors-and-warnings     🧯 Errors & warnings
   concepts                🧩 Glossary
 /changelog                📜 Release history (rendered from CHANGELOG.md)
-/v0.5/…  /v0.4/…          🔖 Frozen snapshots of previous minors
+/v0.6/…  /v0.5/…          🔖 Frozen snapshots of previous minors
 ```
 
 | 🧭 Nav item | Target |
@@ -96,7 +96,7 @@ komeilm76/zopia  (private)                 komeilm76/komeilm76.github.io  (publi
 | Guide | `/guide/installation` |
 | Reference | `/reference/conversions` |
 | Changelog | `/changelog` |
-| Version switcher | `latest`, `v0.5`, `v0.4`, plus a link to older tags on GitHub |
+| Version switcher | `latest`, `v0.6`, `v0.5`, plus a link to older tags on GitHub |
 | GitHub / npm | external icons |
 
 The sidebar is **task-ordered**, not alphabetical: a reader going top to bottom
@@ -154,8 +154,8 @@ What "5 out of 5" means, concretely. Each line is a review checklist item.
 | 🔖 Channel | 📍 URL | 📝 Content |
 | --- | --- | --- |
 | `latest` | `/zopia/` | built from `docs/user/` on `main` |
-| previous minor | `/zopia/v0.5/` | frozen snapshot taken at that release |
-| minor before that | `/zopia/v0.4/` | frozen snapshot |
+| previous minor | `/zopia/v0.6/` | frozen snapshot taken at that release |
+| minor before that | `/zopia/v0.5/` | frozen snapshot |
 | older | — | linked to the GitHub tag; never rebuilt |
 
 | # | Rule |
@@ -163,7 +163,7 @@ What "5 out of 5" means, concretely. Each line is a review checklist item.
 | R-211 | A snapshot is created **at release time**, from the tagged `docs/user/` content, and is never edited afterwards. Fixing a typo in an old version means fixing it in `latest` only. |
 | R-212 | Snapshots are stored in `website/versions/<major.minor>/` (frozen `pages/*.md` plus a `meta.json` route table) and committed, so the site is rebuildable from a clean clone without Git archaeology. |
 | R-213 | Releasing a new minor adds its predecessor as a snapshot and **prunes** the oldest (`--keep`, default 2), keeping exactly three browsable versions. |
-| R-214 | Every non-latest page shows a banner: *"You are reading the documentation for v0.5. The latest version is v0.7."* with a link to the same page in `latest`. |
+| R-214 | Every non-latest page shows a banner: *"You are reading the documentation for v0.6. The latest version is v0.7."* with a link to the same page in `latest`. |
 | R-215 | The version switcher **and** the per-version sidebars are generated from the snapshot directory into `.vitepress/versions.generated.json`, never hand-maintained. |
 | R-216b | Releases older than the documentation split keep their original page set (`usage`, `configuration`, `api-docs-format`, `components`, `conversions`, `concepts`); the snapshot tool maps those historic file names onto today's routes so an old version still browses like the current site. |
 
@@ -251,9 +251,9 @@ concurrency: { group: pages, cancel-in-progress: true }
 | M2 | **Coverage audit** ✅ | every public export, CLI command/flag, error/warning code, and option key documented and **enforced by a contract test**; examples reviewed per R-208 |
 | M3 | **Site skeleton** ✅ | `website/` VitePress project (`base: '/zopia/'`), `sync-content.mjs` pipeline, `npm run dev` / `npm run build` green with the dead-link gate on |
 | M4 | **Design pass** ✅ | landing page, brand layer, install tabs, dark mode, responsive layout, and the automated quality audit (`npm run audit`) — 27 pages, 2.5 MB of assets, all budgets respected. Lighthouse stays a manual check against the deployed site |
-| M5 | **CI deploy** 🚧 | two ready workflows — `docs-workflow.yml.example` (D-26, private repository → push the built site into the public `komeilm76.github.io`) and `docs-workflow-public.yml.example` (D-26b, public repository → native Pages `upload-pages-artifact` + `deploy-pages`, the `km-geoboard` pipeline). A maintainer copies **one** to `.github/workflows/docs.yml`; see [15-website-setup.md](15-website-setup.md) |
-| M6 | **Versioning** ✅ | `snapshot-version.mjs` (immutable snapshots, `--keep` pruning, historic-layout mapping), generated switcher and per-version sidebars, outdated-version banner on every snapshot page. v0.5 and v0.4 are live snapshots cut from their release tags |
-| M7 | **Release integration** 🚧 | the workflow snapshots the previous minor on a published release, commits it, rebuilds, audits, and publishes; a real dry-run has to wait for the next release |
+| M5 | **CI deploy** ✅ (activated) | two ready workflows — `docs-workflow.yml.example` (D-26, private repository → push the built site into the public `komeilm76.github.io`) and `docs-workflow-public.yml.example` (D-26b, public repository → native Pages `upload-pages-artifact` + `deploy-pages`, the `km-geoboard` pipeline). A maintainer copies **one** to `.github/workflows/docs.yml` (done for this repository); see [15-website-setup.md](15-website-setup.md). A contract test checks that the activated file keeps the audit, the build, the `/zopia/` assertion and `ref: main`, and uses exactly one deployment strategy |
+| M6 | **Versioning** ✅ | `snapshot-version.mjs` (immutable snapshots, `--keep` pruning, historic-layout mapping), generated switcher and per-version sidebars, outdated-version banner on every snapshot page. v0.6 and v0.5 are the live snapshots, cut from their release tags |
+| M7 | **Release integration** 🚧 | v0.7.0 is the first release cut with the pipeline in place: v0.6 was snapshotted into `website/versions/`, v0.4 pruned (R-213). The automated release-triggered run is exercised for the first time by this release |
 
 ## ⚠️ Risks & decisions needed
 

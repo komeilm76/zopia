@@ -115,14 +115,30 @@ file-level API, and the manifest remains authoritative (D-06).
 
 ```ts
 import { createApiDocs, flattenApiDocs } from 'zopia/runtime';
+import type { ApiDocsFlat, ApiDocsTree } from './api_docs/.zopia-tree';
 
-const apiDocs = await createApiDocs('api_docs');   // ← the entire consumer DX
+const apiDocs = await createApiDocs<ApiDocsTree>('api_docs');   // ← the entire consumer DX
 const endpoint = apiDocs.applicant['{applicantId}'].exame['{examId}'].get;
-// → the endpoint module's makeApiConfig object (its default export)
+// → the endpoint module's makeApiConfig object (its default export), EXACTLY typed
 
-const endpoints = flattenApiDocs(apiDocs);        // the flat freebie
-endpoints.getExam;                                 // same leaf object
+const endpoints = flattenApiDocs<ApiDocsFlat>(apiDocs);        // the flat freebie
+endpoints.getExam;                                             // same leaf object
 ```
+
+**Exact IntelliSense (S-95).** Called without a type argument, the helpers
+return permissively typed results (every node is a branch ∪ config). Passing
+the generated **`.zopia-tree.d.ts`** types — written beside every retained
+manifest, in both layouts and every preset bucket root — makes the result
+**exact**: segment and method keys autocomplete, unknown keys are compile
+errors (not `any`), every leaf carries the generated module's own
+`makeApiConfig()` type (literal `method`/`pathShape`, exact Zod request and
+response shapes), and the flat record's keys are the derived endpoint names
+(same shared rules as the generator's export identifiers, including collision
+suffixes). The declaration is types-only — it imports nothing beyond the tree
+itself (R-502 holds) — and follows the manifest lifecycle: refreshed on
+regeneration, pruned when manifests are disabled, and a deleted declaration
+reports `ZOPIA_WARN_STALE_TREE`. `zopia generate` results list it with
+`kind: 'types'`.
 
 **Manifest discovery & merge (B-conditions).** The resolver reads the root
 `.zopia-manifest.json` **plus** every one-level-deep preset bucket manifest
@@ -138,8 +154,9 @@ segments first, then the canonical method order
 (including literal `{param}` segments), the leaf key is the lowercase method,
 and the leaf value is the endpoint module's **default export**, loaded with
 dynamic `import()` through `pathToFileURL` (Windows-safe). Because which keys
-exist depends on the source spec, the `ApiDocsTree` type types every node
-permissively (branch ∪ config). A tree `/` path nests its methods at the root
+exist depends on the source spec, the default `ApiDocsTree` return type is
+permissive (branch ∪ config) — pass the generated `.zopia-tree.d.ts` type for
+exact keys (see below). A tree `/` path nests its methods at the root
 (`apiDocs.get`). Paths that cannot coexist in one nested tree — a path
 continuing below another path's method leaf, or two paths differing only by a
 trailing slash — fail with a typed `ZOPIA_SPEC_INVALID` instead of silently

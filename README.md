@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-✅ **Status — Phase 3 complete · v0.6.0 released**
+✅ **Status — Phase 4 complete · v0.7.0 released**
 
 </div>
 
@@ -210,7 +210,7 @@ cd website
 npm install
 npm run dev              # 🔁 sync docs/user/ (watched) + dev server
 npm run check            # 🏗️ production build + quality audit (what CI runs)
-npm run snapshot -- v0.6 # 🔖 freeze a released version for the switcher
+npm run snapshot -- v0.6.0 # 🔖 freeze a released version for the switcher
 npm run preview          # 👀 serve the production build
 ```
 

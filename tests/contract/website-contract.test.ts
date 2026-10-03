@@ -89,8 +89,22 @@ describe('documentation website contract', () => {
     for (const path of ['docs/user/**', 'website/**', 'CHANGELOG.md']) expect(workflow).toContain(path);
     expect(workflow).not.toContain('run: npm publish');
 
-    // Only one of the two templates may ever be live.
-    expect(existsSync(join(repositoryRoot, '.github', 'workflows', 'docs.yml')), 'a maintainer activates exactly one template').toBe(false);
+    // A maintainer activates exactly one template by copying it to
+    // `.github/workflows/docs.yml`. Once that file exists it must still carry
+    // the guarantees both templates share — a hand-drifted pipeline that skips
+    // the audit or the base-path assertion would publish a broken site.
+    const activePath = join(repositoryRoot, '.github', 'workflows', 'docs.yml');
+    if (existsSync(activePath)) {
+      const active = read(repositoryRoot, '.github', 'workflows', 'docs.yml');
+      for (const guarantee of ['npm run audit', 'npm run build', '/zopia/assets/', 'ref: main']) {
+        expect(active, `the active docs workflow must keep "${guarantee}"`).toContain(guarantee);
+      }
+      // Exactly one deployment strategy, never both.
+      const viaPages = active.includes('actions/deploy-pages');
+      const viaSiteRepository = active.includes('komeilm76/komeilm76.github.io');
+      expect(viaPages !== viaSiteRepository, 'docs.yml deploys either through GitHub Pages or through the public site repository').toBe(true);
+      expect(active).not.toContain('run: npm publish');
+    }
   });
 
   it('R-211/R-212/R-213/R-215: version snapshots are frozen, mapped, and limited to the previous two minors', () => {

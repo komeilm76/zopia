@@ -1,11 +1,11 @@
 {
-  "latest": "0.6.0",
-  "latestMinor": "v0.6",
+  "latest": "0.7.0",
+  "latestMinor": "v0.7",
   "versions": [
     {
-      "minor": "v0.5",
-      "version": "0.5.2",
-      "tag": "v0.5.2",
+      "minor": "v0.6",
+      "version": "0.6.0",
+      "tag": "v0.6.0",
       "pages": [
         {
           "section": "guide",
@@ -40,9 +40,9 @@
       ]
     },
     {
-      "minor": "v0.4",
-      "version": "0.4.0",
-      "tag": "v0.4.0",
+      "minor": "v0.5",
+      "version": "0.5.2",
+      "tag": "v0.5.2",
       "pages": [
         {
           "section": "guide",

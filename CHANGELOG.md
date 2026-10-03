@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-03
+
+### ✨ Added
+
+- 🌐 **A documentation website** (VitePress) built from `docs/user/`, with per-version documentation, a version switcher, local search, and an automated quality audit. Two ready deployment templates ship in `docs/development/`: `docs-workflow.yml.example` (D-26, private repository) and `docs-workflow-public.yml.example` (D-26b, public repository, native GitHub Pages pipeline).
+- 🧭 The website now emits `sitemap.xml` and ships a brand favicon, and documentation tables wrap instead of overflowing on phone-sized screens.
+- 🛠️ `docs/development/15-website-setup.md` — the one-time setup checklist for both deployment paths.
+
 ### 🐛 Fixed
 
 - 🔗 ✏️ The website's "Suggest changes to this page" links pointed at `docs/user/<section>/<page>.md`, a path that does not exist — every edit link was a 404. The route→source mapping is now explicit, the changelog page links to `CHANGELOG.md`, and frozen version snapshots carry no edit link at all (they are immutable, R-211).
@@ -172,8 +180,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-09-29
 
 ### ✨ Added
-- 🧭 The website now emits `sitemap.xml` and ships a brand favicon, and documentation tables wrap instead of overflowing on phone-sized screens.
-- 🌐 Added `docs/development/docs-workflow-public.yml.example`, a second deployment template (D-26b) that publishes the website with the native GitHub Pages pipeline while the repository is public, and documented both paths in the website setup guide.
 - 🧠 **Exact IntelliSense for runtime tree consumption (S-95).** Every tree
   generated with a manifest now also carries a types-only
   **`.zopia-tree.d.ts`** declaration beside the manifest, and
