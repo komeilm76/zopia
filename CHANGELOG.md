@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-03
+
+### ✨ Added
+
+- 🌐 **A documentation website** (VitePress) built from `docs/user/`, with per-version documentation, a version switcher, local search, and an automated quality audit. Two ready deployment templates ship in `docs/development/`: `docs-workflow.yml.example` (D-26, private repository) and `docs-workflow-public.yml.example` (D-26b, public repository, native GitHub Pages pipeline).
+- 🧭 The website now emits `sitemap.xml` and ships a brand favicon, and documentation tables wrap instead of overflowing on phone-sized screens.
+- 🛠️ `docs/development/15-website-setup.md` — the one-time setup checklist for both deployment paths.
+
+### 🐛 Fixed
+
+- 🔗 ✏️ The website's "Suggest changes to this page" links pointed at `docs/user/<section>/<page>.md`, a path that does not exist — every edit link was a 404. The route→source mapping is now explicit, the changelog page links to `CHANGELOG.md`, and frozen version snapshots carry no edit link at all (they are immutable, R-211).
+- ⏱️ `tests/watch-mode.test.ts` failed at random: two legitimate filesystem-watcher waits can exceed Vitest's 5 s default test timeout under parallel load. The suite now allows 30 s per test, and the stale-tree warning assertion no longer depends on how many change events the OS coalesces.
+- 📘 Two `ts` examples (`configuration.md` defaults, `conversions.md` engine ① output) were bare object literals that do not parse as TypeScript; they are now valid declarations.
+- 🧪 The km-api hand-off example in `api-docs-format.md` called `.parse()` on endpoint schemas, which km-api types structurally — the snippet did not compile. It now names the Zod type explicitly and typechecks.
+- 🏷️ The outdated-version banner linked old sources through `/blob/<tag>/docs`; directory listings use `/tree/` now.
+- 🚀 Both deploy workflow templates checked out the release **tag** on a `release` event, so the snapshot commit would have been pushed from a detached HEAD; they now check out `main` explicitly, skip snapshotting idempotently, and the public-repository template no longer cancels an in-flight Pages deployment.
+
+### 🔄 Changed
+- ✂️ **The documentation set is split by audience.** `docs/user/` holds
+  everything a consumer of the package needs — it ships inside the npm archive
+  and is the single source of truth for the forthcoming documentation website.
+  `docs/development/` holds the repository-only material (overview, targets,
+  roadmap, architecture, testing, standards, plans). The boundary, its rules
+  (R-201…R-209), the migration map, and the "where does a new page go" decision
+  tree are specified in `docs/development/13-documentation-split.md`;
+  `README.md` and `docs/README.md` now carry the two-audience map, and the new
+  conventions are recorded as R-187/R-188.
+- 📘 **New and restructured user pages.** `docs/10-usage.md` was split into
+  `installation.md`, `quick-start.md`, `cli.md`, `programmatic-api.md`, and
+  `runtime.md`; `docs/user/index.md` and `docs/user/errors-and-warnings.md`
+  (every stable error and warning code with its cause and fix) are new;
+  `05-concepts`, `06-conversions`, `07-api-docs`, `08-components`, and
+  `09-configuration` moved to `docs/user/` under descriptive names. The CLI
+  reference now documents every command, flag, value, default, effect, and exit
+  code; the programmatic page maps the complete public export surface.
+- 🌐 **Documentation website planned.** `docs/development/14-website.md`
+  specifies the VitePress site for <https://komeilm76.github.io/zopia/> —
+  targets W-1…W-8, information architecture, design bar, versioning policy
+  (latest plus the previous two minors), content pipeline, release-flow
+  integration, quality gates, milestones, and the GitHub Pages visibility risk.
+  Phase 4 is tracked in the roadmap and targets.
+- 🌐 **The documentation website is scaffolded.** `website/` holds a VitePress
+  project configured for the `/zopia/` base path, with a custom landing page,
+  a zopia brand layer over the accessible default theme, local search, edit
+  links, and the dead-link gate enabled. `website/scripts/sync-content.mjs`
+  renders `docs/user/**` and `CHANGELOG.md` into the site's content tree —
+  rewriting cross-page links, injecting frontmatter, and failing on any
+  unmapped page — so `docs/user/` remains the single source of truth for both
+  the npm archive and the site. `npm run dev` additionally watches the real
+  sources.
+- 🚀 **Website hosting decided (D-26).** A docs workflow template
+  (`docs/development/docs-workflow.yml.example`, to be copied to
+  `.github/workflows/docs.yml`) builds
+  the site and publishes it into the **public**
+  `komeilm76/komeilm76.github.io` repository under `/zopia/` using a scoped
+  `PAGES_DEPLOY_TOKEN`, which keeps the documentation public at
+  <https://komeilm76.github.io/zopia/> after `komeilm76/zopia` becomes private.
+  The pipeline is independent of `publish.yml`, replaces only the `zopia/`
+  sub-directory of the site repository, and verifies the built HTML references
+  the `/zopia/` base path. A new website contract suite pins all of this.
+- 🔖 **Versioned documentation.** `website/scripts/snapshot-version.mjs`
+  freezes a released tag into `website/versions/<vX.Y>/` (immutable once
+  written, pruned to the previous two minors), mapping pre-split page names
+  onto today's routes so older releases still browse like the current site.
+  The version switcher, the per-version sidebars, and the
+  "you are reading old documentation" banner are all generated from those
+  snapshots. **v0.5 and v0.4 are published** alongside the latest docs.
+- 🔍 **Automated site quality gate.** `website/scripts/audit.mjs` checks the
+  built output on every CI run: `/zopia/` base-path correctness, unique
+  non-empty titles and meta descriptions, `<html lang>`, exactly one `<h1>`
+  with no skipped heading levels, image alt text, resolvable internal links,
+  informative link text, no unrendered Markdown, and HTML/asset weight
+  budgets. The release path of the docs workflow now also snapshots the
+  previous minor before rebuilding.
+- 🔍 **Complete, enforced user-documentation coverage.** The programmatic API
+  page now documents the **entire** public surface — validation, diff,
+  navigation, and every low-level building block, result type, and option
+  type — and the runtime page documents `ApiDocsTree` / `ApiDocsEndpointConfig`.
+  `tests/contract/user-docs-coverage.test.ts` fails the build when a new
+  export, CLI flag, error code, warning code, or option key is not documented
+  (R-207), and the documentation contract now also rejects internal planning
+  vocabulary (phase numbers, scenario/target IDs, `src/` paths) and relative
+  links into `docs/development/` from user pages (R-202/R-204).
+- 📦 The npm archive now packs the whole `docs/user/**` set instead of three
+  individual guides, and `package.json#homepage` points at the documentation
+  website. `scripts/package-check.ts` and the package/documentation contract
+  suites assert the new layout.
+
 ## [0.6.0] - 2026-09-30
 
 ### 🐛 Fixed

@@ -87,7 +87,7 @@ under `src/`, not only the package-root re-export list. The template:
  * ```ts
  * const r = await openApiToApiDocs('swagger.json', { mode: 'flat' });
  * ```
- * @see [docs/06-conversions.md → Engine ③](./06-conversions.md)
+ * @see [docs/06-conversions.md → Engine ③](../user/conversions.md)
  */
 export function openApiToApiDocs(
   input: string | Record<string, unknown>,
@@ -117,7 +117,7 @@ export function openApiToApiDocs(
 | # | Rule |
 | --- | --- |
 | R-151 | **outDir guard** (R-406) — canonicalize + prefix-check every path, reject symlinked generated ancestors, exclusively create manifest temporary files, and prune only paths owned by a validated prior manifest; unit-tested with traversal/symlink attempts |
-| R-152 | **Trusted-input contract (D-08)** — engine ④ imports generated `.ts`; the manifest is the trust marker. Documented loudly in [Usage](10-usage.md) and in the CLI help |
+| R-152 | **Trusted-input contract (D-08)** — engine ④ imports generated `.ts`; the manifest is the trust marker. Documented loudly in [CLI reference](../user/cli.md) and in the CLI help |
 | R-153 | **No secret handling** — zopia reads specs and writes docs; it never touches credentials, never sends data anywhere (no network at all) |
 | R-154 | **Predictable failure** — configuration, source, layout, and component-render validation happen before governed writes; every surfaced write/import failure is typed. Individual manifest replacement is atomic, while the generated tree is updated as ordered guarded file writes rather than as one directory transaction |
 
@@ -131,7 +131,7 @@ export function openApiToApiDocs(
 | Types/interfaces | `PascalCase` (`GenerateApiDocsOptions`, `OpenApiOperationIR`) |
 | Constants | `UPPER_SNAKE_CASE` (`ZOPIA_MANIFEST_SCHEMA`) |
 | Tests | centralized under `tests/` as `*.test.ts`; contract and round-trip suites use dedicated subdirectories; `it()` cites rules (R-122) |
-| Generated identifiers | fixed by [API docs → Naming](07-api-docs.md#-naming-conventions-fixed) |
+| Generated identifiers | fixed by [API docs → Naming](../user/api-docs-format.md#-naming-conventions-fixed) |
 
 ## 📜 Commit convention
 
@@ -179,9 +179,11 @@ active in shallow/source-only environments where the release boundary is absent.
 | R-181 | **docs ship with code** — a behaviour change and its doc change land in the same commit (R-161) |
 | R-182 | **Style** — emoji section headers, tables for anything list-like, code blocks with language tags, one idea per paragraph |
 | R-183 | **Numbering** — targets `T-…`, rules `R-…`, decisions `D-…`, warnings/errors `ZOPIA_…` — referenced from code & tests |
-| R-184 | **Cross-links** — every doc links forward & back; the map in [`docs/README.md`](README.md) stays current |
+| R-184 | **Cross-links** — every doc links forward & back; the map in [`docs/README.md`](../README.md) stays current |
 | R-185 | **Diagrams** — Mermaid for flow, ASCII trees for file layouts (both render on GitHub) |
 | R-186 | **Status honesty** — "planned/contract" is labeled 🚧 until implemented; never documented as done |
+| R-187 | **Audience split** — every document lives in `docs/user/` (packed with npm, source of the website) or `docs/development/` (repository-only). The boundary, the leakage rules (R-201…R-209), and the "where does a new page go" decision tree are fixed by [Documentation split plan](13-documentation-split.md) |
+| R-188 | **Feature coverage** — new public surface (export, CLI command/flag, config key, error/warning code) is not done until its `docs/user/` page documents its type, default, effect, and failure mode in the same commit |
 
 ## 🚢 Release flow
 
@@ -189,6 +191,8 @@ active in shallow/source-only environments where the release boundary is absent.
 1. 🔖 bump version (SemVer — [Roadmap → Versioning](03-roadmap.md#-versioning))
 2. 📜 CHANGELOG: [Unreleased] → [x.y.z] - YYYY-MM-DD
 3. 📝 README status banner updated to the new phase
+3b. 🌐 documentation website updated — `latest` rebuilt and the previous minor
+   snapshotted ([Website plan → Release flow](14-website.md#-release-flow-integration))
 4. 🚢 bun run release:check
 5. 🏷️ git tag v0.1.0
 6. 📦 npm publish  (package.json: name "zopia", peerDeps zod ^4 + km-api ^0.4 —
@@ -198,7 +202,7 @@ active in shallow/source-only environments where the release boundary is absent.
 | # | Release-readiness rule |
 | --- | --- |
 | R-191 | **One release identity** — `package.json`, the manifest writer, lockfile, versioned changelog heading, and README status agree on the SemVer version |
-| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, the practical guides (`docs/07-api-docs.md`, `docs/09-configuration.md`, `docs/10-usage.md`), and the package/legal markdown; the development documentation stays in the repository and is linked from the README via GitHub URLs. The exact archive is installed in isolation and must pass library-import, generate/reverse CLI, and `zopia/runtime` subpath smoke tests |
+| R-192 | **Minimal verified artifact** — npm receives only `bin/`, `src/`, the complete user documentation set (`docs/user/**`), and the package/legal markdown; the development documentation stays in the repository and is linked from the README via GitHub URLs. The exact archive is installed in isolation and must pass library-import, generate/reverse CLI, and `zopia/runtime` subpath smoke tests |
 | R-193 | **Publish guard** — `prepublishOnly` runs the pinned-Bun release gate, including typecheck, all tests, coverage, direct runtime checks, and R-192's packed-consumer check |
 
 Preparing these artifacts does not publish or tag a release. Those external steps
@@ -236,7 +240,10 @@ remain explicit maintainer actions after the committed release gate is green.
 | **D-15** | 📦 **km-api is consumed from npm** — zopia depends on the published `km-api@^0.4.1`; no Git submodule or unpublished commit is required. | reproducible fresh clones and published dependency resolution |
 | **D-16** | 📝 **v0.2.x YAML input is parsed by an owned, deterministic YAML 1.2 core-schema parser** (`src/conversions/yaml.ts`) — block/flow collections, plain/single/double-quoted scalars, literal/folded block scalars with chomping/indent indicators, comments, anchors/aliases/`<<` merge keys (explicit keys win), `%YAML 1.x` directives, single `---`/`...` document; keys are stringified like a JSON round-trip; tab indentation, duplicate keys, undefined aliases, custom tags, multi-document streams, complex `?` keys, and non-JSON numbers (`.inf`/`.nan`) fail with `ZOPIA_SPEC_INVALID_YAML` | a dependency (D-11) would import parser state we cannot pin for determinism (P-1); the subset covers real-world `spec.yaml` files fully, and every rejection is a typed, line-located diagnostic instead of silent approximation (P-4) |
 | **D-17** | 🔗 **v0.2.x file input resolves same-folder external `$ref`s by bundling them inline before normalization** (`src/conversions/openapi-external-ref.ts`) — `other.(json|yaml|yml)` with `./…` spellings, an optional `#` JSON Pointer ('' = whole file); sibling files are read once (P-1), bundled content is deep-cloned, nested cross-file refs resolve against their owning file, and sibling keys win over bundled content; URLs, `../`, absolute paths, subdirectories, drives, and non-spec extensions keep `ZOPIA_REF_EXTERNAL`; unreadable targets, missing pointers, circular chains, sibling-on-scalar targets, and >512-level expansion fail typed; reverse conversion emits the bundled single file and never re-splits | one predictable grammar keeps resolution deterministic (P-1/P-4) with zero network access or directory walking, while object/text inputs keep their original semantics byte-for-byte |
+| **D-25** | 🌐 **The documentation website is VitePress**, living in `website/`, with `docs/user/` synced in by `website/scripts/sync-content.mjs` | Markdown-first (the docs already are Markdown), the engine behind the Vue documentation experience the project benchmarks against, accessible default theme, built-in local search, zero hosting infrastructure. One source directory keeps the npm archive and the site identical (R-206) |
+| **D-26** | 🚀 **The site is published from the public `komeilm76/komeilm76.github.io` repository under `/zopia/`** by the docs workflow (`docs/development/docs-workflow.yml.example` → `.github/workflows/docs.yml`), which pushes the built `dist` with a scoped `PAGES_DEPLOY_TOKEN` | `komeilm76/zopia` becomes **private**, and GitHub Pages on a private repository requires a paid plan. Publishing the *built output* to the public user-site repository keeps the documentation at the promised public URL (<https://komeilm76.github.io/zopia/>) while the source stays private, and gives every future `km-*` package the same hub. `base: '/zopia/'` is mandatory and asserted by the workflow |
+| **D-26b** | 🌐 **While `komeilm76/zopia` is public, the site may instead be deployed by the native GitHub Pages pipeline** (`docs/development/docs-workflow-public.yml.example` → `.github/workflows/docs.yml`, Pages source *GitHub Actions*, `upload-pages-artifact` + `deploy-pages`) | This is the pipeline `komeilm76/km-geoboard` already runs in production: no second repository, no personal access token, one setting to flip. It yields the identical URL (<https://komeilm76.github.io/zopia/>) and the identical build, audit, and snapshot steps, so switching to D-26 later means swapping one workflow file. Exactly one of the two templates may be active |
 
 ## 🔗 Back to
 
-- 🏠 [README](../README.md) · 📖 [Docs home](README.md)
+- 🏠 [README](../../README.md) · 📖 [Docs home](../README.md)

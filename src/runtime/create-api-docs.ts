@@ -243,7 +243,7 @@ function isEndpointConfig(value: unknown): value is ApiDocsEndpointConfig & Reco
  * const apiDocs = await createApiDocs<MyTree>('api_docs');
  * console.log(apiDocs.users.get.pathShape);
  * ```
- * @see [docs/07-api-docs.md → Runtime tree consumption](../../docs/07-api-docs.md)
+ * @see [docs/user/api-docs-format.md → Runtime tree consumption](../../docs/user/api-docs-format.md)
  */
 export async function createApiDocs<TTree extends object = ApiDocsTree>(docsDir: string): Promise<TTree> {
   if (typeof docsDir !== 'string' || docsDir.trim() === '' || docsDir.includes('\0')) {
@@ -302,7 +302,7 @@ export async function createApiDocs<TTree extends object = ApiDocsTree>(docsDir:
  * const endpoints = flattenApiDocs<MyFlat>(await createApiDocs('api_docs'));
  * console.log(endpoints.getUser.pathShape);
  * ```
- * @see [docs/07-api-docs.md → Runtime tree consumption](../../docs/07-api-docs.md)
+ * @see [docs/user/api-docs-format.md → Runtime tree consumption](../../docs/user/api-docs-format.md)
  */
 export function flattenApiDocs<TFlat extends Record<string, ApiDocsEndpointConfig> = Record<string, ApiDocsEndpointConfig>>(apiDocs: object): TFlat {
   if (!isRecord(apiDocs)) {

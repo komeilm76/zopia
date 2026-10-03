@@ -217,7 +217,7 @@ async function bundleReference(ctx: BundleContext, object: Record<string, unknow
  * const bundled = await bundleExternalOpenApiRefs(document as never, 'spec/openapi.json');
  * console.log(bundled);
  * ```
- * @see [docs/06-conversions.md → Engine ③](../../docs/06-conversions.md)
+ * @see [docs/user/conversions.md → Engine ③](../../docs/user/conversions.md)
  */
 export async function bundleExternalOpenApiRefs(document: OpenApiDocument, sourceFile: string): Promise<OpenApiDocument> {
   if (!document || typeof document !== 'object' || Array.isArray(document)) throw new ZopiaError('ZOPIA_SPEC_INVALID', 'expected a Swagger/OpenAPI document object', { at: '#', hint: 'provide a Swagger/OpenAPI document object' });

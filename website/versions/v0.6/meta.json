@@ -1,0 +1,44 @@
+{
+  "version": "0.6.0",
+  "tag": "v0.6.0",
+  "layout": "historic",
+  "takenAt": "2026-10-03",
+  "pages": [
+    {
+      "file": "10-usage.md",
+      "section": "guide",
+      "slug": "usage",
+      "title": "Usage"
+    },
+    {
+      "file": "09-configuration.md",
+      "section": "guide",
+      "slug": "configuration",
+      "title": "Configuration"
+    },
+    {
+      "file": "07-api-docs.md",
+      "section": "reference",
+      "slug": "api-docs-format",
+      "title": "API docs format"
+    },
+    {
+      "file": "08-components.md",
+      "section": "reference",
+      "slug": "components",
+      "title": "Components"
+    },
+    {
+      "file": "06-conversions.md",
+      "section": "reference",
+      "slug": "conversions",
+      "title": "Conversions"
+    },
+    {
+      "file": "05-concepts.md",
+      "section": "reference",
+      "slug": "concepts",
+      "title": "Concepts"
+    }
+  ]
+}

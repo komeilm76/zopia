@@ -22,3 +22,11 @@ bun-debug.log*
 .env.*
 .DS_Store
 Thumbs.db
+
+# ── Documentation website (generated content & build output) ─
+website/src/guide/
+website/src/reference/
+website/src/v*/
+website/src/changelog.md
+website/.vitepress/dist/
+website/.vitepress/cache/
