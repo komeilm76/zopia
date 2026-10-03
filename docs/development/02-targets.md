@@ -53,7 +53,7 @@ depend on is fixed by [Documentation split plan](13-documentation-split.md).
 | # | 🎯 Target | Spec | Status |
 | --- | --- | --- | --- |
 | W-0 | **Audience split** — `docs/user/` (packed + website source) separated from `docs/development/` (repository-only), with enforced rules R-201…R-209 | [Documentation split](13-documentation-split.md) | ✅ |
-| W-1 | **Public documentation site** at <https://komeilm76.github.io/zopia/> | [Website plan](14-website.md) | 🚧 |
+| W-1 | **Public documentation site** at <https://komeilm76.github.io/zopia/> — built in `website/`, published into the public user-site repository under `/zopia/` (D-26) | [Website plan](14-website.md) | 🚧 |
 | W-2 | **Every feature documented** — symbols, commands, flags, config keys, error/warning codes | [Split → R-207](13-documentation-split.md#-rules) | 🚧 |
 | W-3 | **Valid, standard examples** everywhere | [Split → R-208](13-documentation-split.md#-rules) | 🚧 |
 | W-4 | **Options documented as name · type · default · effect · failure mode** | [Website plan](14-website.md#-targets) | 🚧 |

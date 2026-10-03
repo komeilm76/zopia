@@ -202,14 +202,14 @@ formats, unsupported keywords). See
 Engine ③ narrows a validated document into operation-level IR and normalized
 request/response contracts. Engine ④ combines imported runtime values with the
 versioned manifest instead of sharing one repository-wide model with engine ③.
-See [Architecture → The internal representations](../development/04-architecture.md#-the-internal-representations).
+See [Architecture → The internal representations](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md#-the-internal-representations).
 
 ### 🔁 Round-trip
 
 For a spec `S`: `openApiToApiDocs(S) → apiDocsToOpenApi(...) ≈ S` — equal after
 **canonicalization** (R-401 order, whitespace-independent JSON equality, and
 documented metadata moves to the manifest). Round-trips are *tested as
-properties*, not by eye (see [Testing](../development/11-testing.md#-round-trip-property-tests)).
+properties*, not by eye (see [Testing](https://github.com/komeilm76/zopia/blob/main/docs/development/11-testing.md#-round-trip-property-tests)).
 
 ## ⚖️ Dialect comparison (the table that answers most "why?" questions)
 
@@ -236,4 +236,4 @@ properties*, not by eye (see [Testing](../development/11-testing.md#-round-trip-
 ## 🔗 Next
 
 - 🔄 How the IR is produced and consumed → [Conversions](conversions.md)
-- 🏗️ Where the IR lives in code → [Architecture](../development/04-architecture.md)
+- 🏗️ Where the IR lives in code → [Architecture](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md)

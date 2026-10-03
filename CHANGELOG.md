@@ -31,6 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (latest plus the previous two minors), content pipeline, release-flow
   integration, quality gates, milestones, and the GitHub Pages visibility risk.
   Phase 4 is tracked in the roadmap and targets.
+- 🌐 **The documentation website is scaffolded.** `website/` holds a VitePress
+  project configured for the `/zopia/` base path, with a custom landing page,
+  a zopia brand layer over the accessible default theme, local search, edit
+  links, and the dead-link gate enabled. `website/scripts/sync-content.mjs`
+  renders `docs/user/**` and `CHANGELOG.md` into the site's content tree —
+  rewriting cross-page links, injecting frontmatter, and failing on any
+  unmapped page — so `docs/user/` remains the single source of truth for both
+  the npm archive and the site. `npm run dev` additionally watches the real
+  sources.
+- 🚀 **Website hosting decided (D-26).** A docs workflow template
+  (`docs/development/docs-workflow.yml.example`, to be copied to
+  `.github/workflows/docs.yml`) builds
+  the site and publishes it into the **public**
+  `komeilm76/komeilm76.github.io` repository under `/zopia/` using a scoped
+  `PAGES_DEPLOY_TOKEN`, which keeps the documentation public at
+  <https://komeilm76.github.io/zopia/> after `komeilm76/zopia` becomes private.
+  The pipeline is independent of `publish.yml`, replaces only the `zopia/`
+  sub-directory of the site repository, and verifies the built HTML references
+  the `/zopia/` base path. A new website contract suite pins all of this.
 - 📦 The npm archive now packs the whole `docs/user/**` set instead of three
   individual guides, and `package.json#homepage` points at the documentation
   website. `scripts/package-check.ts` and the package/documentation contract

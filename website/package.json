@@ -1,0 +1,16 @@
+{
+  "name": "zopia-website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Documentation website for zopia — https://komeilm76.github.io/zopia/",
+  "scripts": {
+    "sync": "node scripts/sync-content.mjs",
+    "dev": "node scripts/sync-content.mjs --watch & vitepress dev",
+    "build": "npm run sync && vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}

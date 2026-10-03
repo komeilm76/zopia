@@ -204,23 +204,30 @@ The audience split and a first-class documentation site. Contracts:
 - [ ] 🔍 **Coverage audit (M2)** — every exported symbol, CLI command/flag,
       config key, error code, and warning code documented with type, default,
       and effect (R-207); every example valid and runnable (R-208)
-- [ ] 🧱 **Site skeleton (M3)** — VitePress project in `website/`, the
-      `docs:sync` content pipeline, `bun run docs:dev`
+- [x] 🧱 **Site skeleton (M3)** — VitePress project in `website/`
+      (`base: '/zopia/'`, local search, edit links), the `sync-content.mjs`
+      pipeline that renders `docs/user/` + `CHANGELOG.md` into the site, and
+      `npm run dev` / `npm run build` with the dead-link gate enabled
 - [ ] 🎨 **Design pass (M4)** — landing page, brand layer, install tabs,
-      callouts, dark mode, responsive layout; the quality floor met
-      (Lighthouse ≥ 95 / a11y 100, zero dead links)
-- [ ] 🚀 **CI deploy (M5)** — `.github/workflows/docs.yml`, GitHub Pages,
-      `latest` live at <https://komeilm76.github.io/zopia/>
+      dark mode, and responsive layout are in place; the Lighthouse quality
+      floor (≥ 95 / a11y 100) still has to be measured
+- [ ] 🚀 **CI deploy (M5)** — the docs workflow (template
+      `docs/development/docs-workflow.yml.example`, copied to
+      `.github/workflows/docs.yml` by a maintainer) builds here and
+      publishes the built site into the public `komeilm76/komeilm76.github.io`
+      repository under `/zopia/` (D-26); it needs that repository to exist with
+      Pages enabled and a `PAGES_DEPLOY_TOKEN` secret
 - [ ] 🔖 **Versioned docs (M6)** — `latest` plus the previous two minors,
       version switcher, outdated-version banner (R-211…R-215)
 - [ ] 🔁 **Release integration (M7)** — a published release updates the site
       automatically and independently of `publish.yml` (R-221…R-224)
 
-> ⚠️ **Blocking decision** — GitHub Pages for a *private* repository requires a
-> paid plan. Before `komeilm76/zopia` is made private, pick one of: upgrade the
-> plan · deploy the built site to a separate public repository · publish under
-> the existing public `komeilm76.github.io` repository. See
-> [Website plan → Risks](14-website.md#-risks--decisions-needed).
+> ✅ **Hosting decided (D-26)** — the site is published from the **public**
+> `komeilm76/komeilm76.github.io` repository under `/zopia/`, so
+> `komeilm76/zopia` can become private without taking the documentation
+> offline. Two prerequisites before flipping visibility: create that public
+> repository with Pages enabled, and add the `PAGES_DEPLOY_TOKEN` secret here.
+> See [Website plan → Deployment topology](14-website.md#-deployment-topology-d-26).
 
 ## 🧮 Versioning
 

@@ -259,7 +259,7 @@ const schema = z.object({
 function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult>;
 ```
 
-Pipeline (see [Architecture → The pipeline](../development/04-architecture.md#-the-pipeline)):
+Pipeline (see [Architecture → The pipeline](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md#-the-pipeline)):
 **detect → bundle external refs (file inputs, D-17) → normalize (v2 | v3) → refs → render (directory | flat) → manifest**.
 
 **Input parsing (v0.2.x, D-16):** text starting with `{`/`[` is parsed as
@@ -374,7 +374,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 
 ### 🔗 Step 3 — refs
 
-Per [Architecture → The reference graph](../development/04-architecture.md#-the-reference-graph)
+Per [Architecture → The reference graph](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md#-the-reference-graph)
 (R-402): file-path inputs first bundle *same-folder* external refs inline
 (D-17, above); afterwards unknown → `ZOPIA_REF_NOT_FOUND`; remaining external
 → `ZOPIA_REF_EXTERNAL`; cycles → `z.lazy` plan. Refs to **non-schema** reusable objects (global
@@ -476,7 +476,7 @@ Engine ④ applies them in the fixed order **convert → refs → schema/operati
 (R-659). The union reproduces the original document; the only remaining
 difference is key order, which canonicalization (R-401) resolves. That is
 tested as a property for every fixture
-([Testing](../development/11-testing.md#-round-trip-property-tests)).
+([Testing](https://github.com/komeilm76/zopia/blob/main/docs/development/11-testing.md#-round-trip-property-tests)).
 
 ### ⚠️ Honest limits (documented, warned, manifest-recorded)
 

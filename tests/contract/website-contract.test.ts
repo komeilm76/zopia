@@ -1,0 +1,83 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const repositoryRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const websiteRoot = join(repositoryRoot, 'website');
+const userDocsRoot = join(repositoryRoot, 'docs', 'user');
+
+const read = (...segments: string[]): string => readFileSync(join(...segments), 'utf8');
+
+describe('documentation website contract', () => {
+  it('W-1/D-25: the website project exists with the documented commands', () => {
+    const manifest = JSON.parse(read(websiteRoot, 'package.json')) as {
+      private: boolean;
+      scripts: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+
+    expect(manifest.private).toBe(true);
+    expect(manifest.devDependencies.vitepress).toBeDefined();
+    for (const script of ['sync', 'dev', 'build', 'preview']) expect(manifest.scripts[script]).toBeDefined();
+    // The build must always re-sync so the site can never ship stale prose.
+    expect(manifest.scripts.build).toContain('sync');
+    expect(manifest.scripts.dev).toContain('sync');
+  });
+
+  it('D-26: the site is configured for the /zopia/ sub-path of the public user site', () => {
+    const config = read(websiteRoot, '.vitepress', 'config.mts');
+    expect(config).toContain("base: '/zopia/'");
+    expect(config).toContain("srcDir: 'src'");
+    // Dead links must fail the build — the site is a public contract.
+    expect(config).toContain('ignoreDeadLinks: false');
+    expect(config).toContain("provider: 'local'");
+  });
+
+  it('R-206/R-216/R-218: every user page has a website route and nothing else is hand-written', () => {
+    const sync = read(websiteRoot, 'scripts', 'sync-content.mjs');
+    const userPages = readdirSync(userDocsRoot).filter((file) => file.endsWith('.md')).sort();
+
+    expect(userPages.length).toBeGreaterThan(0);
+    for (const page of userPages) expect(sync, `${page} is not mapped to a website route`).toContain(`'${page}':`);
+
+    // Generated content directories are never committed (they are rebuilt by `npm run sync`).
+    const ignore = read(repositoryRoot, '.gitignore');
+    for (const path of ['website/src/guide/', 'website/src/reference/', 'website/src/changelog.md', 'website/.vitepress/dist/']) {
+      expect(ignore, `${path} must stay out of version control`).toContain(path);
+    }
+
+    // The home page is the only hand-written Markdown inside the website project.
+    expect(readdirSync(join(websiteRoot, 'src')).filter((file) => file.endsWith('.md'))).toContain('index.md');
+  });
+
+  it('R-221/R-223/R-231/R-232: the docs workflow publishes to the public site repository independently of npm publishing', () => {
+    // The workflow template lives in docs/development until a maintainer copies
+    // it to .github/workflows/docs.yml (see the header of the template).
+    const workflow = read(repositoryRoot, 'docs', 'development', 'docs-workflow.yml.example');
+
+    expect(workflow).toContain('repository: komeilm76/komeilm76.github.io');
+    expect(workflow).toContain('secrets.PAGES_DEPLOY_TOKEN');
+    expect(workflow).toContain('rm -rf site-repo/zopia');
+    expect(workflow).toContain('/zopia/assets/');
+    for (const path of ['docs/user/**', 'website/**', 'CHANGELOG.md']) expect(workflow).toContain(path);
+
+    // The npm publish pipeline must not depend on, or be triggered by, the docs pipeline.
+    const publish = read(repositoryRoot, '.github', 'workflows', 'publish.yml');
+    expect(publish).not.toContain('docs.yml');
+    expect(workflow).not.toContain('run: npm publish');
+  });
+
+  it('W-8: the website is buildable from a clean clone (sources present, build output absent)', () => {
+    for (const path of [
+      ['website', '.vitepress', 'config.mts'],
+      ['website', '.vitepress', 'theme', 'index.ts'],
+      ['website', '.vitepress', 'theme', 'style.css'],
+      ['website', 'scripts', 'sync-content.mjs'],
+      ['website', 'src', 'index.md'],
+      ['website', 'package-lock.json'],
+    ]) {
+      expect(existsSync(join(repositoryRoot, ...path)), `${path.join('/')} is missing`).toBe(true);
+    }
+  });
+});

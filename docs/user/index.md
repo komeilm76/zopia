@@ -5,7 +5,7 @@ documentation set: it ships inside the npm package and is the single source
 of truth for the [documentation website](https://komeilm76.github.io/zopia/).
 
 > 🛠️ Looking for how zopia is *built* (architecture, testing, standards,
-> roadmap)? That lives in [`docs/development/`](../development/) and is **not**
+> roadmap)? That lives in [`docs/development/`](https://github.com/komeilm76/zopia/tree/main/docs/development) and is **not**
 > part of the user documentation.
 
 ## 🚦 Start here

@@ -220,4 +220,6 @@ in the same rows.
 ## 🔗 Next
 
 - ⚙️ Options reference → [Configuration](configuration.md)
-- 🔄 How refs are resolved → [Architecture → The reference graph](../development/04-architecture.md#-the-reference-graph)
+- 🔄 How refs are mapped by each engine → [Conversions](conversions.md)
+- 📂 Where component modules land in the tree → [API docs format](api-docs-format.md)
+- 🧯 `ZOPIA_REF_*` diagnostics → [Errors & warnings](errors-and-warnings.md)

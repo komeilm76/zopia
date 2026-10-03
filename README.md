@@ -195,6 +195,26 @@ zopia/
 └── tests/                    # 🧪 Unit, integration, contract & round-trip suites
 ```
 
+## 🌐 Documentation website
+
+The site at **<https://komeilm76.github.io/zopia/>** is built from
+[`docs/user/`](docs/user/index.md) with [VitePress](https://vitepress.dev) and
+lives in [`website/`](website). CI publishes the built output into the public
+`komeilm76/komeilm76.github.io` repository under `/zopia/`, so this repository
+can stay private (D-26).
+
+```bash
+cd website
+npm install
+npm run dev      # 🔁 sync docs/user/ (watched) + dev server
+npm run build    # 🏗️ production build, dead links fail the build
+npm run preview  # 👀 serve the production build
+```
+
+> 📌 Prose is **never** hand-edited inside `website/` — edit `docs/user/` and
+> the sync script regenerates the site content
+> ([plan](https://github.com/komeilm76/zopia/blob/main/docs/development/14-website.md)).
+
 ## 🧪 Development
 
 zopia is a **Bun-first** project (see [docs/12-standards.md](https://github.com/komeilm76/zopia/blob/main/docs/development/12-standards.md)):

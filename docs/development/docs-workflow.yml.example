@@ -1,0 +1,91 @@
+# ⚠️ Copy this file to `.github/workflows/docs.yml` to activate it.
+# It is kept here as a template because the automation account that authored
+# it cannot create workflow files; a maintainer commits it once.
+
+name: docs
+
+# Builds the documentation website and publishes it into the PUBLIC
+# `komeilm76/komeilm76.github.io` repository under `/zopia/`, so the site stays
+# public at https://komeilm76.github.io/zopia/ even when this repository is
+# private (D-26 — see docs/development/14-website.md).
+#
+# Required repository secret:
+#   PAGES_DEPLOY_TOKEN — a fine-grained PAT with Contents: read & write on
+#   komeilm76/komeilm76.github.io only. Never printed; used solely as the push
+#   credential below.
+#
+# This workflow is deliberately independent of publish.yml: a website failure
+# must never block or roll back an npm publish, and vice versa (R-223).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/user/**'
+      - 'website/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - '.github/workflows/docs.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-website
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout zopia
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build the website
+        working-directory: website
+        run: npm run build
+
+      - name: Verify the build is base-path correct
+        run: |
+          test -f website/.vitepress/dist/index.html
+          grep -q '/zopia/assets/' website/.vitepress/dist/index.html \
+            || { echo "::error::built HTML does not reference the /zopia/ base path"; exit 1; }
+
+      - name: Checkout the public site repository
+        uses: actions/checkout@v4
+        with:
+          repository: komeilm76/komeilm76.github.io
+          token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          path: site-repo
+
+      - name: Replace the /zopia/ sub-site
+        run: |
+          rm -rf site-repo/zopia
+          mkdir -p site-repo/zopia
+          cp -R website/.vitepress/dist/. site-repo/zopia/
+          touch site-repo/.nojekyll
+
+      - name: Commit and push
+        working-directory: site-repo
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add zopia .nojekyll
+          if git diff --cached --quiet; then
+            echo 'No documentation changes to publish.'
+            exit 0
+          fi
+          git commit -m "docs(zopia): publish ${GITHUB_REF_NAME} (${GITHUB_SHA::7})"
+          git push

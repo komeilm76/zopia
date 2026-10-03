@@ -29,7 +29,7 @@ updated automatically after every npm release.
 | Search | Built-in local search (MiniSearch) | Zero infrastructure, zero keys, works on a static host. Can be swapped for Algolia DocSearch later without content changes. |
 | Package manager / runtime | **Bun** (pinned, as the rest of the repo) | One toolchain. |
 | Location | `website/` in this repository | The docs and the code version together; one commit changes behaviour, user docs, and the site. |
-| Hosting | **GitHub Pages**, project site, built by GitHub Actions | Same approach already proven in `komeilm76/km-geoboard`. |
+| Hosting | **GitHub Pages of the public `komeilm76/komeilm76.github.io` repository, under `/zopia/`** (D-26) | `komeilm76/zopia` is becoming private, and Pages on a private repository needs a paid plan. CI builds here and pushes only the built `dist` there, so the source stays private while the docs stay public at the promised URL — and the user site becomes the hub for every `km-*` package. |
 
 ### 🔧 Key configuration
 
@@ -45,9 +45,30 @@ export default defineConfig({
 });
 ```
 
-> ⚠️ `base: '/zopia/'` is mandatory for a project Pages site. Getting it wrong
-> produces a page that loads HTML but no CSS/JS — the classic "broken Pages"
-> symptom.
+> ⚠️ `base: '/zopia/'` is mandatory: the site is served from the `/zopia/`
+> sub-directory of the user site. Getting it wrong produces a page that loads
+> HTML but no CSS/JS — the classic "broken Pages" symptom. The docs workflow
+> asserts the built `index.html` references `/zopia/assets/`.
+
+### 🚀 Deployment topology (D-26)
+
+```text
+komeilm76/zopia  (private)                 komeilm76/komeilm76.github.io  (public)
+├── docs/user/**         ── source ──┐     ├── index.html            ← user site
+└── website/             ── build ───┤     ├── zopia/                ← this site
+     └── .vitepress/dist ────────────┴──▶  │   └── index.html, assets/…
+                                           └── .nojekyll
+                                                   │
+                                                   ▼
+                                     https://komeilm76.github.io/zopia/
+```
+
+| # | Rule |
+| --- | --- |
+| R-231 | The deploy job replaces the **whole** `zopia/` directory of the site repository and touches nothing else in it — other packages published to the same user site are never affected. |
+| R-232 | The push credential is a repository secret `PAGES_DEPLOY_TOKEN`: a fine-grained PAT scoped to *Contents: read & write* on `komeilm76/komeilm76.github.io` **only**. It is never printed, and no other workflow uses it. |
+| R-233 | `.nojekyll` is kept at the site-repository root so Jekyll never eats VitePress's `_assets`-style paths. |
+| R-234 | The site repository stores **built output only**. Documentation sources are never mirrored there; `docs/user/` in this repository stays the single source of truth (R-206). |
 
 ## 🗺️ Information architecture
 
@@ -150,22 +171,29 @@ Patch releases do **not** create snapshots — they update `latest` in place.
 ## 🔄 Content pipeline
 
 ```text
-docs/user/**.md
-   │  bun run docs:sync          (website/scripts/sync-content.ts)
+docs/user/**.md  +  CHANGELOG.md
+   │  npm run sync              (website/scripts/sync-content.mjs)
    ▼
-website/guide/**, website/reference/**     ← generated, git-ignored
-   │  vitepress build
+website/src/guide/**, website/src/reference/**, website/src/changelog.md   ← generated, git-ignored
+   │  npm run build             (vitepress build — dead-link gate on)
    ▼
 website/.vitepress/dist
-   │  actions/upload-pages-artifact → actions/deploy-pages
+   │  docs.yml → push into komeilm76/komeilm76.github.io:/zopia/
    ▼
 https://komeilm76.github.io/zopia/
 ```
 
+| 🧰 Command (in `website/`) | 📝 What it does |
+| --- | --- |
+| `npm run sync` | regenerates the content tree from `docs/user/` + `CHANGELOG.md` |
+| `npm run dev` | sync + VitePress dev server (hot reload) |
+| `npm run build` | sync + production build into `.vitepress/dist` |
+| `npm run preview` | serve the production build locally |
+
 | # | Rule |
 | --- | --- |
 | R-216 | The sync script is the **only** thing that writes into the website's content directories. Prose is never hand-edited inside `website/`. |
-| R-217 | Sync rewrites relative Markdown links (`cli.md` → `/zopia/guide/cli`) and injects VitePress frontmatter (title, description, outline). |
+| R-217 | Sync rewrites relative Markdown links (`cli.md` → `/guide/cli`), rewrites changelog links to GitHub, injects VitePress frontmatter (title, description, outline), and strips each page's hand-written trailing "Next" block because VitePress renders prev/next itself. |
 | R-218 | Sync fails loudly on an unmapped file: adding a page to `docs/user/` without adding it to the route map is a build error, not a silent omission. |
 | R-219 | `CHANGELOG.md` is rendered into `/changelog` by the same script. |
 
@@ -178,12 +206,12 @@ version bump → release gate → GitHub Release → publish.yml → npm
 
 | # | Rule |
 | --- | --- |
-| R-221 | A push to `main` touching `docs/user/**`, `website/**`, `README.md`, or `CHANGELOG.md` rebuilds and redeploys `latest`. |
+| R-221 | A push to `main` touching `docs/user/**`, `website/**`, `README.md`, `CHANGELOG.md`, or the workflow itself rebuilds and redeploys `latest` into the public site repository. |
 | R-222 | A published GitHub Release additionally runs the snapshot step (R-211/R-213) and commits the result before building. |
 | R-223 | The docs workflow is **separate** from `publish.yml`: a website failure must never block or roll back an npm publish, and vice versa. |
 | R-224 | The release checklist in [Standards → Release flow](12-standards.md#-release-flow) gains one item: *the website shows the new version and its documentation*. |
 
-`.github/workflows/docs.yml` (shape):
+`docs/development/docs-workflow.yml.example` → `.github/workflows/docs.yml` (shape):
 
 ```yaml
 on:
@@ -211,9 +239,9 @@ concurrency: { group: pages, cancel-in-progress: true }
 | --- | --- | --- |
 | M1 | **Split** ✅ | `docs/user/` + `docs/development/`, maps updated, package allowlist updated |
 | M2 | **Coverage audit** | every symbol/flag/code documented per R-207; examples validated per R-208 |
-| M3 | **Site skeleton** | `website/` VitePress project, sync script, local `docs:dev` works |
-| M4 | **Design pass** | landing page, brand layer, tabs/callouts, dark mode, responsive; quality floor met |
-| M5 | **CI deploy** | `docs.yml`, Pages enabled, `latest` live at the public URL |
+| M3 | **Site skeleton** ✅ | `website/` VitePress project (`base: '/zopia/'`), `sync-content.mjs` pipeline, `npm run dev` / `npm run build` green with the dead-link gate on |
+| M4 | **Design pass** 🚧 | landing page ✅, brand layer ✅, install tabs ✅, dark mode ✅, responsive ✅; Lighthouse verification outstanding |
+| M5 | **CI deploy** 🚧 | workflow written as `docs/development/docs-workflow.yml.example` (D-26); a maintainer copies it to `.github/workflows/docs.yml`, creates the public site repository, and adds `PAGES_DEPLOY_TOKEN` |
 | M6 | **Versioning** | snapshot tooling, version switcher, outdated-version banner |
 | M7 | **Release integration** | release flow updated, checklist item added, dry-run on a patch release |
 
@@ -221,7 +249,9 @@ concurrency: { group: pages, cancel-in-progress: true }
 
 | ⚠️ Risk | 📝 Mitigation |
 | --- | --- |
-| **Private repository + GitHub Pages** — Pages for a private repository requires GitHub Pro/Team/Enterprise. If `komeilm76/zopia` becomes private on a Free plan, the site stops being publishable from this repository. | Decide before flipping visibility: (a) upgrade the plan, or (b) keep a **separate public repository** that receives the built `dist` (the workflow pushes the artifact), or (c) publish the user site from the existing public `komeilm76.github.io` repository under `/zopia/`. Option (b) also keeps the source private while the docs stay public. |
+| ~~**Private repository + GitHub Pages**~~ — **resolved (D-26)**: the site is published from the public `komeilm76/komeilm76.github.io` repository under `/zopia/`, so `komeilm76/zopia` can become private without taking the documentation offline. | Two prerequisites before the switch: the public repository `komeilm76/komeilm76.github.io` must exist with Pages enabled on its default branch, and the secret `PAGES_DEPLOY_TOKEN` must be set in `komeilm76/zopia`. |
+| A leaked `PAGES_DEPLOY_TOKEN` could write to the public user site | Fine-grained PAT, single repository, single permission, rotatable; no other workflow consumes it (R-232) |
+| A broken docs build silently leaves the old site up | The workflow fails loudly; `latest` only changes on a successful build, which is the safe failure mode (R-223) |
 | Content drift between the package and the site | One source directory (R-206) and the same-commit docs rule |
 | Snapshot bloat | Only three versions are kept (R-213) |
 | Base-path mistakes breaking assets | `base: '/zopia/'` asserted in a test, plus a smoke check of the deployed HTML |
