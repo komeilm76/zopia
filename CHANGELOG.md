@@ -163,6 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-09-29
 
 ### ✨ Added
+- 🌐 Added `docs/development/docs-workflow-public.yml.example`, a second deployment template (D-26b) that publishes the website with the native GitHub Pages pipeline while the repository is public, and documented both paths in the website setup guide.
 - 🧠 **Exact IntelliSense for runtime tree consumption (S-95).** Every tree
   generated with a manifest now also carries a types-only
   **`.zopia-tree.d.ts`** declaration beside the manifest, and

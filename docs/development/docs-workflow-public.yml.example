@@ -1,0 +1,118 @@
+# ⚠️ Copy this file to `.github/workflows/docs.yml` to activate it.
+# Use THIS template only while `komeilm76/zopia` is a PUBLIC repository.
+# If the repository is (or becomes) private, use `docs-workflow.yml.example`
+# instead — GitHub Pages served directly from a private repository requires a
+# paid plan (D-26).
+
+name: docs
+
+# Publishes the documentation website straight from this repository with the
+# native GitHub Pages pipeline (Settings → Pages → Source: "GitHub Actions"),
+# exactly like the komeilm76/km-geoboard site. The resulting URL is the same
+# one the documentation promises: https://komeilm76.github.io/zopia/
+#
+# No secrets and no second repository are required: `upload-pages-artifact`
+# hands the built site to `deploy-pages`, which owns the deployment.
+#
+# This workflow is deliberately independent of publish.yml: a website failure
+# must never block or roll back an npm publish, and vice versa (R-223).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/user/**'
+      - 'website/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - '.github/workflows/docs.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # snapshot commits on release
+  pages: write      # deploy-pages
+  id-token: write   # OIDC token used by deploy-pages
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout zopia
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # snapshots are cut from release tags
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci
+
+      # R-222 — a published release freezes the *previous* minor before the
+      # site moves on, and keeps only the newest snapshots (R-213).
+      - name: Snapshot the previous minor (releases only)
+        if: github.event_name == 'release'
+        working-directory: website
+        run: |
+          current_minor="$(node -p "require('../package.json').version.split('.').slice(0,2).join('.')")"
+          previous_tag="$(git tag --sort=-v:refname | grep -v "^v${current_minor}\." | head -n 1)"
+          if [ -z "$previous_tag" ]; then
+            echo "No earlier release to snapshot."
+          else
+            node scripts/snapshot-version.mjs "$previous_tag" || echo "Snapshot already exists — nothing to do (R-211)."
+          fi
+
+      - name: Commit new snapshots (releases only)
+        if: github.event_name == 'release'
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add website/versions
+          if git diff --cached --quiet; then
+            echo 'No snapshot changes.'
+          else
+            git commit -m "docs(website): snapshot documentation versions"
+            git push origin HEAD:main
+          fi
+
+      - name: Build the website
+        working-directory: website
+        run: npm run build
+
+      - name: Quality audit (base path, metadata, headings, links, budgets)
+        working-directory: website
+        run: npm run audit
+
+      - name: Verify the build is base-path correct
+        run: |
+          test -f website/.vitepress/dist/index.html
+          grep -q '/zopia/assets/' website/.vitepress/dist/index.html \
+            || { echo "::error::built HTML does not reference the /zopia/ base path"; exit 1; }
+
+      - name: Disable Jekyll processing (R-233)
+        run: touch website/.vitepress/dist/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

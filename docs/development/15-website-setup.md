@@ -1,13 +1,62 @@
 # 🛠️ Website setup — one-time checklist
 
 Everything the documentation website needs that **cannot** be done from code:
-creating the public site repository, creating the deploy token, and activating
-the workflow. Do these once, in this order. Total time: about 10 minutes.
+creating the site repository, creating the deploy token, and activating the
+workflow. Do it once. Total time: about 10 minutes — or 3 minutes if the
+repository stays public (see [Path B](#-path-b--zopia-stays-public)).
 
 > 🧭 Why these three exist — the site is published from a **separate public
 > repository** so `komeilm76/zopia` can become private without taking the
 > documentation offline ([D-26](12-standards.md#-key-decisions) ·
 > [Website plan](14-website.md#-deployment-topology-d-26)).
+
+## 🧭 Choose your path first
+
+There are two supported ways to publish the site. They differ only in **where
+GitHub Pages serves the files from**, and the choice is forced by one question:
+*will `komeilm76/zopia` be private?*
+
+| | Path A — zopia goes **private** | Path B — zopia stays **public** |
+| --- | --- | --- |
+| Template | `docs-workflow.yml.example` | [`docs-workflow-public.yml.example`](docs-workflow-public.yml.example) |
+| Extra repository | a public `komeilm76.github.io` | none |
+| Secret | `PAGES_DEPLOY_TOKEN` | none |
+| Manual steps | the 4 below | [just one](#-path-b--zopia-stays-public) |
+| Precedent | — | the same pipeline as `komeilm76/km-geoboard` |
+| URL | <https://komeilm76.github.io/zopia/> | <https://komeilm76.github.io/zopia/> |
+
+Pages served **directly** from a private repository requires a paid GitHub
+plan; that is the only reason Path A exists. If the repository stays public,
+jump to [Path B](#-path-b--zopia-stays-public) and ignore steps 1–3.
+
+---
+
+## 🚀 Path B — zopia stays public
+
+One step, no secrets, no second repository.
+
+1. Copy [`docs/development/docs-workflow-public.yml.example`](docs-workflow-public.yml.example)
+   to `.github/workflows/docs.yml` on `main` (the two ways to do that are
+   described in [step 3](#-step-3--activate-the-workflow) — the only difference
+   is which template you copy).
+2. In **<https://github.com/komeilm76/zopia/settings/pages>**, set
+   **Build and deployment → Source** to **GitHub Actions**.
+3. Open **Actions → docs → Run workflow**, and when it turns green visit
+   <https://komeilm76.github.io/zopia/>.
+
+That workflow uses `actions/upload-pages-artifact` + `actions/deploy-pages`, so
+GitHub itself owns the deployment and nothing needs write access to another
+repository. Everything else — snapshots on release, the quality audit, the
+`/zopia/` base-path assertion — is identical to Path A.
+
+> ⚠️ If you later make the repository private, the published site keeps
+> working only until the next deployment; switch to Path A at that point.
+
+---
+
+## 🔐 Path A — zopia goes private
+
+The remaining four steps are Path A only.
 
 | # | Step | Where | Time |
 | --- | --- | --- | --- |
@@ -97,7 +146,9 @@ that is intended ([R-232](14-website.md#-deployment-topology-d-26)).
 
 The workflow file is already written and reviewed; it just has to be placed in
 the folder GitHub watches. It lives in the repository as
-[`docs/development/docs-workflow.yml.example`](docs-workflow.yml.example).
+[`docs/development/docs-workflow.yml.example`](docs-workflow.yml.example)
+(Path A) or [`docs/development/docs-workflow-public.yml.example`](docs-workflow-public.yml.example)
+(Path B). Copy **one** of them — the destination file name is `docs.yml` either way.
 
 ### Option A — in the browser (no tools needed)
 

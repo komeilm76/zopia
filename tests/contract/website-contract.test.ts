@@ -69,6 +69,30 @@ describe('documentation website contract', () => {
     expect(workflow).not.toContain('run: npm publish');
   });
 
+  it('D-26b: the public-repository workflow deploys the same build through the native Pages pipeline', () => {
+    const workflow = read(repositoryRoot, 'docs', 'development', 'docs-workflow-public.yml.example');
+
+    // Native GitHub Pages deployment — no second repository, no deploy token.
+    expect(workflow).toContain('actions/upload-pages-artifact@v3');
+    expect(workflow).toContain('actions/deploy-pages@v4');
+    expect(workflow).toContain('path: website/.vitepress/dist');
+    expect(workflow).toContain('pages: write');
+    expect(workflow).toContain('id-token: write');
+    expect(workflow).not.toContain('PAGES_DEPLOY_TOKEN');
+    expect(workflow).not.toContain('komeilm76/komeilm76.github.io');
+
+    // Identical quality guarantees to the private-repository template.
+    expect(workflow).toContain('npm run audit');
+    expect(workflow).toContain('/zopia/assets/');
+    expect(workflow).toContain('.nojekyll');
+    expect(workflow).toContain('snapshot-version.mjs');
+    for (const path of ['docs/user/**', 'website/**', 'CHANGELOG.md']) expect(workflow).toContain(path);
+    expect(workflow).not.toContain('run: npm publish');
+
+    // Only one of the two templates may ever be live.
+    expect(existsSync(join(repositoryRoot, '.github', 'workflows', 'docs.yml')), 'a maintainer activates exactly one template').toBe(false);
+  });
+
   it('R-211/R-212/R-213/R-215: version snapshots are frozen, mapped, and limited to the previous two minors', () => {
     const versionsRoot = join(websiteRoot, 'versions');
     const snapshots = readdirSync(versionsRoot, { withFileTypes: true })
