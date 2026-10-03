@@ -44,7 +44,7 @@ describe('documentation website contract', () => {
 
     // Generated content directories are never committed (they are rebuilt by `npm run sync`).
     const ignore = read(repositoryRoot, '.gitignore');
-    for (const path of ['website/src/guide/', 'website/src/reference/', 'website/src/changelog.md', 'website/.vitepress/dist/']) {
+    for (const path of ['website/src/guide/', 'website/src/reference/', 'website/src/v*/', 'website/src/changelog.md', 'website/.vitepress/dist/']) {
       expect(ignore, `${path} must stay out of version control`).toContain(path);
     }
 
