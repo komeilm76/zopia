@@ -8,6 +8,9 @@
     "sync": "node scripts/sync-content.mjs",
     "dev": "node scripts/sync-content.mjs --watch & vitepress dev",
     "build": "npm run sync && vitepress build",
+    "audit": "node scripts/audit.mjs",
+    "check": "npm run build && npm run audit",
+    "snapshot": "node scripts/snapshot-version.mjs",
     "preview": "vitepress preview"
   },
   "devDependencies": {

@@ -57,8 +57,8 @@ depend on is fixed by [Documentation split plan](13-documentation-split.md).
 | W-2 | **Every feature documented** — symbols, commands, flags, config keys, error/warning codes | [Split → R-207](13-documentation-split.md#-rules) | 🚧 |
 | W-3 | **Valid, standard examples** everywhere | [Split → R-208](13-documentation-split.md#-rules) | 🚧 |
 | W-4 | **Options documented as name · type · default · effect · failure mode** | [Website plan](14-website.md#-targets) | 🚧 |
-| W-5 | **5/5 UI & UX** against the published design bar | [Website plan → Design bar](14-website.md#-design-bar) | 🚧 |
-| W-6 | **Versioned documentation** — latest plus the previous two minors | [Website plan → Versioning](14-website.md#-versioning) | 🚧 |
+| W-5 | **5/5 UI & UX** against the published design bar — landing page, brand layer, search, dark mode, responsive layout, and an automated quality audit | [Website plan → Design bar](14-website.md#-design-bar) | 🚧 |
+| W-6 | **Versioned documentation** — latest plus the previous two minors, with a generated switcher and outdated-version banners | [Website plan → Versioning](14-website.md#-versioning) | ✅ |
 | W-7 | **Automatic updates after every npm release** | [Website plan → Release flow](14-website.md#-release-flow-integration) | 🚧 |
 | W-8 | **Reproducible site build** from a clean clone and in CI | [Website plan → Quality gates](14-website.md#-quality-gates) | 🚧 |
 

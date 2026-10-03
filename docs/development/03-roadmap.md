@@ -208,19 +208,29 @@ The audience split and a first-class documentation site. Contracts:
       (`base: '/zopia/'`, local search, edit links), the `sync-content.mjs`
       pipeline that renders `docs/user/` + `CHANGELOG.md` into the site, and
       `npm run dev` / `npm run build` with the dead-link gate enabled
-- [ ] 🎨 **Design pass (M4)** — landing page, brand layer, install tabs,
-      dark mode, and responsive layout are in place; the Lighthouse quality
-      floor (≥ 95 / a11y 100) still has to be measured
+- [x] 🎨 **Design pass (M4)** — landing page, brand layer, install tabs, dark
+      mode, responsive layout, plus `npm run audit`: a deterministic quality
+      gate over the built site (base path, unique metadata, `<html lang>`,
+      heading order, image alt text, resolvable links, informative link text,
+      HTML/asset budgets). Lighthouse itself needs a browser, so it stays a
+      manual check against the deployed site
 - [ ] 🚀 **CI deploy (M5)** — the docs workflow (template
       `docs/development/docs-workflow.yml.example`, copied to
       `.github/workflows/docs.yml` by a maintainer) builds here and
       publishes the built site into the public `komeilm76/komeilm76.github.io`
       repository under `/zopia/` (D-26); it needs that repository to exist with
       Pages enabled and a `PAGES_DEPLOY_TOKEN` secret
-- [ ] 🔖 **Versioned docs (M6)** — `latest` plus the previous two minors,
-      version switcher, outdated-version banner (R-211…R-215)
-- [ ] 🔁 **Release integration (M7)** — a published release updates the site
-      automatically and independently of `publish.yml` (R-221…R-224)
+- [x] 🔖 **Versioned docs (M6)** — `latest` plus the previous two minors
+      (R-211…R-215): `website/scripts/snapshot-version.mjs` freezes a released
+      tag into `website/versions/<vX.Y>/`, prunes older snapshots, and maps
+      pre-split page names onto today's routes; the switcher and per-version
+      sidebars are generated; every snapshot page carries an
+      outdated-version banner. **v0.5 and v0.4 are already published** from
+      their release tags
+- [ ] 🔁 **Release integration (M7)** — the docs workflow snapshots the
+      previous minor on a published release, commits it, rebuilds, audits, and
+      publishes, independently of `publish.yml` (R-221…R-224). Verified on the
+      next real release
 
 > ✅ **Hosting decided (D-26)** — the site is published from the **public**
 > `komeilm76/komeilm76.github.io` repository under `/zopia/`, so

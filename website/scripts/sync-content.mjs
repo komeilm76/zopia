@@ -1,22 +1,29 @@
 #!/usr/bin/env node
 /**
- * Sync `docs/user/**` into the VitePress content tree.
+ * Sync `docs/user/**` (and the frozen snapshots in `website/versions/`) into
+ * the VitePress content tree.
  *
  * The user documentation in `docs/user/` is the single source of truth (R-206):
  * it ships inside the npm archive *and* renders on the website. This script is
- * the only thing allowed to write into `website/src/guide`,
- * `website/src/reference`, and `website/src/changelog.md` (R-216) — prose is
- * never hand-edited inside `website/`.
+ * the only thing allowed to write into the generated content directories
+ * (R-216) — prose is never hand-edited inside `website/`.
  *
  * What it does per page:
  *   1. maps the source file to its public route (R-218: unmapped file → error)
- *   2. injects VitePress frontmatter (title, description, outline, editLink)
+ *   2. injects VitePress frontmatter (title, description, outline)
  *   3. rewrites relative Markdown links to site routes (R-217)
  *   4. strips the page's trailing "Next" navigation block (VitePress renders
  *      prev/next links itself, so the hand-written one would be duplicated)
+ *
+ * Versioned documentation (R-211 … R-215):
+ *   - each `website/versions/<vX.Y>/` snapshot renders under `/vX.Y/…`
+ *   - every snapshot page gets the outdated-version banner (R-214)
+ *   - the generated `versions.generated.json` drives the version switcher and
+ *     the per-version sidebars, so neither is ever hand-maintained (R-215)
  */
 
 import { watch } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +31,11 @@ import { fileURLToPath } from 'node:url';
 const websiteRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const repositoryRoot = dirname(websiteRoot);
 const userDocsRoot = join(repositoryRoot, 'docs', 'user');
+const versionsRoot = join(websiteRoot, 'versions');
 const contentRoot = join(websiteRoot, 'src');
+
+const GITHUB_BLOB = 'https://github.com/komeilm76/zopia/blob/main/';
+const GITHUB_TREE = 'https://github.com/komeilm76/zopia/blob/';
 
 /** Source file → { section, slug, title, description } for every user page. */
 const ROUTES = {
@@ -53,60 +64,47 @@ const route = (file) => {
   return entry;
 };
 
-const routePath = (file) => {
+const routePath = (file, prefix = '') => {
   const { section, slug } = route(file);
-  return `/${section}/${slug}`;
+  return `${prefix}/${section}/${slug}`;
 };
 
 /** Rewrite one Markdown link target that points at another user page. */
-function rewriteTarget(target) {
+function rewriteTarget(target, pages, prefix, fallback) {
   const [path, anchor] = target.split('#');
   if (!path) return target; // same-page anchor
   const file = path.replace(/^\.\//, '');
-  if (!(file in ROUTES)) return target;
-  return anchor ? `${routePath(file)}#${anchor}` : routePath(file);
+  const page = pages[file];
+  if (!page) return fallback ? `${fallback}${file}${anchor ? `#${anchor}` : ''}` : target;
+  return `${prefix}/${page.section}/${page.slug}${anchor ? `#${anchor}` : ''}`;
 }
 
-function transform(file, markdown) {
-  const { title, description } = route(file);
+function frontmatter(title, description) {
+  return ['---', `title: ${JSON.stringify(title)}`, `description: ${JSON.stringify(description)}`, 'outline: [2, 3]', '---', '', ''].join('\n');
+}
 
+function transform(markdown, { title, description, pages, prefix, fallback, banner }) {
   let body = markdown
-    // links to sibling user pages → site routes
-    .replace(/\]\(([^)\s]+\.md(?:#[^)\s]*)?)\)/g, (_match, target) => `](${rewriteTarget(target)})`)
-    // the H1 is rendered from frontmatter-driven content, keep it but drop a duplicated title line
+    .replace(/\]\(([^)\s]+\.md(?:#[^)\s]*)?)\)/g, (_match, target) => `](${rewriteTarget(target, pages, prefix, fallback)})`)
     .trimEnd();
 
   // Drop the hand-written trailing "Next" block — VitePress renders prev/next.
   body = body.replace(/\n## 🔗 Next\n[\s\S]*$/, '').trimEnd();
 
-  const frontmatter = [
-    '---',
-    `title: ${JSON.stringify(title)}`,
-    `description: ${JSON.stringify(description)}`,
-    'outline: [2, 3]',
-    '---',
-    '',
-    '',
-  ].join('\n');
+  // The banner goes after the H1 so the page still opens with its title.
+  if (banner) {
+    const lines = body.split('\n');
+    const headingIndex = lines.findIndex((line) => line.startsWith('# '));
+    const insertAt = headingIndex === -1 ? 0 : headingIndex + 1;
+    lines.splice(insertAt, 0, '', banner);
+    body = lines.join('\n');
+  }
 
-  return `${frontmatter}${body}\n`;
+  return `${frontmatter(title, description)}${body}\n`;
 }
 
-const GITHUB_BLOB = 'https://github.com/komeilm76/zopia/blob/main/';
-
-async function syncChangelog() {
-  const raw = await readFile(join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
-  // The changelog links to repository files (./LICENSE, ./docs/…); on the site
-  // those must resolve to GitHub, not to a site route.
-  const source = raw.replace(
-    /\]\((?!https?:|#|\/)\.?\/?([^)\s]+)\)/g,
-    (_match, target) => `](${GITHUB_BLOB}${target})`,
-  );
-  const frontmatter = ['---', 'title: "Changelog"', 'description: "Release history of the zopia package."', 'outline: [2, 2]', '---', '', ''].join('\n');
-  await writeFile(join(contentRoot, 'changelog.md'), `${frontmatter}${source.trimEnd()}\n`, 'utf8');
-}
-
-async function sync() {
+/** Render `docs/user/` as the latest version. */
+async function syncLatest() {
   const files = (await readdir(userDocsRoot)).filter((file) => file.endsWith('.md')).sort();
 
   // R-218 — every source page must be mapped, and every mapping must exist.
@@ -120,15 +118,97 @@ async function sync() {
     await mkdir(join(contentRoot, section), { recursive: true });
   }
 
+  const pages = Object.fromEntries(Object.entries(ROUTES).map(([file, entry]) => [file, entry]));
   for (const file of files) {
-    const { section, slug } = route(file);
+    const { section, slug, title, description } = route(file);
     const markdown = await readFile(join(userDocsRoot, file), 'utf8');
-    await writeFile(join(contentRoot, section, `${slug}.md`), transform(file, markdown), 'utf8');
+    await writeFile(
+      join(contentRoot, section, `${slug}.md`),
+      transform(markdown, { title, description, pages, prefix: '', fallback: GITHUB_BLOB }),
+      'utf8',
+    );
   }
 
+  return files.length;
+}
+
+/** Render every frozen snapshot under `/vX.Y/…` with an outdated banner. */
+async function syncVersions(latestVersion) {
+  if (!existsSync(versionsRoot)) return [];
+
+  const directories = (await readdir(versionsRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && /^v\d+\.\d+$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort((left, right) => {
+      const [leftMajor, leftMinor] = left.slice(1).split('.').map(Number);
+      const [rightMajor, rightMinor] = right.slice(1).split('.').map(Number);
+      return rightMajor - leftMajor || rightMinor - leftMinor;
+    });
+
+  const rendered = [];
+  for (const minor of directories) {
+    const meta = JSON.parse(await readFile(join(versionsRoot, minor, 'meta.json'), 'utf8'));
+    const pages = Object.fromEntries(meta.pages.map((page) => [page.file, page]));
+    const prefix = `/${minor}`;
+
+    await rm(join(contentRoot, minor), { recursive: true, force: true });
+    for (const section of new Set(meta.pages.map((page) => page.section))) {
+      await mkdir(join(contentRoot, minor, section), { recursive: true });
+    }
+
+    for (const page of meta.pages) {
+      const markdown = await readFile(join(versionsRoot, minor, 'pages', page.file), 'utf8');
+      // R-214 — every non-latest page says so, and links to the current docs.
+      const banner = [
+        '::: warning YOU ARE READING OLD DOCUMENTATION',
+        `This page documents zopia **v${meta.version}**. The latest version is **v${latestVersion}** —`,
+        `[read the current documentation](/guide/introduction) or [browse the v${meta.version} sources](${GITHUB_TREE}${meta.tag}/docs).`,
+        ':::',
+      ].join('\n');
+
+      await writeFile(
+        join(contentRoot, minor, page.section, `${page.slug}.md`),
+        transform(markdown, {
+          title: `${page.title} (${minor})`,
+          description: `${page.title} — zopia ${meta.version} documentation snapshot.`,
+          pages,
+          prefix,
+          fallback: `${GITHUB_TREE}${meta.tag}/docs/`,
+          banner,
+        }),
+        'utf8',
+      );
+    }
+
+    rendered.push({ minor, version: meta.version, tag: meta.tag, pages: meta.pages.map(({ section, slug, title }) => ({ section, slug, title })) });
+  }
+
+  return rendered;
+}
+
+async function syncChangelog() {
+  const raw = await readFile(join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
+  // The changelog links to repository files (./LICENSE, docs/…); on the site
+  // those must resolve to GitHub, not to a site route.
+  const source = raw.replace(/\]\((?!https?:|#|\/)\.?\/?([^)\s]+)\)/g, (_match, target) => `](${GITHUB_BLOB}${target})`);
+  await writeFile(join(contentRoot, 'changelog.md'), `${frontmatter('Changelog', 'Release history of the zopia package.')}${source.trimEnd()}\n`, 'utf8');
+}
+
+async function sync() {
+  const { version: latestVersion } = JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8'));
+  const pageCount = await syncLatest();
+  const versions = await syncVersions(latestVersion);
   await syncChangelog();
 
-  console.log(`✓ synced ${files.length} user pages + changelog → ${resolve(contentRoot)}`);
+  // R-215 — the switcher and per-version sidebars are generated, never hand-written.
+  await writeFile(
+    join(websiteRoot, '.vitepress', 'versions.generated.json'),
+    `${JSON.stringify({ latest: latestVersion, latestMinor: `v${latestVersion.split('.').slice(0, 2).join('.')}`, versions }, null, 2)}\n`,
+    'utf8',
+  );
+
+  const snapshots = versions.map((entry) => entry.minor).join(', ') || 'none';
+  console.log(`✓ synced ${pageCount} user pages + changelog · snapshots: ${snapshots} → ${resolve(contentRoot)}`);
 }
 
 await sync();

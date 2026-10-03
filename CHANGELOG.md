@@ -50,6 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The pipeline is independent of `publish.yml`, replaces only the `zopia/`
   sub-directory of the site repository, and verifies the built HTML references
   the `/zopia/` base path. A new website contract suite pins all of this.
+- 🔖 **Versioned documentation.** `website/scripts/snapshot-version.mjs`
+  freezes a released tag into `website/versions/<vX.Y>/` (immutable once
+  written, pruned to the previous two minors), mapping pre-split page names
+  onto today's routes so older releases still browse like the current site.
+  The version switcher, the per-version sidebars, and the
+  "you are reading old documentation" banner are all generated from those
+  snapshots. **v0.5 and v0.4 are published** alongside the latest docs.
+- 🔍 **Automated site quality gate.** `website/scripts/audit.mjs` checks the
+  built output on every CI run: `/zopia/` base-path correctness, unique
+  non-empty titles and meta descriptions, `<html lang>`, exactly one `<h1>`
+  with no skipped heading levels, image alt text, resolvable internal links,
+  informative link text, no unrendered Markdown, and HTML/asset weight
+  budgets. The release path of the docs workflow now also snapshots the
+  previous minor before rebuilding.
 - 📦 The npm archive now packs the whole `docs/user/**` set instead of three
   individual guides, and `package.json#homepage` points at the documentation
   website. `scripts/package-check.ts` and the package/documentation contract

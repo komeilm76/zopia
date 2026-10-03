@@ -206,10 +206,15 @@ can stay private (D-26).
 ```bash
 cd website
 npm install
-npm run dev      # 🔁 sync docs/user/ (watched) + dev server
-npm run build    # 🏗️ production build, dead links fail the build
-npm run preview  # 👀 serve the production build
+npm run dev              # 🔁 sync docs/user/ (watched) + dev server
+npm run check            # 🏗️ production build + quality audit (what CI runs)
+npm run snapshot -- v0.6 # 🔖 freeze a released version for the switcher
+npm run preview          # 👀 serve the production build
 ```
+
+The site serves the latest release at the root and keeps the previous two
+minors under `/v0.5/`, `/v0.4/` — snapshots live in `website/versions/` and the
+switcher, sidebars, and outdated-version banners are generated from them.
 
 > 📌 Prose is **never** hand-edited inside `website/` — edit `docs/user/` and
 > the sync script regenerates the site content

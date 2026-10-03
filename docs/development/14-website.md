@@ -161,10 +161,11 @@ What "5 out of 5" means, concretely. Each line is a review checklist item.
 | # | Rule |
 | --- | --- |
 | R-211 | A snapshot is created **at release time**, from the tagged `docs/user/` content, and is never edited afterwards. Fixing a typo in an old version means fixing it in `latest` only. |
-| R-212 | Snapshots are stored in `website/versions/<major.minor>/` and committed, so the site is rebuildable from a clean clone without Git archaeology. |
-| R-213 | Releasing a new minor adds its predecessor as a snapshot and **prunes** the oldest, keeping exactly three browsable versions. |
+| R-212 | Snapshots are stored in `website/versions/<major.minor>/` (frozen `pages/*.md` plus a `meta.json` route table) and committed, so the site is rebuildable from a clean clone without Git archaeology. |
+| R-213 | Releasing a new minor adds its predecessor as a snapshot and **prunes** the oldest (`--keep`, default 2), keeping exactly three browsable versions. |
 | R-214 | Every non-latest page shows a banner: *"You are reading the documentation for v0.5. The latest version is v0.7."* with a link to the same page in `latest`. |
-| R-215 | The version switcher is generated from the directory listing, never hand-maintained. |
+| R-215 | The version switcher **and** the per-version sidebars are generated from the snapshot directory into `.vitepress/versions.generated.json`, never hand-maintained. |
+| R-216b | Releases older than the documentation split keep their original page set (`usage`, `configuration`, `api-docs-format`, `components`, `conversions`, `concepts`); the snapshot tool maps those historic file names onto today's routes so an old version still browses like the current site. |
 
 Patch releases do **not** create snapshots — they update `latest` in place.
 
@@ -185,9 +186,12 @@ https://komeilm76.github.io/zopia/
 
 | 🧰 Command (in `website/`) | 📝 What it does |
 | --- | --- |
-| `npm run sync` | regenerates the content tree from `docs/user/` + `CHANGELOG.md` |
-| `npm run dev` | sync + VitePress dev server (hot reload) |
-| `npm run build` | sync + production build into `.vitepress/dist` |
+| `npm run sync` | regenerates the content tree from `docs/user/`, the snapshots, and `CHANGELOG.md` |
+| `npm run dev` | watch-sync + VitePress dev server (hot reload on real source edits) |
+| `npm run build` | sync + production build into `.vitepress/dist` (dead links fail) |
+| `npm run audit` | static quality audit of the built site |
+| `npm run check` | `build` + `audit` — the gate CI runs |
+| `npm run snapshot -- <tag>` | freeze a released version into `website/versions/` |
 | `npm run preview` | serve the production build locally |
 
 | # | Rule |
@@ -224,14 +228,18 @@ concurrency: { group: pages, cancel-in-progress: true }
 
 ## 🧪 Quality gates
 
-| 🚦 Gate | 🔍 What it checks |
-| --- | --- |
-| `docs:sync` | every `docs/user/` page is mapped; no orphan routes |
-| `vitepress build` | dead internal links fail the build |
-| Markdown contract test | user/development split rules (R-201…R-209) |
-| Example check | code fences tagged `ts`/`bash` parse; `ts` samples typecheck against the package |
-| Link check | external links resolve (scheduled, non-blocking) |
-| Lighthouse CI | the [quality floor](#-quality-floor) thresholds (non-blocking at first, blocking once green) |
+| 🚦 Gate | 🔍 What it checks | 🤖 Where |
+| --- | --- | --- |
+| `npm run sync` | every `docs/user/` page is mapped; no orphan routes (R-218) | build, CI |
+| `vitepress build` | dead internal links **fail the build** | build, CI |
+| `npm run audit` | base-path correctness, unique titles/descriptions, `<html lang>`, one `<h1>` and no skipped heading levels, `img` alt text, resolvable internal links, informative link text, no unrendered Markdown, HTML/asset weight budgets | CI |
+| `website-contract` test suite | project shape, `/zopia/` base, route coverage, ignored generated paths, deploy workflow, snapshot layout | `bun run test` |
+| `documentation-status` test suite | user/development split rules (R-201…R-209) | `bun run test` |
+| Lighthouse | the [quality floor](#-quality-floor) thresholds — needs a real browser, so it stays a manual/scheduled check against the deployed site | manual |
+
+> 📌 The audit exists because Lighthouse cannot run on every commit: it needs a
+> browser and a server. The audit covers the regressions documentation changes
+> actually cause, deterministically and in under a second.
 
 ## 📅 Milestones
 
@@ -240,10 +248,10 @@ concurrency: { group: pages, cancel-in-progress: true }
 | M1 | **Split** ✅ | `docs/user/` + `docs/development/`, maps updated, package allowlist updated |
 | M2 | **Coverage audit** | every symbol/flag/code documented per R-207; examples validated per R-208 |
 | M3 | **Site skeleton** ✅ | `website/` VitePress project (`base: '/zopia/'`), `sync-content.mjs` pipeline, `npm run dev` / `npm run build` green with the dead-link gate on |
-| M4 | **Design pass** 🚧 | landing page ✅, brand layer ✅, install tabs ✅, dark mode ✅, responsive ✅; Lighthouse verification outstanding |
+| M4 | **Design pass** ✅ | landing page, brand layer, install tabs, dark mode, responsive layout, and the automated quality audit (`npm run audit`) — 27 pages, 2.5 MB of assets, all budgets respected. Lighthouse stays a manual check against the deployed site |
 | M5 | **CI deploy** 🚧 | workflow written as `docs/development/docs-workflow.yml.example` (D-26); a maintainer copies it to `.github/workflows/docs.yml`, creates the public site repository, and adds `PAGES_DEPLOY_TOKEN` |
-| M6 | **Versioning** | snapshot tooling, version switcher, outdated-version banner |
-| M7 | **Release integration** | release flow updated, checklist item added, dry-run on a patch release |
+| M6 | **Versioning** ✅ | `snapshot-version.mjs` (immutable snapshots, `--keep` pruning, historic-layout mapping), generated switcher and per-version sidebars, outdated-version banner on every snapshot page. v0.5 and v0.4 are live snapshots cut from their release tags |
+| M7 | **Release integration** 🚧 | the workflow snapshots the previous minor on a published release, commits it, rebuilds, audits, and publishes; a real dry-run has to wait for the next release |
 
 ## ⚠️ Risks & decisions needed
 

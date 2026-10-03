@@ -18,7 +18,7 @@ flowchart LR
 > `apiDocsToOpenApi`); `jsonSchemaToZod()` additionally resolves its documented
 > `.json` path convenience before invoking the same in-memory emitter.
 
-## ⚠️ Shared warning contract
+### ⚠️ Shared warning contract
 
 All four engines use `ZopiaWarning = { code, at?, message }`, where `code` is
 one of the exported stable `ZOPIA_WARNING_CODES` and `at` is an escaped JSON
@@ -168,7 +168,6 @@ The runtime and emitted-code results have equivalent validation behavior.
 | `{ "minimum": n }` / `{ "maximum": n }` | `.min(n)` / `.max(n)` | R-628 |
 | `{ "exclusiveMinimum": n }` *(number — 2020-12/3.1)* | `.gt(n)` — round-trips exactly (Zod emits numeric `exclusiveMinimum`) | R-628 |
 | `{ "exclusiveMinimum": true }` *(boolean — draft-04/07)* | `.gt(n)` over `minimum` for numbers; `.min(n + 1)` for integers — **plus warning** `ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND` + overlay restoring the original boolean form (R-635) | R-628 |
-| `{ "minimum": n, "exclusiveMinimum": m }` / `{ "maximum": n, "exclusiveMaximum": m }` *(both bounds, numeric)* | both checks are emitted (`.min(n).gt(m)`), but `z.toJSONSchema()` keeps only the tighter keyword — so the authored **pair** is recorded in an overlay `set` and restored verbatim on reverse. Nothing is normalized silently (D-12) | R-628, R-635 |
 | `{ "minLength": n }` / `{ "maxLength": n }` | `.min(n)` / `.max(n)` on strings | R-628 |
 | `{ "pattern": p }` | `.regex(new RegExp(p))` | R-628 |
 | `{ "contentEncoding": "base64" \| "base64url" \| "hex" }` | corresponding native/pattern string check; overlay restores the exact encoding keyword. Other encodings and `contentMediaType` retain base validation, warn, and are preserved by overlays | R-634, R-635 |
@@ -259,7 +258,7 @@ const schema = z.object({
 function openApiToApiDocs(input: string | Record<string, unknown>, options?: ZopiaGenerateOptions): Promise<ZopiaGenerateResult>;
 ```
 
-Pipeline (see [Architecture → The pipeline](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md#-the-pipeline)):
+Pipeline (see [Architecture → The pipeline](04-architecture.md#-the-pipeline)):
 **detect → bundle external refs (file inputs, D-17) → normalize (v2 | v3) → refs → render (directory | flat) → manifest**.
 
 **Input parsing (v0.2.x, D-16):** text starting with `{`/`[` is parsed as
@@ -374,7 +373,7 @@ Missing `paths` → `ZOPIA_SPEC_MISSING_PATHS`. Invalid JSON → `ZOPIA_SPEC_INV
 
 ### 🔗 Step 3 — refs
 
-Per [Architecture → The reference graph](https://github.com/komeilm76/zopia/blob/main/docs/development/04-architecture.md#-the-reference-graph)
+Per [Architecture → The reference graph](04-architecture.md#-the-reference-graph)
 (R-402): file-path inputs first bundle *same-folder* external refs inline
 (D-17, above); afterwards unknown → `ZOPIA_REF_NOT_FOUND`; remaining external
 → `ZOPIA_REF_EXTERNAL`; cycles → `z.lazy` plan. Refs to **non-schema** reusable objects (global
@@ -391,10 +390,10 @@ parameter/response declarations refreshed from their current modules
 
 Lays out files per the mode and emits code:
 
-- 📂 layout — [API docs format](api-docs-format.md) (trees, naming, collisions)
-- 📄 endpoint files — the **`index.ts` contract** ([07 → contract](api-docs-format.md#-the-indexts-contract)); every *practical* field of `makeApiConfig` is filled from the IR when the source provides it (T-7)
-- 🧱 components — [Components](components.md)
-- 📦 manifest — [07 → The manifest](api-docs-format.md)
+- 📂 layout — [API docs format](07-api-docs.md) (trees, naming, collisions)
+- 📄 endpoint files — the **`index.ts` contract** ([07 → contract](07-api-docs.md#-the-indexts-contract)); every *practical* field of `makeApiConfig` is filled from the IR when the source provides it (T-7)
+- 🧱 components — [Components](08-components.md)
+- 📦 manifest — [07 → The manifest](07-api-docs.md)
 
 **Result**
 
@@ -452,8 +451,6 @@ interface ZopiaManifest {
 | # | Step | Rules |
 | --- | --- | --- |
 | R-651 | 📦 **Manifest required** | no `.zopia-manifest.json` → `ZOPIA_DOCS_MISSING_MANIFEST`; a missing file field or a missing/renamed endpoint or emitted-component file → `ZOPIA_DOCS_MANIFEST_MISMATCH`. All listed paths are preflighted (including containment and regular-file checks) before any generated module is imported, so a stale manifest cannot partially execute the tree. (The manifest is what makes flat mode unambiguous — D-06.) |
-| R-660 | 🧵 **Swagger serialization → 3.x** | reversing a Swagger 2.0 manifest to `'3.0'`/`'3.1'` restores the wire format instead of falling back to 3.x defaults. `collectionFormat` on a `query` parameter becomes `csv` → `style: "form", explode: false`, `multi` → `style: "form", explode: true`, `pipes` → `style: "pipeDelimited"`, `ssv` → `style: "spaceDelimited"`; on `path`/`header` only `csv` maps (→ `style: "simple", explode: false`). `formData` array serialization moves to the media type's `encoding` map (`csv` → `form` + `explode: false`, `multi` → `form` + `explode: true`), and `type: "file"` becomes `{ "type": "string", "format": "binary" }`. Values with no legal 3.x spelling — `tsv` anywhere, and `pipes`/`ssv`/`tsv` in `encoding` objects or on `path`/`header` — keep the original in an `x-collectionFormat` extension and emit `ZOPIA_WARN_COLLECTION_FORMAT` at the output pointer (D-12). Shared `#/parameters/<Name>` declarations take the same mapping on their way to `components.parameters`. Reversing to `'2.0'` still restores `collectionFormat` and `type: "file"` verbatim. |
-| R-661 | 🗂️ **Preset split roots** | `apiDocsToOpenApi()` / `zopia reverse` on a directory whose manifests live one level down (a `--preset` split: one tree per bucket, no manifest at the root — D-25) fails with `ZOPIA_DOCS_PRESET_ROOT` naming the actual bucket directories in alphabetical order and the single-bucket command to run, instead of the misleading `ZOPIA_DOCS_MISSING_MANIFEST`. A directory with no bucket manifest anywhere keeps `ZOPIA_DOCS_MISSING_MANIFEST`. Reverse converts exactly one tree; the runtime `createApiDocs()` merge is the supported way to consume every bucket at once. |
 | R-652 | 🧬 **Trusted import** (D-08) | each `apis[].file` is imported at runtime (Bun executes the `.ts`). The module must export a `makeApiConfig` result — default or named; otherwise `ZOPIA_DOCS_IMPORT_FAILED`. |
 | R-653 | 🧩 **Extraction** | from the config result: `method`, `pathShape → makeOpenApiPathShape()` (guarantees `{param}` form; identity on already-OpenAPI paths), `summary`, `description`, `operationId`, `tags` (strip `#`), `auth` (`'YES' | 'NO'`), `deprecated === 'YES'` → `deprecated: true`; `disable` remains an independent status field, `requestContentType`/`responseContentType` (the actual media types — km-api 0.4.1's open unions), `examples`. Edited media types replace the former selected media entry rather than retaining its stale manifest schema; runtime examples likewise replace `example`/`examples` snapshots. The operation's **`security` requirement** comes from the manifest, not the config (km-api stores only the `auth` status): `apis[].security` when present, else the top-level `defaultSecurity` — see R-656. Malformed edited path templates, missing or unrelated runtime path parameters, duplicate reconstructed operation IDs, and edited path/method collisions fail as generated-module errors instead of producing an invalid OpenAPI document; synchronous manifest-only reconstruction validates path parameters, request bodies, and response status/description/dialect contracts as `ZOPIA_MANIFEST_INVALID`. Response keys — including valid custom codes and `default` — come straight from the config after dialect-aware validation (`1XX`–`5XX` ranges are OpenAPI-only); response `headers` arrive via `apis[].responseOverlay`. |
 | R-654 | 📐 **Schemas** | every request/response Zod schema → engine ① with `target: version === '3.0' ? 'openapi-3.0' : 'openapi-3.1'`; **request** schemas with `io: 'input'`, **response** schemas with `io: 'output'` (R-615) — so defaulted request fields naturally stay out of `required`. Engine ① losses are collected and rebased to the exact output operation/component pointer. Source-only structural details—boolean schema spelling, `required` order/presence, empty `properties`, unused local definitions, and the distinction between absent/`true` object openness—are restored only when the corresponding runtime structure is still equivalent; edited boolean children, required membership, strictness/passthrough, properties, and definitions remain authoritative. `z.any()` body → no `requestBody` unless the source body itself was unconstrained or schema-less (the manifest disambiguates those reversible cases). `z.void()` responses are detected **before** engine ① (Zod lists `z.void()` as unrepresentable — it would become `{}` + warning) → no `content` (e.g. 204). Empty `z.object({})` in params/query/headers/cookies → omitted. Swagger form-data is changed to a body parameter when code changes the request media type away from a form media type; cookie parameters and non-body object/reference schemas fail explicitly because Swagger 2.0 cannot represent them. The serializer then applies **value normalizations**: (a) drop sentinel safe-integer bounds (R-618), (b) re-emit const-literal `anyOf`/`oneOf` as `enum` (inverse of Zod's expansion), (c) `apis[].responseOverlay` entries (response `headers`) are re-emitted verbatim into the matching `responses` entry. |
@@ -476,7 +473,7 @@ Engine ④ applies them in the fixed order **convert → refs → schema/operati
 (R-659). The union reproduces the original document; the only remaining
 difference is key order, which canonicalization (R-401) resolves. That is
 tested as a property for every fixture
-([Testing](https://github.com/komeilm76/zopia/blob/main/docs/development/11-testing.md#-round-trip-property-tests)).
+([Testing](11-testing.md#-round-trip-property-tests)).
 
 ### ⚠️ Honest limits (documented, warned, manifest-recorded)
 
@@ -487,12 +484,10 @@ tested as a property for every fixture
 | keyword-level losses (`uniqueItems`, `discriminator`, `time`/`url` formats, boolean exclusive bounds, custom formats) | overlay `set`/`remove` → restored verbatim (R-635) |
 | structural losses (`allOf`-of-objects, `not`, `if/then/else`, `patternProperties`, …) | overlay `node` → **frozen subtree** restored verbatim + warning `ZOPIA_WARN_FROZEN_SUBTREE` — code edits to a frozen subtree do not propagate in Phase 1 (documented in the generated comment) |
 | parameter extras (`allowEmptyValue`, `style`, `explode`, …) & response `headers` — no home in km-api (R-642) | overlay / `apis[].responseOverlay` → restored verbatim |
-| Swagger `collectionFormat` values with no 3.x spelling (`tsv`; `pipes`/`ssv`/`tsv` in `encoding` objects or on `path`/`header`) | best legal `style`/`explode` + the original value kept in `x-collectionFormat` + warning `ZOPIA_WARN_COLLECTION_FORMAT` (R-660) |
-| a `--preset` split root passed to reverse conversion | typed `ZOPIA_DOCS_PRESET_ROOT` listing the actual buckets — reverse converts one tree, `createApiDocs()` merges them all (R-661) |
 | 3.1 `webhooks` | runtime-refreshed from the generated `webhooks/` endpoint files and reassembled in exact `webhookOrder` order for 3.1 output (D-23); omitted with `ZOPIA_WARN_WEBHOOKS` for 3.0/2.0 output |
 | server `variables` | no endpoint-code representation + `ZOPIA_WARN_SERVER_VARIABLES`; preserved and restored through the manifest |
 
 ## 🔗 Next
 
-- 📂 Where every file lands → [API docs format](api-docs-format.md)
-- 🧱 Component options in depth → [Components](components.md)
+- 📂 Where every file lands → [API docs format](07-api-docs.md)
+- 🧱 Component options in depth → [Components](08-components.md)

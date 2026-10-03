@@ -19,7 +19,8 @@ describe('documentation website contract', () => {
 
     expect(manifest.private).toBe(true);
     expect(manifest.devDependencies.vitepress).toBeDefined();
-    for (const script of ['sync', 'dev', 'build', 'preview']) expect(manifest.scripts[script]).toBeDefined();
+    for (const script of ['sync', 'dev', 'build', 'audit', 'check', 'snapshot', 'preview']) expect(manifest.scripts[script]).toBeDefined();
+    expect(manifest.scripts.check).toContain('audit');
     // The build must always re-sync so the site can never ship stale prose.
     expect(manifest.scripts.build).toContain('sync');
     expect(manifest.scripts.dev).toContain('sync');
@@ -68,12 +69,61 @@ describe('documentation website contract', () => {
     expect(workflow).not.toContain('run: npm publish');
   });
 
+  it('R-211/R-212/R-213/R-215: version snapshots are frozen, mapped, and limited to the previous two minors', () => {
+    const versionsRoot = join(websiteRoot, 'versions');
+    const snapshots = readdirSync(versionsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    expect(snapshots.length, 'at most the previous two minors are browsable (R-213)').toBeLessThanOrEqual(2);
+    expect(snapshots.length, 'the switcher needs at least one older version to be useful').toBeGreaterThan(0);
+
+    const latestMinor = `v${(JSON.parse(read(repositoryRoot, 'package.json')) as { version: string }).version.split('.').slice(0, 2).join('.')}`;
+
+    for (const snapshot of snapshots) {
+      expect(snapshot, 'snapshot directories are named vMAJOR.MINOR').toMatch(/^v\d+\.\d+$/);
+      expect(snapshot, 'the latest minor is served from the site root, never snapshotted').not.toBe(latestMinor);
+
+      const meta = JSON.parse(read(versionsRoot, snapshot, 'meta.json')) as {
+        version: string;
+        tag: string;
+        pages: { file: string; section: string; slug: string; title: string }[];
+      };
+
+      expect(`v${meta.version.split('.').slice(0, 2).join('.')}`).toBe(snapshot);
+      expect(meta.pages.length).toBeGreaterThan(0);
+      for (const page of meta.pages) {
+        expect(['guide', 'reference']).toContain(page.section);
+        expect(existsSync(join(versionsRoot, snapshot, 'pages', page.file)), `${snapshot}/${page.file} is missing`).toBe(true);
+      }
+    }
+
+    // R-215 — the switcher and per-version sidebars are generated, not hand-written.
+    const config = read(websiteRoot, '.vitepress', 'config.mts');
+    expect(config).toContain('versions.generated.json');
+    expect(config).toContain('versionSidebars');
+    // R-214 — every snapshot page is rendered with an outdated-version banner.
+    expect(read(websiteRoot, 'scripts', 'sync-content.mjs')).toContain('YOU ARE READING OLD DOCUMENTATION');
+  });
+
+  it('W-5: the built site is gated by a deterministic quality audit', () => {
+    const audit = read(websiteRoot, 'scripts', 'audit.mjs');
+    for (const check of ['htmlKilobytes', 'assetMegabytes', 'missing <html lang', 'missing meta description', 'alt text', 'has no built page']) {
+      expect(audit, `the audit must check: ${check}`).toContain(check);
+    }
+    expect(read(repositoryRoot, 'docs', 'development', 'docs-workflow.yml.example')).toContain('npm run audit');
+  });
+
   it('W-8: the website is buildable from a clean clone (sources present, build output absent)', () => {
     for (const path of [
       ['website', '.vitepress', 'config.mts'],
       ['website', '.vitepress', 'theme', 'index.ts'],
       ['website', '.vitepress', 'theme', 'style.css'],
       ['website', 'scripts', 'sync-content.mjs'],
+      ['website', 'scripts', 'snapshot-version.mjs'],
+      ['website', 'scripts', 'audit.mjs'],
+      ['website', '.vitepress', 'versions.generated.json'],
       ['website', 'src', 'index.md'],
       ['website', 'package-lock.json'],
     ]) {

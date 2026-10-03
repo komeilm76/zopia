@@ -39,6 +39,11 @@ of truth for the [documentation website](https://komeilm76.github.io/zopia/).
 
 ## 🔖 Versions
 
-Each published minor version has its own documentation snapshot on the website.
+The [documentation website](https://komeilm76.github.io/zopia/) always serves
+the **latest** release at its root, and keeps the previous two minor versions
+browsable through the version switcher in the header. Older pages carry a
+banner linking back to the current documentation.
+
 The copy you are reading matches the version of the package it shipped with —
-check `CHANGELOG.md` for what changed between versions.
+see the [changelog](https://github.com/komeilm76/zopia/blob/main/CHANGELOG.md)
+for what changed between versions.
