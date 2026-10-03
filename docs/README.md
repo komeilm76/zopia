@@ -39,6 +39,7 @@ The zopia documentation is split into **two audiences**. Pick yours.
 | 12 | 📏 [Standards](development/12-standards.md) | You need code, JSDoc, commit, changelog, and release conventions |
 | 13 | ✂️ [Documentation split plan](development/13-documentation-split.md) | You need the user/development boundary and where a new page belongs |
 | 14 | 🌐 [Website plan](development/14-website.md) | You are building or releasing the documentation website |
+| 15 | 🛠️ [Website setup](development/15-website-setup.md) | You are doing the **one-time** GitHub setup: site repository, deploy token, workflow |
 
 ## 📦 What ships where
 

@@ -157,6 +157,7 @@ The documentation is split by audience:
 | 📏 [Standards](https://github.com/komeilm76/zopia/blob/main/docs/development/12-standards.md) | Code, JSDoc, commits, changelog, releases, key decisions |
 | ✂️ [Documentation split](https://github.com/komeilm76/zopia/blob/main/docs/development/13-documentation-split.md) | The user/development boundary and where a new page belongs |
 | 🌐 [Website plan](https://github.com/komeilm76/zopia/blob/main/docs/development/14-website.md) | Documentation website targets, IA, versioning, release flow |
+| 🛠️ [Website setup](https://github.com/komeilm76/zopia/blob/main/docs/development/15-website-setup.md) | One-time setup: site repository, deploy token, workflow activation |
 
 ## 🏗️ Project structure
 
@@ -189,7 +190,8 @@ zopia/
 │       ├── 11-testing.md     #       🧪 Testing
 │       ├── 12-standards.md   #       📏 Engineering standards
 │       ├── 13-documentation-split.md # ✂️ Documentation split plan
-│       └── 14-website.md     #       🌐 Website plan
+│       ├── 14-website.md     #       🌐 Website plan
+│       └── 15-website-setup.md #     🛠️ One-time website setup
 ├── website/                  # 🌐 VitePress documentation site
 ├── src/                      # ⚙️ Published package source
 └── tests/                    # 🧪 Unit, integration, contract & round-trip suites

@@ -269,6 +269,7 @@ concurrency: { group: pages, cancel-in-progress: true }
 
 ## 🔗 Next
 
+- 🛠️ [Website setup](15-website-setup.md) — the one-time GitHub steps, click by click
 - ✂️ [Documentation split plan](13-documentation-split.md) — what the site publishes
 - 🗺️ [Roadmap → Phase 4](03-roadmap.md) — where this sits in the release plan
 - 📏 [Standards → Release flow](12-standards.md#-release-flow) — the checklist this extends

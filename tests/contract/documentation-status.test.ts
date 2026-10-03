@@ -30,6 +30,7 @@ const expectedDevelopmentDocumentationFiles = [
   '12-standards.md',
   '13-documentation-split.md',
   '14-website.md',
+  '15-website-setup.md',
 ];
 const documentationFiles = [
   join(repositoryRoot, 'README.md'),
