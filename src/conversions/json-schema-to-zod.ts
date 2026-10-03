@@ -161,6 +161,14 @@ function analyzeSchema(source: JsonSchema): { warnings: AnalysisWarning[]; overl
       const inclusive = name === 'exclusiveMinimum' ? 'minimum' : 'maximum';
       addOverlay({ at, set: { [name]: true, ...(Object.prototype.hasOwnProperty.call(node, inclusive) ? { [inclusive]: node[inclusive] } : {}) } });
     }
+    // A schema carrying BOTH an inclusive and a numeric exclusive bound emits both Zod
+    // checks (`.min(n).gt(m)`), but `z.toJSONSchema()` keeps only the tighter one. Record
+    // the authored pair so reverse conversion restores it instead of silently normalizing
+    // the document (D-12) — the same overlay pattern the legacy boolean form above uses.
+    for (const [exclusive, inclusive] of [['exclusiveMinimum', 'minimum'], ['exclusiveMaximum', 'maximum']] as const) {
+      if (typeof node[exclusive] !== 'number' || typeof node[inclusive] !== 'number') continue;
+      addOverlay({ at, set: { [exclusive]: node[exclusive], [inclusive]: node[inclusive] } });
+    }
 
     if (typeof node.format === 'string') {
       const exact = new Set(['email', 'uuid', 'hostname', 'ipv4', 'ipv6', 'date-time', 'date', 'duration', 'uri']);

@@ -1,7 +1,7 @@
 import { asZopiaError, ZopiaError, type ZopiaErrorCode } from '../errors';
 import { createHash } from 'node:crypto';
-import { readFile, realpath, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zodSchemasToJsonSchema, zodToJsonSchema } from './zod-to-json-schema';
 import { jsonSchemaToZod } from './json-schema-to-zod';
@@ -365,17 +365,67 @@ function swaggerInlineSchema(value: Record<string, any>, sourceKind: string, ver
   return rewriteSchemaVersion(Object.fromEntries(Object.entries(value).filter(([key]) => SWAGGER_SCHEMA_KEYS.has(key))), sourceKind, version) as Record<string, any>;
 }
 
-function swaggerParameterToOpenApi(parameter: Record<string, any>, version: OpenApiReverseVersion): Record<string, any> {
-  if (typeof parameter.$ref === 'string' && parameter.$ref.startsWith('#/parameters/')) return { $ref: `#/components/parameters/${parameter.$ref.slice('#/parameters/'.length)}` };
-  const metadata = Object.fromEntries(Object.entries(parameter).filter(([key]) => !SWAGGER_SCHEMA_KEYS.has(key) && key !== 'schema' && key !== 'collectionFormat'));
-  return { ...metadata, schema: rewriteSchemaVersion(parameter.schema ?? swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version) };
+/**
+ * Swagger 2.0 `collectionFormat` → OpenAPI 3.x parameter serialization (R-660).
+ *
+ * `query` (and `formData` when it becomes an `encoding` entry) is the only location with a
+ * full 3.x vocabulary; `path`/`header` only have `simple`, so everything but `csv` is lossy
+ * there. A lossy value is never dropped silently: it keeps `x-collectionFormat` and emits
+ * `ZOPIA_WARN_COLLECTION_FORMAT` (D-12).
+ */
+const SWAGGER_QUERY_COLLECTION_STYLES: Record<string, Record<string, unknown>> = {
+  csv: { style: 'form', explode: false },
+  multi: { style: 'form', explode: true },
+  pipes: { style: 'pipeDelimited' },
+  ssv: { style: 'spaceDelimited' },
+};
+
+function swaggerCollectionFormatSerialization(parameter: Record<string, any>, at: string, warnings?: ZopiaWarningCollector): Record<string, unknown> {
+  const format = parameter.collectionFormat;
+  if (typeof format !== 'string' || format === '') return {};
+  const location = typeof parameter.in === 'string' ? parameter.in : '';
+  if (location === 'query') {
+    const mapped = SWAGGER_QUERY_COLLECTION_STYLES[format];
+    if (mapped) return { ...mapped };
+  } else if (format === 'csv') return { style: 'simple', explode: false };
+  warnings?.add({
+    code: 'ZOPIA_WARN_COLLECTION_FORMAT',
+    at,
+    message: `collectionFormat \`${format}\` has no OpenAPI 3.x equivalent for an \`in: ${location || 'unknown'}\` parameter; the value is kept in \`x-collectionFormat\``,
+  });
+  return { 'x-collectionFormat': format };
 }
 
-function swaggerPathsOverlayToOpenApi(pathsOverlay: Record<string, unknown> | undefined, version: OpenApiReverseVersion): Record<string, unknown> | undefined {
+/** Multipart/urlencoded `encoding` entries only honor `style: form`, so `pipes`/`ssv`/`tsv` stay lossy. */
+function swaggerCollectionFormatEncoding(parameter: Record<string, any>, at: string, warnings?: ZopiaWarningCollector): Record<string, unknown> | undefined {
+  const format = parameter.collectionFormat;
+  if (typeof format !== 'string' || format === '') return undefined;
+  if (format === 'csv') return { style: 'form', explode: false };
+  if (format === 'multi') return { style: 'form', explode: true };
+  warnings?.add({
+    code: 'ZOPIA_WARN_COLLECTION_FORMAT',
+    at,
+    message: `collectionFormat \`${format}\` has no OpenAPI 3.x encoding equivalent (encoding objects only serialize \`form\`); the value is kept in \`x-collectionFormat\``,
+  });
+  return { style: 'form', explode: true, 'x-collectionFormat': format };
+}
+
+function swaggerParameterToOpenApi(parameter: Record<string, any>, version: OpenApiReverseVersion, at = '#', warnings?: ZopiaWarningCollector): Record<string, any> {
+  if (typeof parameter.$ref === 'string' && parameter.$ref.startsWith('#/parameters/')) return { $ref: `#/components/parameters/${parameter.$ref.slice('#/parameters/'.length)}` };
+  const metadata = Object.fromEntries(Object.entries(parameter).filter(([key]) => !SWAGGER_SCHEMA_KEYS.has(key) && key !== 'schema' && key !== 'collectionFormat'));
+  return {
+    ...metadata,
+    ...swaggerCollectionFormatSerialization(parameter, at, warnings),
+    schema: rewriteSchemaVersion(parameter.schema ?? swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version),
+  };
+}
+
+function swaggerPathsOverlayToOpenApi(pathsOverlay: Record<string, unknown> | undefined, version: OpenApiReverseVersion, warnings?: ZopiaWarningCollector): Record<string, unknown> | undefined {
   if (pathsOverlay === undefined) return undefined;
   return Object.fromEntries(Object.entries(pathsOverlay).map(([path, metadata]) => {
     if (!isRecord(metadata) || !Array.isArray(metadata.parameters)) return [path, metadata];
-    return [path, { ...metadata, parameters: metadata.parameters.map((parameter: unknown) => isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version) : parameter) }];
+    const at = `#/paths/${pointerToken(path)}/parameters`;
+    return [path, { ...metadata, parameters: metadata.parameters.map((parameter: unknown, index: number) => isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version, `${at}/${index}`, warnings) : parameter) }];
   }));
 }
 
@@ -420,7 +470,7 @@ function collectManifestRefs(value: unknown, at = '', mapEntries = false): Array
   return refs;
 }
 
-function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: ZopiaManifest, version: OpenApiReverseVersion): Record<string, any> {
+function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: ZopiaManifest, version: OpenApiReverseVersion, at = '#', warnings?: ZopiaWarningCollector): Record<string, any> {
   const consumes = Array.isArray(operation.consumes) ? operation.consumes : manifest.swaggerConsumes ?? [];
   const produces = Array.isArray(operation.produces) ? operation.produces : manifest.swaggerProduces ?? [];
   const requestTypes = consumes.length ? consumes : ['application/json'];
@@ -428,7 +478,9 @@ function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: Zop
   const parameters = (Array.isArray(operation.parameters) ? operation.parameters : []).filter(isRecord).map((raw) => ({ raw, resolved: resolveParameter(raw, manifest) }));
   const body = parameters.find(({ resolved }) => resolved.in === 'body')?.resolved;
   const form = parameters.filter(({ resolved }) => resolved.in === 'formData').map(({ resolved }) => resolved);
-  const ordinary = parameters.filter(({ resolved }) => resolved.in !== 'body' && resolved.in !== 'formData').map(({ raw, resolved }) => swaggerParameterToOpenApi(typeof raw.$ref === 'string' ? raw : resolved, version));
+  const ordinary = parameters
+    .filter(({ resolved }) => resolved.in !== 'body' && resolved.in !== 'formData')
+    .map(({ raw, resolved }, index) => swaggerParameterToOpenApi(typeof raw.$ref === 'string' ? raw : resolved, version, `${at}/parameters/${index}`, warnings));
   let requestBody: Record<string, any> | undefined;
   if (body) {
     const schema = rewriteSchemaVersion(body.schema ?? {}, 'swagger-2.0', version);
@@ -438,7 +490,15 @@ function swaggerOperationToOpenApi(operation: Record<string, any>, manifest: Zop
     const properties = Object.fromEntries(form.map((parameter) => [parameter.name, rewriteSchemaVersion(parameter.type === 'file' ? { type: 'string', format: 'binary' } : swaggerInlineSchema(parameter, 'swagger-2.0', version), 'swagger-2.0', version)]));
     const required = form.filter((parameter) => parameter.required === true).map((parameter) => parameter.name);
     const schema = { type: 'object', properties, ...(required.length ? { required } : {}) };
-    requestBody = { required: required.length > 0, content: Object.fromEntries(requestTypes.map((type) => [type, { schema }])) };
+    // `collectionFormat` on a formData parameter is array serialization, which 3.x expresses
+    // through the media type's `encoding` map (R-660) — never a property-level keyword.
+    const primaryType = requestTypes[0];
+    const encoding = Object.fromEntries(form.flatMap((parameter) => {
+      const entry = swaggerCollectionFormatEncoding(parameter, `${at}/requestBody/content/${pointerToken(String(primaryType))}/encoding/${pointerToken(String(parameter.name))}`, warnings);
+      return entry === undefined ? [] : [[String(parameter.name), entry] as const];
+    }));
+    const media = { schema, ...(Object.keys(encoding).length ? { encoding } : {}) };
+    requestBody = { required: required.length > 0, content: Object.fromEntries(requestTypes.map((type) => [type, media])) };
   }
   const responses = Object.fromEntries(Object.entries(operation.responses ?? {}).map(([status, response]) => [status, swaggerResponseToOpenApi(response, responseTypes, version)]));
   return { ...Object.fromEntries(Object.entries(operation).filter(([key]) => !['parameters', 'responses', 'consumes', 'produces', 'schemes'].includes(key))), ...(ordinary.length ? { parameters: ordinary } : {}), ...(requestBody === undefined ? {} : { requestBody }), responses };
@@ -800,12 +860,13 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: OpenApiRever
   const host = manifest.swaggerHost;
   const schemes = manifest.swaggerSchemes?.length ? manifest.swaggerSchemes : ['https'];
   const servers = host ? schemes.map((scheme) => ({ url: `${scheme}://${host}${basePath === '/' ? '' : basePath}` })) : [{ url: basePath }];
-  const reusableParameters = Object.fromEntries(Object.entries(manifest.swaggerParameters ?? {}).filter(([, parameter]) => !isRecord(parameter) || parameter.in !== 'body' && parameter.in !== 'formData').map(([name, parameter]) => [name, isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version) : parameter]));
+  const reusableParameters = Object.fromEntries(Object.entries(manifest.swaggerParameters ?? {}).filter(([, parameter]) => !isRecord(parameter) || parameter.in !== 'body' && parameter.in !== 'formData').map(([name, parameter]) => [name, isRecord(parameter) ? swaggerParameterToOpenApi(parameter, version, `#/components/parameters/${pointerToken(name)}`, warnings) : parameter]));
   const responseTypes = manifest.swaggerProduces?.length ? manifest.swaggerProduces : ['application/json'];
   const reusableResponses = Object.fromEntries(Object.entries(manifest.swaggerResponses ?? {}).map(([name, response]) => [name, swaggerResponseToOpenApi(response, responseTypes, version)]));
   const componentsOverlay = { ...(manifest.componentsOverlay ?? {}), ...(Object.keys(reusableParameters).length ? { parameters: reusableParameters } : {}), ...(Object.keys(reusableResponses).length ? { responses: reusableResponses } : {}) };
   const apis = manifest.apis.map((api) => {
-    const sourceOperation = api.sourceOperation === undefined ? undefined : swaggerOperationToOpenApi(api.sourceOperation, manifest, version);
+    const apiAt = `#/paths/${pointerToken(api.path)}/${api.method}`;
+    const sourceOperation = api.sourceOperation === undefined ? undefined : swaggerOperationToOpenApi(api.sourceOperation, manifest, version, apiAt, warnings);
     const responseOverlay = sourceOperation === undefined ? api.responseOverlay : Object.entries(sourceOperation.responses ?? {}).flatMap(([status, response]) => isRecord(response) && response.headers !== undefined ? [{ status, headers: response.headers }] : []);
     return { ...api, sourceOperation, refs: sourceOperation === undefined ? api.refs : collectManifestRefs(sourceOperation), overlay: rewriteOverlaysVersion(api.overlay, sourceKind, version), responseOverlay };
   });
@@ -813,7 +874,7 @@ function manifestForOutputVersion(manifest: ZopiaManifest, version: OpenApiRever
     ...manifest,
     source: { ...manifest.source, kind: targetKind, openapiVersion: `${version}.0` },
     documentOverlay,
-    pathsOverlay: swaggerPathsOverlayToOpenApi(manifest.pathsOverlay, version),
+    pathsOverlay: swaggerPathsOverlayToOpenApi(manifest.pathsOverlay, version, warnings),
     servers,
     components,
     componentsOverlay,
@@ -848,12 +909,46 @@ function sweepSwaggerDowngradeDocument(document: Record<string, any>): void {
   sweepResponses(isRecord(document.responses) ? document.responses : undefined);
 }
 
+/**
+ * List the immediate subdirectories of `directory` that carry their own manifest,
+ * sorted alphabetically — exactly the shape a `preset` split writes (R-661).
+ *
+ * @param directory Directory that has no manifest of its own.
+ * @returns Sorted bucket directory names, empty when this is not a preset split.
+ */
+async function presetBucketNames(directory: string): Promise<string[]> {
+  let entries;
+  try { entries = await readdir(directory, { withFileTypes: true }); }
+  catch { return []; }
+  const buckets: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      if ((await stat(join(directory, entry.name, ZOPIA_MANIFEST_FILE))).isFile()) buckets.push(entry.name);
+    } catch { continue; }
+  }
+  return buckets.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+}
+
+/** Distinguish a preset split root from a genuinely manifest-less directory (R-661). */
+async function missingManifestError(file: string): Promise<ZopiaError> {
+  const directory = dirname(resolve(file));
+  const buckets = await presetBucketNames(directory);
+  if (buckets.length === 0) return new ZopiaError('ZOPIA_DOCS_MISSING_MANIFEST', `manifest file not found: ${file}`, { at: file, hint: 'generate api docs first or pass the manifest path' });
+  const label = basename(directory) || directory;
+  return new ZopiaError(
+    'ZOPIA_DOCS_PRESET_ROOT',
+    `this directory is a preset split (${buckets.length} trees: ${buckets.join(', ')}). Reverse one bucket (zopia reverse ${label}/${buckets[0]}) to convert a single tree.`,
+    { at: directory, hint: 'reverse one preset bucket directory instead of the preset root' },
+  );
+}
+
 async function manifestFileToOpenApiInternal(file: string, version: OpenApiReverseVersion | undefined, warnings: ZopiaWarningCollector): Promise<Record<string, unknown>> {
   if (typeof file !== 'string' || !file) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'manifest file path is required', { at: 'file', hint: 'provide the .zopia-manifest.json path' });
   let source: string;
   try { source = await readFile(file, 'utf8'); }
   catch (error) {
-    if (isMissingFileError(error)) throw new ZopiaError('ZOPIA_DOCS_MISSING_MANIFEST', `manifest file not found: ${file}`, { at: file, hint: 'generate api docs first or pass the manifest path' });
+    if (isMissingFileError(error)) throw await missingManifestError(file);
     throw asZopiaError(error, 'ZOPIA_MANIFEST_INVALID', 'unable to read manifest file', { at: file, hint: 'check that the manifest is readable JSON' });
   }
   let parsed: unknown;
@@ -1356,6 +1451,12 @@ function restoreSourceSchemaStructure(generated: unknown, source: unknown): unkn
     return generated;
   }
   if (!isRecord(generated) || !isRecord(source)) return generated;
+  // Zod has no binary string type, so a Swagger `type: file` (and an authored 3.x
+  // `format: binary`) serializes back as a bare `z.string()`. The source keeps the
+  // canonical 2.0→3.x mapping, so restore the format rather than change the wire shape.
+  if (source.format === 'binary' && generated.type === 'string' && !Object.prototype.hasOwnProperty.call(generated, 'format')) {
+    Object.defineProperty(generated, 'format', { value: 'binary', enumerable: true, configurable: true, writable: true });
+  }
   if (Array.isArray(source.required) && source.required.every((key: unknown) => typeof key === 'string')) {
     const generatedRequired = Array.isArray(generated.required) && generated.required.every((key: unknown) => typeof key === 'string') ? generated.required as string[] : [];
     const sourceRequired = source.required as string[];

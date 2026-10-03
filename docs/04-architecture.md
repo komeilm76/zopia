@@ -269,6 +269,7 @@ export class ZopiaError extends Error {
 | `ZOPIA_DOCS_IMPORT_FAILED` | engine ④ | generated modules cannot load, export one expected value, or serialize edited runtime schemas | "fix or regenerate the affected generated module" |
 | `ZOPIA_DOCS_MANIFEST_MISMATCH` | engine ④ preflight | a manifest-owned endpoint/component file is missing, renamed, or not a regular file | "regenerate the tree or restore its generated files" |
 | `ZOPIA_DOCS_MISSING_MANIFEST` | engine ④ entry | no `.zopia-manifest.json` exists at the selected path | "generate api docs first or pass the manifest path" |
+| `ZOPIA_DOCS_PRESET_ROOT` | engine ④ entry | the selected path is a preset split root: its manifests live one directory down, one per bucket | "reverse one preset bucket directory instead of the preset root" |
 | `ZOPIA_FS_OUTSIDE_OUTDIR` | generation guard | a generated path escapes `outDir` or traverses an unsafe ancestor | "keep generated paths inside the output directory" |
 | `ZOPIA_FS_WRITE_FAILED` | writers / CLI | output inspection, directory creation, cleanup, or writing fails | "check the output path, permissions, and available disk space" |
 | `ZOPIA_MANIFEST_INVALID` | manifest writer/reader | manifest JSON or metadata violates `zopia:manifest@1` | "regenerate the manifest or fix its invalid metadata" |
@@ -306,6 +307,7 @@ interface ZopiaWarning {
 | `ZOPIA_WARN_INVALID_SCHEMA` | a malformed JSON Schema keyword is ignored or approximated |
 | `ZOPIA_WARN_CUSTOM_FORMAT`, `ZOPIA_WARN_CONTENT_ENCODING`, `ZOPIA_WARN_INT64` | a string/numeric format or encoding has no exact runtime equivalent |
 | `ZOPIA_WARN_LEGACY_EXCLUSIVE_BOUND` | a legacy boolean exclusive bound requires normalization |
+| `ZOPIA_WARN_COLLECTION_FORMAT` | a Swagger 2.0 `collectionFormat` has no OpenAPI 3.x `style`/`explode` spelling and is preserved as `x-collectionFormat` |
 | `ZOPIA_WARN_ONE_OF`, `ZOPIA_WARN_NOT`, `ZOPIA_WARN_UNIQUE_ITEMS`, `ZOPIA_WARN_FROZEN_SUBTREE` | an applicator or refinement needs an approximation or frozen manifest restoration |
 | `ZOPIA_WARN_REF` | a recoverable schema-reference conversion cannot be exact |
 | `ZOPIA_WARN_MULTI_CONTENT`, `ZOPIA_WARN_SERVER_VARIABLES`, `ZOPIA_WARN_WEBHOOKS` | an OpenAPI document fact has no direct generated-code representation |

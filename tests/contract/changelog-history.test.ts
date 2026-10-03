@@ -10,6 +10,12 @@ function git(args: string[]): string {
   return execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8' }).trim();
 }
 
+/** `git` for revisions that may legitimately not exist in this clone (see the shallow note below). */
+function gitOptional(args: string[]): string | undefined {
+  try { return git(args); }
+  catch { return undefined; }
+}
+
 describe('changelog history contract', () => {
   it('T-17/R-172/R-173/R-174: changelog headings and user-facing bullets follow the release format', () => {
     const changelog = readFileSync(join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
@@ -33,6 +39,11 @@ describe('changelog history contract', () => {
 
     const releaseCommit = git(['log', '--format=%H', '--grep=^chore(release):', '-1']);
     if (!releaseCommit) return;
+    // The release commit's parent is missing from a shallow clone (the publish workflow
+    // runs this gate on `actions/checkout` depth 1) and from a repository whose first
+    // commit is the release. There is no history to audit in either case; full clones —
+    // developer machines and `git fetch --unshallow` — still walk the real range.
+    if (gitOptional(['rev-parse', '--verify', '--quiet', `${releaseCommit}^`]) === undefined) return;
     const commits = git(['rev-list', `${releaseCommit}^..HEAD`]).split(/\r?\n/).filter(Boolean);
     const missing: string[] = [];
     for (const commit of commits) {
