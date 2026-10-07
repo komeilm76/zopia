@@ -1,5 +1,5 @@
 import { watch } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { stat, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import { loadZopiaConfig, type ZopiaProjectConfig } from './config';
 import { asZopiaError, ZopiaError } from './errors';
@@ -349,7 +349,7 @@ function printDiff(result: ZopiaDiffResult, before: string, after: string, outpu
  * @param output Destinations for generated output and diagnostics.
  * @param signal Optional abort signal that stops watching and settles the returned promise (CLI usage passes none).
  * @returns A promise that never resolves while watching (it resolves only if the watcher stops after a fatal error or abort).
- * @throws {@link ZopiaError} when the watched spec cannot be resolved to a file.
+ * @throws {@link ZopiaError} when the watched spec's parent directory cannot be watched.
  */
 export async function runGenerateWatch(input: string, options: Parameters<typeof openApiToApiDocs>[1], output: ZopiaCliOutput = processOutput, signal?: AbortSignal): Promise<never> {
   if (!input || typeof input !== 'string') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'watch mode requires a spec file path', { at: 'input', hint: 'pass a JSON or YAML spec path to `zopia generate --watch`' });
@@ -385,11 +385,25 @@ export async function runGenerateWatch(input: string, options: Parameters<typeof
   // bound to, which would silently end regeneration on Linux.
   const directory = dirname(input);
   const name = basename(input);
-  const watcher = watch(directory, (eventType, filename) => {
-    if (filename !== null && filename.toString() !== name) return;
-    if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(trigger, 50);
-  });
+  // Establish the watched parent before creating fs.watch: Node's raw ENOENT/EACCES
+  // would otherwise escape as an unexpected process failure after the initial run.
+  let watchable = false;
+  try {
+    watchable = (await stat(directory)).isDirectory();
+  } catch (error) {
+    throw asZopiaError(error, 'ZOPIA_CONFIG_INVALID', `unable to watch spec directory: ${directory}`, { at: directory, hint: 'create the spec directory or pass an existing spec path' });
+  }
+  if (!watchable) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unable to watch spec directory: ${directory}`, { at: directory, hint: 'create the spec directory or pass an existing spec path' });
+  let watcher: ReturnType<typeof watch>;
+  try {
+    watcher = watch(directory, (eventType, filename) => {
+      if (filename !== null && filename.toString() !== name) return;
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(trigger, 50);
+    });
+  } catch (error) {
+    throw asZopiaError(error, 'ZOPIA_CONFIG_INVALID', `unable to watch spec directory: ${directory}`, { at: directory, hint: 'create the spec directory or pass an existing spec path' });
+  }
   watcher.on('error', (error) => {
     output.stderr(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;

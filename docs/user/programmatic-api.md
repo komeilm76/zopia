@@ -171,7 +171,7 @@ const { identical, changes, counts } = await diffOpenApiSpecs('v1.json', 'v2.yam
 
 | 🔧 Symbol | 📏 Shape | 📝 What it is |
 | --- | --- | --- |
-| `diffOpenApiSpecs(before, after)` | → `Promise<ZopiaDiffResult>` | compares two spec inputs (paths, text, or objects) |
+| `diffOpenApiSpecs(before, after)` | → `Promise<ZopiaDiffResult>` | compares two spec inputs (paths, text, or objects); file-backed inputs bundle same-folder external `$ref`s exactly like generation/validation |
 | `diffOpenApiDocuments(before, after)` | → `ZopiaDiffResult` | the in-memory variant for already-parsed documents |
 | `ZopiaDiffResult` | `{ identical, changes, counts }` | `identical` ignores key order |
 | `ZopiaDiffEntry` | `{ kind, area, at, message }` | one change; `at` points into `after` for additions/changes and into `before` for removals |

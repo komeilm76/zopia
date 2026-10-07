@@ -191,7 +191,7 @@ https://komeilm76.github.io/zopia/
 | `npm run build` | sync + production build into `.vitepress/dist` (dead links fail) |
 | `npm run audit` | static quality audit of the built site |
 | `npm run check` | `build` + `audit` — the gate CI runs |
-| `npm run snapshot -- <tag>` | freeze a released version into `website/versions/` |
+| `npm run snapshot -- <tag> [--keep N]` | freeze a released version into `website/versions/`; `--keep` is an option value, never a second tag, and unknown options fail loudly |
 | `npm run preview` | serve the production build locally |
 
 | # | Rule |

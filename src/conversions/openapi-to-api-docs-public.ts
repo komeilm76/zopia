@@ -4,7 +4,7 @@ import { ZopiaWarningCollector, type ZopiaWarning } from '../warnings';
 import { generateApiDocsFiles } from './api-docs-generate';
 import type { ApiDocsMode } from './api-docs-layout';
 import { bundleExternalOpenApiRefs } from './openapi-external-ref';
-import { extractOperationContracts } from './openapi-contracts';
+import { extractOperationContracts, reusableDeclarations } from './openapi-contracts';
 import { buildOpenApiOperationIR } from './openapi-ir';
 import { collectOpenApiWebhookOperations } from './openapi-to-api-docs';
 import { resolveOpenApiLocalRef } from './openapi-ref';
@@ -455,8 +455,16 @@ export async function openApiToApiDocs(input: string | Record<string, unknown>, 
   }
 
   const componentSchemas = document.swagger === '2.0' ? document.definitions ?? {} : document.components?.schemas ?? {};
+  const reusable = reusableDeclarations(document);
+  const reusableParameterNames = Object.keys(reusable.parameter);
+  const reusableResponseNames = Object.keys(reusable.response);
   const componentFiles = new Set(config.insertComponents
-    ? ['components/index.ts', ...Object.keys(componentSchemas).map((name) => `components/${name}/index.ts`)]
+    ? [
+      'components/index.ts',
+      ...Object.keys(componentSchemas).map((name) => `components/${name}/index.ts`),
+      ...(reusableParameterNames.length === 0 ? [] : ['components/parameters/index.ts', ...reusableParameterNames.map((name) => `components/parameters/${name}/index.ts`)]),
+      ...(reusableResponseNames.length === 0 ? [] : ['components/responses/index.ts', ...reusableResponseNames.map((name) => `components/responses/${name}/index.ts`)]),
+    ]
     : []);
   const files: ZopiaGeneratedFile[] = generated.map(({ file }): ZopiaGeneratedFile => ({
     path: file,

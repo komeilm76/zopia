@@ -36,10 +36,11 @@ describe('zopia validate (S-89, Phase 3)', () => {
     expect(result).toEqual({ ok: true, kind: 'spec', target: '(in-memory document)', diagnostics: [] });
   });
 
-  it('accepts YAML spec text', async () => {
+  it('accepts YAML spec text without leaking the document into the target label', async () => {
     const result = await validateZopia('openapi: 3.0.3\ninfo:\n  title: Y\n  version: "1"\npaths: {}\n');
     expect(result.ok).toBe(true);
     expect(result.kind).toBe('spec');
+    expect(result.target).toBe('(inline document)');
     expect(result.diagnostics).toEqual([]);
   });
 
@@ -54,6 +55,102 @@ describe('zopia validate (S-89, Phase 3)', () => {
           get: { operationId: 'listPets', responses: { '200': { description: 'ok', content: { 'application/json': { example: sharedRef, schema: sharedRef } } } } },
         },
       },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('distinguishes literal annotation refs from schema properties with the same names', async () => {
+    const result = await validateZopia({
+      openapi: '3.1.0',
+      info: { title: 'Reachability contexts', version: '1' },
+      paths: {
+        '/x': {
+          get: {
+            responses: {
+              '200': {
+                description: 'ok',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        example: { $ref: '#/components/schemas/UsedByPropertyName' },
+                        value: { type: 'object', default: { $ref: '#/components/schemas/LiteralOnly' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: { schemas: { UsedByPropertyName: { type: 'string' }, LiteralOnly: { type: 'string' } } },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual([
+      { severity: 'warning', code: 'ZOPIA_VALIDATE_UNREACHABLE_COMPONENT', at: '#/components/schemas/LiteralOnly', message: 'component is never referenced: LiteralOnly' },
+    ]);
+  });
+
+  it('does not mistake operation-side schema properties named like component containers for the containers themselves', async () => {
+    const result = await validateZopia({
+      openapi: '3.1.0',
+      info: { title: 'Schema property names', version: '1' },
+      paths: {
+        '/x': {
+          get: {
+            responses: {
+              '200': {
+                description: 'ok',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        schemas: { $ref: '#/components/schemas/UsedThroughSchemasProperty' },
+                        definitions: { $ref: '#/components/schemas/UsedThroughDefinitionsProperty' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          UsedThroughSchemasProperty: { type: 'string' },
+          UsedThroughDefinitionsProperty: { type: 'number' },
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not mistake Swagger schema properties named definitions for the root definitions map', async () => {
+    const result = await validateZopia({
+      swagger: '2.0',
+      info: { title: 'Schema property names', version: '1' },
+      paths: {
+        '/x': {
+          get: {
+            responses: {
+              '200': {
+                description: 'ok',
+                schema: {
+                  type: 'object',
+                  properties: { definitions: { $ref: '#/definitions/Used' } },
+                },
+              },
+            },
+          },
+        },
+      },
+      definitions: { Used: { type: 'string' } },
     });
     expect(result.ok).toBe(true);
     expect(result.diagnostics).toEqual([]);
@@ -154,6 +251,14 @@ describe('zopia validate (S-89, Phase 3)', () => {
     expect(result.ok).toBe(false);
     expect(result.diagnostics).toEqual([
       { severity: 'error', code: 'ZOPIA_DOCS_MISSING_MANIFEST', at: join(directory, '.zopia-manifest.json'), message: 'manifest file not found; generate api docs first or pass the manifest path' },
+    ]);
+  });
+
+  it('auto-detects Windows-style manifest paths as docs targets', async () => {
+    const result = await validateZopia('api_docs\\.zopia-manifest.json');
+    expect(result.kind).toBe('docs');
+    expect(result.diagnostics).toEqual([
+      { severity: 'error', code: 'ZOPIA_DOCS_MISSING_MANIFEST', at: 'api_docs\\.zopia-manifest.json', message: 'manifest file not found; generate api docs first or pass the manifest path' },
     ]);
   });
 

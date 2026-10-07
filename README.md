@@ -13,7 +13,7 @@
 [![Runtime](https://img.shields.io/badge/Runtime-Bun%201.x-black.svg)](https://bun.sh/)
 [![Tests](https://img.shields.io/badge/Tests-vitest-10b981.svg)](https://vitest.dev/)
 
-✅ **Status — Phase 4 complete · v0.7.0 released**
+✅ **Status — Phase 4 shipped · v0.7.1 released**
 
 </div>
 
@@ -215,7 +215,7 @@ npm run preview          # 👀 serve the production build
 ```
 
 The site serves the latest release at the root and keeps the previous two
-minors under `/v0.5/`, `/v0.4/` — snapshots live in `website/versions/` and the
+minors under `/v0.6/`, `/v0.5/` — snapshots live in `website/versions/` and the
 switcher, sidebars, and outdated-version banners are generated from them.
 
 > 📌 Prose is **never** hand-edited inside `website/` — edit `docs/user/` and

@@ -80,25 +80,56 @@ interface SchemaRefOccurrence {
 
 const decodePointerSegment = (segment: string): string => segment.replace(/~1/g, '/').replace(/~0/g, '~');
 
-function walkSchemaRefs(value: unknown, inSchemaMap: boolean, inExample: boolean, stack: Set<object>, out: SchemaRefOccurrence[], pattern: RegExp, schemaKey: string): void {
+type SchemaRefWalkMode = 'root' | 'components-container' | 'normal' | 'schema-map';
+
+const SCHEMA_REF_LITERAL_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const']);
+// Keywords whose object values are maps of *schema names* to schema values.
+// Inside those maps a key such as `default` is a schema name, not a literal
+// annotation. `definitions` is included as the legacy JSON Schema map keyword;
+// the OpenAPI/Swagger component map itself is entered only from the document
+// root below so an operation-side property literally named `schemas` or
+// `definitions` is never mistaken for the component container.
+const SCHEMA_REF_SCHEMA_MAP_KEYS = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas']);
+
+function walkSchemaRefs(value: unknown, inSchemaMap: boolean, inLiteral: boolean, stack: Set<object>, out: SchemaRefOccurrence[], pattern: RegExp, schemaKey: string, mode: SchemaRefWalkMode = 'normal'): void {
   if (!value || typeof value !== 'object' || stack.has(value as object)) return;
   stack.add(value as object);
   try {
     if (Array.isArray(value)) {
-      for (const child of value) walkSchemaRefs(child, inSchemaMap, inExample, stack, out, pattern, schemaKey);
+      for (const child of value) walkSchemaRefs(child, inSchemaMap, inLiteral, stack, out, pattern, schemaKey, 'normal');
       return;
     }
     const object = value as Record<string, unknown>;
-    // Track the path (not the whole graph) so a subtree shared between an example and
-    // a schema position in an in-memory document still reports the schema occurrence.
-    if (!inExample && typeof object.$ref === 'string') {
+    // Track the path (not the whole graph) so a subtree shared between a literal
+    // annotation and a schema position in an in-memory document still reports the
+    // schema occurrence. Literal JSON Schema/OpenAPI value positions (`default`,
+    // `example(s)`, `enum`, `const`) do not seed reachability; same-named schema
+    // properties under `properties` still do.
+    if (!inLiteral && typeof object.$ref === 'string') {
       const match = pattern.exec(object.$ref);
       if (match) out.push({ name: decodePointerSegment(match[1]), root: !inSchemaMap });
     }
     for (const [key, child] of Object.entries(object)) {
-      const childInSchemaMap = inSchemaMap || key === schemaKey;
-      const childInExample = inExample || key === 'example' || key === 'examples';
-      walkSchemaRefs(child, childInSchemaMap, childInExample, stack, out, pattern, schemaKey);
+      let childMode: SchemaRefWalkMode = 'normal';
+      let childInSchemaMap = inSchemaMap;
+      if (mode === 'root') {
+        // Only the document's own component container changes reachability
+        // classification. A nested schema property that happens to be named
+        // `schemas`/`definitions` remains an ordinary operation-side schema map.
+        if (key === schemaKey) {
+          childMode = 'schema-map';
+          childInSchemaMap = true;
+        } else if (key === 'components') {
+          childMode = 'components-container';
+        }
+      } else if (mode === 'components-container' && key === schemaKey) {
+        childMode = 'schema-map';
+        childInSchemaMap = true;
+      } else if (SCHEMA_REF_SCHEMA_MAP_KEYS.has(key)) {
+        childMode = 'schema-map';
+      }
+      const childInLiteral = inLiteral || (mode !== 'schema-map' && SCHEMA_REF_LITERAL_KEYS.has(key));
+      walkSchemaRefs(child, childInSchemaMap, childInLiteral, stack, out, pattern, schemaKey, childMode);
     }
   } finally {
     stack.delete(value as object);
@@ -120,7 +151,7 @@ function lintUnreachableComponents(document: OpenApiDocument, version: string): 
   const pattern = isSwagger ? /^#\/definitions\/([^/]+)$/ : /^#\/components\/schemas\/([^/]+)$/;
   const schemaKey = isSwagger ? 'definitions' : 'schemas';
   const occurrences: SchemaRefOccurrence[] = [];
-  walkSchemaRefs(document, false, false, new Set(), occurrences, pattern, schemaKey);
+  walkSchemaRefs(document, false, false, new Set(), occurrences, pattern, schemaKey, 'root');
   const reached = new Set<string>();
   const queue = occurrences.filter((occurrence) => occurrence.root).map((occurrence) => occurrence.name);
   while (queue.length) {
@@ -144,6 +175,16 @@ function lintUnreachableComponents(document: OpenApiDocument, version: string): 
 }
 
 const KMAPI_DRIFT = 'ZOPIA_VALIDATE_KM_API_DRIFT' as const;
+
+/** Mirror the source reader's text/path distinction without re-parsing the document. */
+function looksLikeInlineSpecText(input: string): boolean {
+  const trimmed = input.trimStart();
+  return trimmed.startsWith('{')
+    || trimmed.startsWith('[')
+    || input.includes('\n')
+    || /^---(?:\s|$)/.test(trimmed)
+    || /^[^:#{}[\],&*!|>%@`][^:]*:(?:\s|$)/.test(trimmed);
+}
 
 /** Read the km-api peer range zopia was built with. */
 function zopiaKmApiPeerRange(): string | undefined {
@@ -287,13 +328,14 @@ export async function validateZopia(input: string | Record<string, unknown>, opt
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'validate options must be an object', { at: 'options' });
   const kind = options.kind ?? 'auto';
   if (kind !== 'spec' && kind !== 'docs' && kind !== 'auto') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `invalid validate kind: ${String(kind)}`, { at: 'kind', hint: "use 'spec', 'docs', or 'auto'" });
+  const looksLikeManifestPath = typeof input === 'string' && input.replace(/\\/g, '/').split('/').pop()?.toLowerCase() === ZOPIA_MANIFEST_FILE;
   const resolvedKind = kind === 'auto'
-    ? (typeof input === 'string' && ((existsSync(input) && (await lstat(input)).isDirectory()) || /(?:^|\/)\.zopia-manifest\.json$/i.test(input)) ? 'docs' : 'spec' as const)
+    ? (typeof input === 'string' && ((existsSync(input) && (await lstat(input)).isDirectory()) || looksLikeManifestPath) ? 'docs' : 'spec' as const)
     : kind;
   if (resolvedKind === 'docs') {
     if (typeof input !== 'string' || input.trim() === '') throw new ZopiaError('ZOPIA_CONFIG_INVALID', 'docs validation requires a docs directory or manifest path', { at: 'input', hint: 'pass the generated api-docs directory or its .zopia-manifest.json' });
     return validateDocsTarget(input);
   }
-  const target = typeof input === 'string' ? (input.trimStart().startsWith('{') || input.includes('\n:') ? '(inline document)' : input) : '(in-memory document)';
+  const target = typeof input === 'string' ? (looksLikeInlineSpecText(input) ? '(inline document)' : input) : '(in-memory document)';
   return validateSpecTarget(input, target);
 }

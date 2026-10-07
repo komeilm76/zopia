@@ -187,7 +187,8 @@ The v0.1.0 release satisfies all of the following:
   `specPointersToLines`/`specPointerAtLine` cursor resolution, YAML
   operationId fallback) plus the `zopia navigate` CLI (`--to-code` /
   `--to-spec`) and a plain-JS extension package under `editors/vscode/`
-  resolving the workspace's own zopia install
+  running manifest-driven navigation directly in Node-safe CommonJS (no
+  dynamic zopia dependency inside VS Code's extension host)
 
 ## 📘 Phase 4 — Documentation & website (v0.7) 🚧
 
@@ -227,7 +228,7 @@ The audience split and a first-class documentation site. Contracts:
       tag into `website/versions/<vX.Y>/`, prunes older snapshots, and maps
       pre-split page names onto today's routes; the switcher and per-version
       sidebars are generated; every snapshot page carries an
-      outdated-version banner. **v0.5 and v0.4 are already published** from
+      outdated-version banner. **v0.6 and v0.5 are already published** from
       their release tags
 - [ ] 🔁 **Release integration (M7)** — the docs workflow snapshots the
       previous minor on a published release, commits it, rebuilds, audits, and

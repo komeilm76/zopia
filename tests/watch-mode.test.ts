@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { runCli, runGenerateWatch, type ZopiaCliOutput } from '../src/cli-command';
+import { runCli, runCliEntrypoint, runGenerateWatch, type ZopiaCliOutput } from '../src/cli-command';
 import { useTemporaryDirectories } from './test-temporary-directories';
 
 const temporaryDirectory = useTemporaryDirectories('zopia-watch-');
@@ -130,6 +130,21 @@ describe('generate --watch (S-88)', () => {
 
     abort.abort();
     await watching;
+  });
+
+  it('rejects an unwatchable parent as a typed diagnostics path, not a raw fs.watch failure', async () => {
+    const directory = await temporaryDirectory();
+    const missingParent = join(directory, 'missing-parent');
+    const source = join(missingParent, 'openapi.json');
+    const streams = capture();
+    const outDir = join(directory, 'api-docs');
+    const exitCode = await runCliEntrypoint(['generate', source, outDir, '--watch'], streams.output);
+    expect(exitCode).toBe(1);
+    const stderr = streams.stderr.join('');
+    expect(stderr).toContain('ZOPIA_SPEC_INVALID_JSON');
+    expect(stderr).toContain('ZOPIA_CONFIG_INVALID');
+    expect(stderr).not.toContain('Unexpected zopia failure');
+    expect(stderr).not.toContain('ENOENT: no such file or directory, watch');
   });
 
   it('rejects --watch combined with duplicate flags through normal option validation', async () => {

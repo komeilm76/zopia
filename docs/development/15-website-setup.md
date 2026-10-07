@@ -194,8 +194,8 @@ git push origin main
 
 1. Open **<https://komeilm76.github.io/zopia/>**. You should see the zopia home
    page with working styling, search, and the version switcher showing
-   `v0.6`, `v0.5.2`, `v0.4.0`.
-2. Click through one guide page and one `/v0.5/` page — the old one must show
+   `v0.7`, `v0.6.0`, `v0.5.2`.
+2. Click through one guide page and one `/v0.6/` page — the old one must show
    the orange *"you are reading old documentation"* banner.
 3. Only then: zopia repository → **Settings** → scroll to **Danger Zone** →
    **Change repository visibility** → **Make private**.

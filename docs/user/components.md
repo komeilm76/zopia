@@ -182,7 +182,12 @@ export default TraceIdParameter;
 
 Each kind gets a barrel (`components/parameters/index.ts`,
 `components/responses/index.ts`) **only when that kind has declarations**, so
-specs without reusables gain no files. Cross-kind export-name collisions are
+specs without reusables gain no files. `components/index.ts` remains the
+schema barrel even when a tree has reusable parameters/responses but no
+schema declarations — including the degenerate component container with no
+emitted component modules at all; navigation keeps those three barrels under
+their separate source containers (`#/components/schemas`,
+`#/components/parameters`, and `#/components/responses`). Cross-kind export-name collisions are
 impossible (suffixes `Schema`/`Parameter`/`Response`); within a kind, name and
 export collisions fail with `ZOPIA_SPEC_INVALID` exactly like schema modules.
 A reusable response without a schema (no media type in 3.x, no `schema` in

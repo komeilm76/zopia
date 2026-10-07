@@ -16,7 +16,7 @@ export const ZOPIA_MANIFEST_SCHEMA = 'zopia:manifest@1' as const;
 export const ZOPIA_MANIFEST_FILE = '.zopia-manifest.json' as const;
 
 /** Package version recorded by the current manifest writer. */
-export const ZOPIA_VERSION = '0.7.0' as const;
+export const ZOPIA_VERSION = '0.7.1' as const;
 
 /** Supported source dialect labels stored in a manifest. */
 export type ZopiaManifestSourceKind = 'swagger-2.0' | 'openapi-3.0' | 'openapi-3.1';

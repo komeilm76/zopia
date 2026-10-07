@@ -70,7 +70,7 @@ zopia generate openapi.json                   # output dir supplied by generate.
 | `--custom` | boolean flag | `false` | scaffolds a merge-safe `custom.ts` next to every endpoint/webhook module and re-exports it (`export * as custom from './custom'`). Written **once** and never overwritten on regeneration — the safe place for hand-written code |
 | `--no-manifest` | boolean flag | manifest **on** | suppresses `.zopia-manifest.json`. ⚠️ Without it `zopia reverse`, `zopia navigate`, and `zopia/runtime` cannot work for that tree — an escape hatch, not a default |
 | `--preset` | `multi-tag` \| `multi-server` | *(none)* | splits generation into one independently reversible sub-tree per bucket: `multi-tag` routes each operation by `tags[0]` (warning `ZOPIA_WARN_PRESET_PRIMARY_TAG` when several exist), `multi-server` by the effective first server (operation → path item → document). Untagged / default-server operations land in `untagged` / `https-default-server`-style buckets. Nothing to split → the normal single tree |
-| `--watch` | boolean flag | `false` | keeps running and regenerates whenever the spec changes. Requires a spec **file path**; watches the spec's parent directory so atomic editor saves (write-temp + rename) still trigger a run, coalesces bursts, prints per-run errors to stderr and continues. Ctrl+C stops |
+| `--watch` | boolean flag | `false` | keeps running and regenerates whenever the spec changes. Requires a spec **file path**; watches the spec's parent directory so atomic editor saves (write-temp + rename) still trigger a run, coalesces bursts, prints per-run errors to stderr and continues. Ctrl+C stops. If that parent directory cannot be watched, the CLI exits **1** with typed `ZOPIA_CONFIG_INVALID` rather than a raw Node watcher error |
 
 ### What you get
 
@@ -131,10 +131,14 @@ zopia diff v1.json v2.yaml
 ```
 
 Compares two specs **semantically** — key order is ignored and JSON/YAML inputs
-mix freely. Covered areas: dialect, `info`, endpoints (with parameter,
-request-body and response details), webhooks, schema components, named
-registries (security schemes, reusable parameters/responses, request bodies…),
-path-item and webhook-item metadata, document fields, and `x-` extensions.
+mix freely. When an argument names a spec file, same-folder external `$ref`s
+(for example `shared.yaml#/SomePathItem`) are bundled with the same rules as
+generation and validation before comparison; unsupported out-of-folder
+references fail with the usual typed `ZOPIA_REF_EXTERNAL`. Covered areas:
+dialect, `info`, endpoints (with parameter, request-body and response details),
+webhooks, schema components, named registries (security schemes, reusable
+parameters/responses, request bodies…), path-item and webhook-item metadata,
+document fields, and `x-` extensions.
 
 Output is `+` / `-` / `~` lines plus a summary on stdout. Differences are
 **data, not failures**: a changed pair still exits `0`.
@@ -150,8 +154,15 @@ zopia navigate api_docs --to-spec pets/get/index.ts
 
 | 🚩 Flag | 📏 Value | 📝 Effect |
 | --- | --- | --- |
-| `--to-code <spec-pointer>` | escaped JSON Pointer | prints the generated file(s) implementing that pointer — endpoints, webhooks, components, and custom companions when enabled |
+| `--to-code <spec-pointer>` | escaped JSON Pointer | prints the generated file(s) implementing that pointer — endpoints, webhooks, schema components, reusable parameter/response components, and custom companions when enabled |
 | `--to-spec <tree-file>` | tree-relative file path | prints the source pointer that owns the file |
+
+Supported pointers are `#/paths/<path>[/<method>]`,
+`#/webhooks/<name>[/<method>]`, and the source dialect's component namespaces:
+`#/components/<schemas|parameters|responses>[/<name>]` for OpenAPI 3.x, or
+`#/<definitions|parameters|responses>[/<name>]` for Swagger 2.0. Component
+container pointers resolve to the corresponding barrel when components were
+emitted.
 
 Both directions print one stable line per location. Unmatched pointers or files
 exit non-zero with `ZOPIA_CONFIG_INVALID`; a root with no manifest fails with

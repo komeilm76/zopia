@@ -43,6 +43,19 @@ describe('spec ↔ tree navigation (Phase 3, S-93)', () => {
     expect(index.locations().map((location) => location.file)).toEqual(index.locations().map((location) => location.file).sort());
   });
 
+  it('S-93: the schema barrel navigates even when no component modules exist', async () => {
+    const outputDir = await temporaryDirectory();
+    await openApiToApiDocs({
+      openapi: '3.1.0',
+      info: { title: 'Empty Components', version: '1' },
+      paths: { '/pets': { get: { operationId: 'listPets', responses: { '200': { description: 'ok' } } } } },
+    } as any, { outDir: outputDir, insertComponents: true });
+    const index = await loadNavigationIndex(outputDir);
+    // insertComponents always emits the schema barrel, even when the container is empty.
+    expect(index.treeToSpecLocation('components/index.ts')).toMatchObject({ kind: 'component', pointer: '#/components/schemas' });
+    expect(index.specToLocations('#/components/schemas')).toEqual([{ kind: 'component', file: 'components/index.ts', pointer: '#/components/schemas', label: 'component barrel' }]);
+  });
+
   it('S-93: flat layouts and preset bucket roots navigate identically', async () => {
     const flatDir = await temporaryDirectory();
     await openApiToApiDocs(SPEC as any, { outDir: flatDir, mode: 'flat' });
@@ -115,6 +128,9 @@ describe('spec ↔ tree navigation (Phase 3, S-93)', () => {
     const escaped = JSON.stringify({ openapi: '3.1.0', info: { title: 'T', version: '1' }, paths: { '/a~b/c': { get: {} } } });
     expect(specPointerToLine(escaped, '#/paths/~1a~0b~1c/get')).toBe(1);
     expect(() => specPointersToLines('{"a":}', ['#/a'])).toThrow(ZopiaError);
+    for (const malformedScalar of ['{"a": tru}', '{"a": 01}', '{"a": -}', '{"a": nullx}', '{"a": 1e}', '{"a":\f1}', '{"a":\v1}']) {
+      expect(() => specPointersToLines(malformedScalar, ['#/a'])).toThrow(ZopiaError);
+    }
     try { specPointersToLines('{"a":}', ['#/a']); } catch (error) { expect((error as ZopiaError).code).toBe('ZOPIA_SPEC_INVALID_JSON'); }
   });
 
@@ -163,9 +179,10 @@ describe('spec ↔ tree navigation (Phase 3, S-93)', () => {
         { file: 'a/get/index.ts', path: '/a', method: 'get' },
         { file: 'b/get/index.ts', path: '/b', method: 'get', operationId: 'dupe' },
         { file: 'c/get/index.ts', path: '/c', method: 'get', operationId: 'dupe' },
+        { file: 'malformed/get/index.ts', path: 42, method: 'get' },
       ],
-      webhooks: [null, { file: 'webhooks/h/post/index.ts', name: 'h', method: 'post' }],
-      components: [null, { file: 'components/Thing/index.ts', name: 'Thing' }, { file: undefined, name: 'Ghost' }],
+      webhooks: [null, { file: 'webhooks/h/post/index.ts', name: 'h', method: 'post' }, { file: 'webhooks/bad/post/index.ts', name: 42, method: 'post' }],
+      components: [null, { file: 'components/Thing/index.ts', name: 'Thing' }, { file: undefined, name: 'Ghost' }, { file: 'components/Nameless/index.ts' }],
       options: {},
     } as any);
     // malformed entries and legacy file-less records skip; the first operationId occurrence wins
