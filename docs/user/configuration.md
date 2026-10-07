@@ -103,7 +103,7 @@ interface ZopiaReverseOptions {
 
 | # | Invalid input | 🛑 Result |
 | --- | --- | --- |
-| R-921 | `version` outside `'3.0' \| '3.1'` | `ZOPIA_CONFIG_INVALID` |
+| R-921 | `version` outside `'2.0' \| '3.0' \| '3.1'` | `ZOPIA_CONFIG_INVALID` |
 
 ## 📄 `ZodToJsonSchemaOptions` — engine ①
 
@@ -153,9 +153,9 @@ zopia diff <old-spec> <new-spec>          (no options yet; `--config path` accep
 | `--custom` | `custom: true` |
 | `--preset <multi-tag\|multi-server>` | `preset` |
 | `--no-manifest` | `manifest: false` |
-| `--watch` | no config equivalent — CLI-only; watches the spec file's parent directory (survives atomic editor saves) and regenerates on change |
+| `--watch` | no config equivalent — CLI-only; watches the spec file's parent directory (survives atomic editor saves) and regenerates on change. An unwatchable parent fails with typed `ZOPIA_CONFIG_INVALID` |
 | `--out <file.json>` (reverse) | output file path |
-| `--version <3.0\|3.1>` | `version` |
+| `--version <2.0\|3.0\|3.1>` | `version` |
 
 > 📌 **Rule R-931** — positive boolean flags are additive: absence = `false`.
 > `--no-manifest` is the one explicit inverse because manifests default on.

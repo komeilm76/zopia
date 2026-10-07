@@ -42,7 +42,10 @@ export interface ZopiaNavigationIndex {
    * Map a source-document JSON pointer to every generated file implementing it.
    * Supported shapes: `#` (manifest), `#/paths/&lt;path&gt;` (every method
    * of the item), `#/paths/&lt;path&gt;/&lt;method&gt;`,
-   * `#/webhooks/&lt;name&gt;`(…/ method)`, `#/components/schemas/&lt;name&gt;`.
+   * `#/webhooks/&lt;name&gt;` (or its method), OpenAPI component pointers
+   * `#/components/&lt;schemas|parameters|responses&gt;/&lt;name&gt;`, and
+   * Swagger component pointers `#/&lt;definitions|parameters|responses&gt;/&lt;name&gt;`.
+   * Component container pointers resolve to their barrel when emitted.
    * Companion files follow their endpoint when `options.custom` was recorded.
    * @param pointer Source-document JSON pointer (RFC 6901 fragment form).
    * @returns Navigation locations in deterministic file order.
@@ -106,7 +109,7 @@ export function navigationIndexFromManifest(manifest: ZopiaManifest): ZopiaNavig
   for (const api of manifest.apis) {
     if (!api || typeof api !== 'object') continue;
     const file = api.file;
-    if (file === undefined) continue;
+    if (typeof file !== 'string' || typeof api.path !== 'string' || typeof api.method !== 'string') continue;
     const pointer = `#/paths/${escapePointerSegment(api.path)}/${api.method}`;
     const location: ZopiaNavigationLocation = { kind: 'endpoint', file, pointer, label: operationLabel('paths', api.path, api.method, api.operationId) };
     remember(location);
@@ -116,7 +119,7 @@ export function navigationIndexFromManifest(manifest: ZopiaManifest): ZopiaNavig
   for (const webhook of manifest.webhooks ?? []) {
     if (!webhook || typeof webhook !== 'object') continue;
     const file = webhook.file;
-    if (file === undefined) continue;
+    if (typeof file !== 'string' || typeof webhook.name !== 'string' || typeof webhook.method !== 'string') continue;
     const pointer = `#/webhooks/${escapePointerSegment(webhook.name)}/${webhook.method}`;
     const location: ZopiaNavigationLocation = { kind: 'webhook', file, pointer, label: operationLabel('webhooks', webhook.name, webhook.method, webhook.operationId) };
     remember(location);
@@ -124,14 +127,31 @@ export function navigationIndexFromManifest(manifest: ZopiaManifest): ZopiaNavig
     if (webhook.operationId !== undefined && !byOperationId.has(webhook.operationId)) byOperationId.set(webhook.operationId, pointer);
   }
   const components = manifest.components ?? [];
-  let hasComponentFile = false;
+  const sourceKind = (manifest.source as { kind?: string } | undefined)?.kind;
+  const swagger = sourceKind === 'swagger-2.0';
+  const componentKind = (component: { kind?: unknown }): 'schema' | 'parameter' | 'response' => component.kind === 'parameter' || component.kind === 'response' ? component.kind : 'schema';
+  const componentContainerPointer = (kind: 'schema' | 'parameter' | 'response'): string => {
+    if (swagger) return kind === 'schema' ? '#/definitions' : kind === 'parameter' ? '#/parameters' : '#/responses';
+    return kind === 'schema' ? '#/components/schemas' : kind === 'parameter' ? '#/components/parameters' : '#/components/responses';
+  };
+  const componentPointer = (kind: 'schema' | 'parameter' | 'response', name: string): string => `${componentContainerPointer(kind)}/${escapePointerSegment(name)}`;
+  const emittedComponentKinds = new Set<'schema' | 'parameter' | 'response'>();
   for (const component of components) {
     if (!component || typeof component !== 'object') continue;
-    if (typeof component.file !== 'string') continue;
-    hasComponentFile = true;
-    remember({ kind: 'component', file: component.file, pointer: `#/components/schemas/${escapePointerSegment(component.name)}`, label: `component ${component.name}` });
+    if (typeof component.file !== 'string' || typeof component.name !== 'string') continue;
+    const kind = componentKind(component);
+    emittedComponentKinds.add(kind);
+    const label = kind === 'schema' ? `component ${component.name}` : `component ${kind} ${component.name}`;
+    remember({ kind: 'component', file: component.file, pointer: componentPointer(kind, component.name), label });
   }
-  if (hasComponentFile) remember({ kind: 'component', file: 'components/index.ts', pointer: '#/components/schemas', label: 'component barrel' });
+  if (manifest.options?.insertComponents === true || emittedComponentKinds.size > 0) {
+    // components/index.ts is always the schema barrel whenever components are
+    // emitted — including an empty schema container. Generated parameter and
+    // response containers have their own kind barrels below.
+    remember({ kind: 'component', file: 'components/index.ts', pointer: componentContainerPointer('schema'), label: 'component barrel' });
+  }
+  if (emittedComponentKinds.has('parameter')) remember({ kind: 'component', file: 'components/parameters/index.ts', pointer: componentContainerPointer('parameter'), label: 'component parameter barrel' });
+  if (emittedComponentKinds.has('response')) remember({ kind: 'component', file: 'components/responses/index.ts', pointer: componentContainerPointer('response'), label: 'component response barrel' });
 
   const locationsSorted = [...byFile.values()].sort((left, right) => left.file < right.file ? -1 : left.file > right.file ? 1 : 0);
   const index: ZopiaNavigationIndex = {
@@ -139,7 +159,7 @@ export function navigationIndexFromManifest(manifest: ZopiaManifest): ZopiaNavig
     specToLocations(pointer) {
       if (pointer === '#') return [{ kind: 'manifest', file: ZOPIA_MANIFEST_FILE, pointer: '#', label: 'manifest' }];
       const segments = pointer.startsWith('#/') ? pointer.slice(2).split('/').map(decodePointerSegment) : undefined;
-      if (!segments || segments.length === 0) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: "use '#', '#/paths/<path>[/<method>]', '#/webhooks/<name>[/<method>]', or '#/components/schemas/<name>'" });
+      if (!segments || segments.length === 0) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: "use '#', '#/paths/<path>[/<method>]', '#/webhooks/<name>[/<method>]', or a source-dialect component pointer such as '#/components/schemas/<name>' or '#/definitions/<name>'" });
       const [section, ...rest] = segments;
       if (section === 'paths' || section === 'webhooks') {
         const [name, method, ...extra] = rest;
@@ -161,15 +181,32 @@ export function navigationIndexFromManifest(manifest: ZopiaManifest): ZopiaNavig
         if (section === 'webhooks') throw new ZopiaError('ZOPIA_CONFIG_INVALID', `spec pointer has no generated module: ${pointer}`, { at: pointer, hint: 'check the webhook name and method, or regenerate from a newer source document' });
         throw new ZopiaError('ZOPIA_CONFIG_INVALID', `spec pointer has no generated module: ${pointer}`, { at: pointer, hint: 'check the path and method, or regenerate from a newer source document' });
       }
-      if (section === 'components' && rest[0] === 'schemas') {
-        const name = rest[1];
-        if (name === undefined || rest.length > 2) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: "use '#/components/schemas/<name>'" });
+      const componentPointerShape = (): { kind: 'schema' | 'parameter' | 'response'; name?: string; container: string } | undefined => {
+        if (section === 'components' && (rest[0] === 'schemas' || rest[0] === 'parameters' || rest[0] === 'responses')) {
+          const kind = rest[0] === 'parameters' ? 'parameter' : rest[0] === 'responses' ? 'response' : 'schema';
+          return rest.length <= 2 ? { kind, name: rest[1], container: `#/components/${rest[0]}` } : undefined;
+        }
+        if ((section === 'definitions' || section === 'parameters' || section === 'responses') && rest.length <= 1) {
+          const kind = section === 'parameters' ? 'parameter' : section === 'responses' ? 'response' : 'schema';
+          return { kind, name: rest[0], container: `#/${section}` };
+        }
+        return undefined;
+      };
+      const componentShape = componentPointerShape();
+      if (componentShape) {
+        if (componentShape.name === undefined) {
+          const hits = byPointer.get(componentShape.container);
+          if (hits && hits.length > 0) return hits;
+          throw new ZopiaError('ZOPIA_CONFIG_INVALID', `spec pointer has no generated module: ${pointer}`, { at: pointer, hint: 'regenerate with insertComponents (--insert-components) to emit component modules' });
+        }
+        const expectedPointer = componentPointer(componentShape.kind, componentShape.name);
+        if (pointer !== expectedPointer) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: `use '${componentContainerPointer(componentShape.kind)}/<name>' for this source dialect` });
         const hits = byPointer.get(pointer);
         if (hits && hits.length > 0) return hits;
-        if (components.some((component) => component?.name === name)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `component ${name} declares no generated module: ${pointer}`, { at: pointer, hint: 'regenerate with insertComponents (--insert-components) to emit component modules' });
+        if (components.some((component) => component && typeof component === 'object' && componentKind(component) === componentShape.kind && component.name === componentShape.name)) throw new ZopiaError('ZOPIA_CONFIG_INVALID', `component ${componentShape.name} declares no generated module: ${pointer}`, { at: pointer, hint: 'regenerate with insertComponents (--insert-components) to emit component modules' });
         throw new ZopiaError('ZOPIA_CONFIG_INVALID', `spec pointer has no generated module: ${pointer}`, { at: pointer, hint: 'check the component name, or regenerate from a newer source document' });
       }
-      throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: "use '#', '#/paths/<path>[/<method>]', '#/webhooks/<name>[/<method>]', or '#/components/schemas/<name>'" });
+      throw new ZopiaError('ZOPIA_CONFIG_INVALID', `unsupported spec pointer for navigation: ${pointer}`, { at: pointer, hint: "use '#', '#/paths/<path>[/<method>]', '#/webhooks/<name>[/<method>]', or a source-dialect component pointer such as '#/components/parameters/<name>' or '#/responses/<name>'" });
     },
     treeToSpecLocation(file) {
       const normalized = file.replace(/\\/g, '/').replace(/^\.\//, '');
@@ -227,7 +264,7 @@ export function specPointersToLines(jsonText: string, pointers: string[]): Map<s
   let index = 0;
   let line = 1;
   const text = jsonText;
-  const advance = (): void => { while (index < text.length && ' \t\r\n\f\v'.includes(text[index])) { if (text[index] === '\n') line += 1; index += 1; } };
+  const advance = (): void => { while (index < text.length && ' \t\r\n'.includes(text[index])) { if (text[index] === '\n') line += 1; index += 1; } };
   const scanString = (): string => {
     // Caller positioned index at the opening quote; scanString returns the decoded value.
     let depth = 0;
@@ -258,10 +295,15 @@ export function specPointersToLines(jsonText: string, pointers: string[]): Map<s
     if (char === '{') { scanObject(); return; }
     if (char === '[') { scanArray(); return; }
     if (char === '"') { scanString(); return; }
-    // scalars: number/true/false/null — consume until a structural boundary
+    // scalars: number/true/false/null — consume until a structural boundary,
+    // then validate the token with JSON.parse so malformed scalars (`tru`, `01`,
+    // `1e`, `nullx`, …) are rejected instead of being treated as valid JSON.
     const scalars = new Set(['t', 'f', 'n', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
     if (!scalars.has(char)) throw invalidJson();
+    const start = index;
     while (index < text.length && !' \t\r\n,}]'.includes(text[index])) index += 1;
+    try { JSON.parse(text.slice(start, index)); }
+    catch { throw invalidJson(); }
   };
   /** Stack of object-key segments along the current path ('' inside arrays). */
   const path: string[] = [];

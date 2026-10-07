@@ -123,6 +123,7 @@ for (const file of pages) {
   for (const match of html.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
     const [, href, inner] = match;
     const label = text(inner).toLowerCase();
+    if (/https?:\/\/[^"]*https?:\/\//i.test(href)) fail(page, `malformed external link contains multiple protocols: ${href}`);
     if (label && VAGUE_LINK_TEXT.includes(label)) fail(page, `uninformative link text "${label}" → ${href}`);
     if (!href.startsWith(BASE) || href.startsWith('//')) continue;
     const route = posix.normalize(href.split('#')[0].split('?')[0]).replace(/\/$/, '') || BASE;

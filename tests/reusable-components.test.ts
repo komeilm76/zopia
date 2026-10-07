@@ -8,7 +8,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { manifestFileToOpenApi, openApiToApiDocs } from '../src';
+import { loadNavigationIndex, manifestFileToOpenApi, openApiToApiDocs } from '../src';
 import type { OpenApiDocument } from '../src/conversions/openapi';
 import { useTemporaryDirectories } from './test-temporary-directories';
 
@@ -37,7 +37,7 @@ async function treeFiles(root: string, directory = root, prefix = ''): Promise<s
 describe('S-81: reusable parameters and responses generate their own component modules', () => {
   it('emits parameter/response modules, kind barrels, imports, and manifest entries for OpenAPI 3.x', async () => {
     const outDir = await temporaryDirectory();
-    await openApiToApiDocs(await readSpec('reusables-3.1.json'), { outDir, insertComponents: true, useComponentAsReference: true });
+    const result = await openApiToApiDocs(await readSpec('reusables-3.1.json'), { outDir, insertComponents: true, useComponentAsReference: true });
 
     expect(await treeFiles(outDir)).toEqual([
       '.zopia-manifest.json',
@@ -55,6 +55,17 @@ describe('S-81: reusable parameters and responses generate their own component m
       'components/responses/index.ts',
       'widgets/get/index.ts',
     ]);
+    expect(result.files.filter((file) => file.path.startsWith('components/')).every((file) => file.kind === 'component')).toBe(true);
+
+    const navigation = await loadNavigationIndex(outDir);
+    expect(navigation.specToLocations('#/components/parameters/PageSize')).toEqual([
+      { kind: 'component', file: 'components/parameters/PageSize/index.ts', pointer: '#/components/parameters/PageSize', label: 'component parameter PageSize' },
+    ]);
+    expect(navigation.specToLocations('#/components/responses/NotFound')).toEqual([
+      { kind: 'component', file: 'components/responses/NotFound/index.ts', pointer: '#/components/responses/NotFound', label: 'component response NotFound' },
+    ]);
+    expect(() => navigation.specToLocations('#/components/schemas/PageSize')).toThrow(/unsupported spec pointer|spec pointer has no generated module/);
+    expect(navigation.treeToSpecLocation('components/parameters/index.ts')).toMatchObject({ pointer: '#/components/parameters' });
 
     // Modules hold the derived schema only: direct, cross-schema $ref, and chained-declaration forms.
     await expect(readFile(join(outDir, 'components/parameters/PageSize/index.ts'), 'utf8')).resolves.toContain('export const PageSizeParameter = z.number().int().min(1);');
@@ -93,6 +104,25 @@ describe('S-81: reusable parameters and responses generate their own component m
     ]);
     expect(manifest.components.find((component: any) => component.kind === 'parameter' && component.name === 'PageSize').schema).toEqual({ type: 'integer', minimum: 1 });
     expect(manifest.components.find((component: any) => component.kind === 'response' && component.name === 'NotFound').schema).toEqual({ $ref: '#/components/schemas/Widget' });
+  });
+
+  it('keeps kind barrels unambiguous when reusable declarations exist without schema components', async () => {
+    const outDir = await temporaryDirectory();
+    await openApiToApiDocs({
+      openapi: '3.1.0',
+      info: { title: 'Parameters only', version: '1' },
+      components: {
+        parameters: { Trace: { name: 'trace', in: 'header', schema: { type: 'string' } } },
+      },
+      paths: { '/widgets': { get: { parameters: [{ $ref: '#/components/parameters/Trace' }], responses: { '200': { description: 'ok' } } } } },
+    }, { outDir, insertComponents: true, useComponentAsReference: true });
+
+    const navigation = await loadNavigationIndex(outDir);
+    expect(navigation.specToLocations('#/components/parameters')).toEqual([
+      { kind: 'component', file: 'components/parameters/index.ts', pointer: '#/components/parameters', label: 'component parameter barrel' },
+    ]);
+    expect(navigation.treeToSpecLocation('components/index.ts')).toMatchObject({ pointer: '#/components/schemas' });
+    expect(navigation.treeToSpecLocation('components/parameters/index.ts')).toMatchObject({ pointer: '#/components/parameters' });
   });
 
   it('emits body and formData parameter modules with a single file body slot for Swagger 2.0', async () => {
@@ -135,6 +165,15 @@ describe('S-81: reusable parameters and responses generate their own component m
       'response:Problem:components/responses/Problem/index.ts',
     ]);
     expect(manifest.components.find((component: any) => component.kind === 'parameter' && component.name === 'Upload').schema).toEqual({ type: 'string', format: 'binary' });
+
+    const navigation = await loadNavigationIndex(outDir);
+    expect(navigation.specToLocations('#/parameters/Trace')).toEqual([
+      { kind: 'component', file: 'components/parameters/Trace/index.ts', pointer: '#/parameters/Trace', label: 'component parameter Trace' },
+    ]);
+    expect(navigation.specToLocations('#/responses/Problem')).toEqual([
+      { kind: 'component', file: 'components/responses/Problem/index.ts', pointer: '#/responses/Problem', label: 'component response Problem' },
+    ]);
+    expect(navigation.treeToSpecLocation('components/parameters/index.ts')).toMatchObject({ pointer: '#/parameters' });
   });
 
   it('emits no kind barrels for specs without reusable declarations', async () => {

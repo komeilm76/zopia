@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-07
+
+### 🛡️ Security
+
+- 🛡️ Cleared npm audit findings in both the root package and the VitePress website: the website now overrides Vite to `6.4.4` (pulling patched `esbuild`), and both root dependency lockfiles (`package-lock.json` and `bun.lock`) now use `source-map-js@1.2.2`.
+
+### 🐛 Fixed
+
+- 🧭 Navigation now rejects malformed JSON scalar tokens and non-JSON whitespace during pointer scanning, resolves reusable parameter/response component pointers in their real namespaces (including Swagger 2.0 `#/parameters` and `#/responses`), keeps `components/index.ts` assigned to schema components even in parameter/response-only trees so kind-barrel navigation stays unambiguous, and reports reusable component files as `component` results instead of endpoint files.
+- 🛠️ The VS Code extension no longer dynamically imports the Bun-first `zopia` package from Node, no longer advertises unsupported JSONC spec sources, finds source specs colocated with a workspace-root manifest, and its best-effort YAML operationId matching now respects YAML mapping boundaries while handling quoted/commented IDs and IDs outside identifier characters.
+- 🧹 Validation reachability now distinguishes literal annotation values from schema properties with the same names, no longer confuses operation-side properties named `schemas`/`definitions` with the source document's component container, auto-detects Windows-style `.zopia-manifest.json` paths as docs targets, and reports inline spec text as `(inline document)` instead of echoing the full document.
+- 🌐 Website sync no longer rewrites absolute `.md` links into malformed doubled GitHub URLs, preserves non-HTTP schemes such as `mailto:`, and the site audit now rejects links containing multiple protocols.
+- 📚 Documentation links and version examples were refreshed for the current `v0.6`/`v0.5` snapshot set and the supported reverse `--version 2.0|3.0|3.1` values.
+- 🧷 Watch mode now verifies that the spec's parent directory can be watched before installing `fs.watch`; a missing or unwatchable parent exits 1 with typed `ZOPIA_CONFIG_INVALID` after the initial attempt instead of crashing with Node's raw watcher `ENOENT` (exit 2).
+- 🧩 Generated component and endpoint modules now allocate collision-free internal component/formData markers, so source literals that happen to equal strings such as `__zopia_component_reference_0__` are preserved verbatim instead of being rewritten to a component schema.
+- 🗂️ The documentation snapshot CLI now parses `--keep` separately from the optional release tag: `node website/scripts/snapshot-version.mjs --keep 2` no longer treats `2` as a tag, and unknown flags or extra positional values fail instead of being silently ignored.
+- 🔍 The diff command and `diffOpenApiSpecs()` now bundle same-folder external `$ref`s from file-backed inputs exactly like generation and validation; an external path-item file therefore compares semantically identical to its inline expansion instead of failing with `ZOPIA_REF_EXTERNAL`.
+- 🧭 Navigation and the VS Code extension recognize the always-emitted `components/index.ts` schema barrel even when component generation has no modules to export, and keep it owned by the schema container (`#/components/schemas` or Swagger `#/definitions`).
+
 ## [0.7.0] - 2026-10-03
 
 ### ✨ Added
@@ -73,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   onto today's routes so older releases still browse like the current site.
   The version switcher, the per-version sidebars, and the
   "you are reading old documentation" banner are all generated from those
-  snapshots. **v0.5 and v0.4 are published** alongside the latest docs.
+  snapshots. **v0.6 and v0.5 are published** alongside the latest docs.
 - 🔍 **Automated site quality gate.** `website/scripts/audit.mjs` checks the
   built output on every CI run: `/zopia/` base-path correctness, unique
   non-empty titles and meta descriptions, `<html lang>`, exactly one `<h1>`
@@ -253,7 +272,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ZOPIA_MANIFEST_INVALID`, `ZOPIA_DOCS_IMPORT_FAILED`); paths that cannot
   share one nested tree (below a method leaf, trailing-slash twins) fail typed
   `ZOPIA_SPEC_INVALID`. Documented in
-  [docs/07-api-docs.md → Runtime tree consumption](docs/07-api-docs.md).
+  [docs/user/api-docs-format.md → Runtime tree consumption](docs/user/api-docs-format.md).
 - 📦 **npm publish pipeline** — `.github/workflows/publish.yml` publishes on GitHub Release creation (or manually) with the pinned Bun toolchain, verifies the release tag matches `package.json`'s version, and runs `npm publish --provenance --access public`. Its only credential is the repository-secret `NODE_AUTH_TOKEN` (npm `NPM_TOKEN`) — never handled in chat or commits; npm trusted-publishing (OIDC) is supported by the declared `id-token` permission.
 
 ### 🐛 Fixed
@@ -304,7 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > 📌 **Convention** — every commit that changes behaviour, the public API, or the
 > documentation adds an entry under `Unreleased`. When a release is cut, the
 > `Unreleased` section is renamed to the new version with its date.
-> See [docs/12-standards.md → Changelog convention](docs/12-standards.md#-changelog-convention).
+> See [docs/development/12-standards.md → Changelog convention](docs/development/12-standards.md#-changelog-convention).
 
 ---
 - 🔍 **Spec diff tool (Phase 3, S-91)** — new `zopia diff old.json new.json` CLI command plus `diffOpenApiSpecs()` / `diffOpenApiDocuments()` APIs: semantic comparison of two Swagger 2.0 / OpenAPI 3.0/3.1 inputs (JSON paths, YAML paths, inline text, or objects — loaded with the same rules as generation). Changes are grouped and deterministically ordered: dialect, `info` fields, endpoints (added/removed labeled `METHOD path (operationId)` in path-primary order; shared operations emit a header plus scalar `->` transitions, parameter add/remove/change, request-body presence/content, response status adds/removals/changes, security, tags, and `x-` extensions), webhooks, schema components (dialect-aligned `#/definitions/…` vs `#/components/schemas/…` pointers), document fields, and root extensions. Object-key order never counts as a change; detected changes print as `+`/`-`/`~` lines with a `zopia diff …: N changes (A added, R removed, C changed)` summary to stdout, stderr stays silent, and changed pairs exit `0` (differences are data). Unreadable/invalid inputs fail with the existing typed `ZOPIA_SPEC_*` codes.
@@ -476,7 +495,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 📝 Decisions
 
 - 🔑 Recorded the first architecture decisions (**D-01 … D-15**) in
-  [docs/12-standards.md → Key decisions](docs/12-standards.md#-key-decisions).
+  [docs/development/12-standards.md → Key decisions](docs/development/12-standards.md#-key-decisions).
 
 ### 🔄 Changed
 - 📖 Documented the optional ergonomic facade and explicit bracket notation for path parameters.

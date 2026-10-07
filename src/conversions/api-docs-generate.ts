@@ -108,7 +108,7 @@ function schemaCodeWithDocumentRefs(schema: unknown, name: string, source: OpenA
 function schemaCodeWithComponentImports(schema: unknown, name: string, source: OpenApiDocument, rootComponent: string): { code: string; imports: Map<string, string> } {
   const imports = new Map<string, string>();
   const replacements = new Map<string, string>();
-  let markerIndex = 0;
+  const newComponentMarker = uniqueMarkerAllocator('__zopia_component_reference_', schema);
   const rewrite = (value: unknown, root = false, mapEntries = false): unknown => {
     if (Array.isArray(value)) return value.map((child) => rewrite(child));
     if (!value || typeof value !== 'object') return value;
@@ -118,9 +118,7 @@ function schemaCodeWithComponentImports(schema: unknown, name: string, source: O
     if (target) {
       const component = componentExportName(target);
       imports.set(component, target);
-      let marker = `__zopia_component_reference_${markerIndex++}__`;
-      const serialized = JSON.stringify(value) ?? '';
-      while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_component_reference_${markerIndex++}__`;
+      const marker = newComponentMarker();
       replacements.set(marker, root || componentReaches(source, target, rootComponent) ? `z.lazy(() => ${component})` : component);
       const siblings = Object.fromEntries(Object.entries(object).filter(([key]) => key !== '$ref').map(([key, child]) => [key, ['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-') ? child : rewrite(child, false, STRUCTURAL_REF_MAP_KEYS.has(key))]));
       if (Object.keys(siblings).length === 0) return { const: marker };
@@ -145,6 +143,28 @@ function stableDataJson(value: unknown): string {
   return JSON.stringify(value, (_key, child) => child && typeof child === 'object' && !Array.isArray(child)
     ? Object.fromEntries(Object.entries(child).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))
     : child);
+}
+
+/**
+ * Allocate a marker string that cannot already occur inside the schema being rewritten.
+ * The marker is later replaced in generated code by a component reference; if literal
+ * source data happened to contain the same marker text, a global replacement would
+ * silently corrupt that literal with a component schema.
+ */
+function uniqueMarkerAllocator(prefix: string, schema: unknown): () => string {
+  let serialized: string;
+  try { serialized = JSON.stringify(schema) ?? ''; }
+  catch { serialized = ''; }
+  const used = new Set<string>();
+  let index = 0;
+  return () => {
+    for (;;) {
+      const marker = `${prefix}${index++}__`;
+      if (used.has(marker) || serialized.includes(JSON.stringify(marker))) continue;
+      used.add(marker);
+      return marker;
+    }
+  };
 }
 
 const isMissingPath = (error: unknown): boolean => Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'ENOENT');
@@ -269,7 +289,8 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   const componentRefs = useComponents ? collectComponentRefs({ operation: operation.operation, parameters: ir.parameters }) : new Set<string>();
   const componentSchema = (schema: unknown, fallback: string) => {
     if (useComponents) {
-      const replacements = new Map<string, string>(); let markerIndex = 0;
+      const replacements = new Map<string, string>();
+      const newComponentMarker = uniqueMarkerAllocator('__zopia_component_reference_', schema);
       const rewrite = (value: unknown, mapEntries = false): unknown => {
         if (Array.isArray(value)) return value.map((child) => rewrite(child));
         if (!value || typeof value !== 'object') return value;
@@ -278,9 +299,7 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
         const component = componentExport(object.$ref);
         if (component) {
           componentRefs.add(component);
-          let marker = `__zopia_component_reference_${markerIndex++}__`;
-          const serialized = JSON.stringify(value) ?? '';
-          while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_component_reference_${markerIndex++}__`;
+          const marker = newComponentMarker();
           replacements.set(marker, component);
           const siblings = Object.fromEntries(Object.entries(object).filter(([key]) => key !== '$ref').map(([key, child]) => [key, ['example', 'examples', 'default', 'enum', 'const'].includes(key) || key.startsWith('x-') ? child : rewrite(child, STRUCTURAL_REF_MAP_KEYS.has(key))]));
           if (Object.keys(siblings).length === 0) return { const: marker };
@@ -307,12 +326,11 @@ function renderEndpoint(operation: any, source: OpenApiDocument, mode: ApiDocsMo
   if (useComponents && contracts.requestBody?.formDataReusable && requestSchema && typeof requestSchema === 'object' && !Array.isArray(requestSchema)) {
     const object = requestSchema as Record<string, unknown>;
     if (object.properties && typeof object.properties === 'object' && !Array.isArray(object.properties)) {
-      const serialized = JSON.stringify(requestSchema) ?? '';
+      const newReusableMarker = uniqueMarkerAllocator('__zopia_reusable_reference_', requestSchema);
       const properties = { ...(object.properties as Record<string, unknown>) };
       for (const [property, reusable] of Object.entries(contracts.requestBody.formDataReusable)) {
         if (!Object.prototype.hasOwnProperty.call(properties, property)) continue;
-        let marker = `__zopia_reusable_reference_${formDataMarkers.length}__`;
-        while (serialized.includes(JSON.stringify(marker))) marker = `__zopia_reusable_reference_${formDataMarkers.length}_${marker.split('_').length}__`;
+        const marker = newReusableMarker();
         formDataMarkers.push([marker, reusableParameterExport(reusable)]);
         properties[property] = { const: marker };
       }

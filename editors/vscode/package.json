@@ -8,7 +8,7 @@
   "publisher": "zopia",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/komeilm76/zopia", "directory": "editors/vscode" },
-  "activationEvents": ["onLanguage:json", "onLanguage:jsonc", "onLanguage:yaml", "onLanguage:typescript"],
+  "activationEvents": ["onLanguage:json", "onLanguage:yaml", "onLanguage:typescript"],
   "main": "./extension.js",
   "contributes": {
     "commands": [
@@ -18,7 +18,7 @@
     "menus": {
       "editor/context": [
         { "command": "zopia.openSpecLocation", "when": "resourceExtname == .ts" },
-        { "command": "zopia.openGeneratedCode", "when": "resourceExtname =~ /\\.(json|jsonc|yaml|yml)$/" }
+        { "command": "zopia.openGeneratedCode", "when": "resourceExtname =~ /\\.(json|yaml|yml)$/" }
       ]
     }
   }

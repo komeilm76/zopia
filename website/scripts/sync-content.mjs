@@ -88,7 +88,10 @@ function frontmatter(title, description, extra = []) {
 
 function transform(markdown, { title, description, pages, prefix, fallback, banner, frontmatterExtra }) {
   let body = markdown
-    .replace(/\]\(([^)\s]+\.md(?:#[^)\s]*)?)\)/g, (_match, target) => `](${rewriteTarget(target, pages, prefix, fallback)})`)
+    .replace(/\]\(([^)\s]+\.md(?:#[^)\s]*)?)\)/g, (match, target) => {
+      if (/^[a-z][a-z\d+.-]*:/i.test(target)) return match;
+      return `](${rewriteTarget(target, pages, prefix, fallback)})`;
+    })
     .trimEnd();
 
   // Drop the hand-written trailing "Next" block — VitePress renders prev/next.
@@ -195,7 +198,7 @@ async function syncChangelog() {
   const raw = await readFile(join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
   // The changelog links to repository files (./LICENSE, docs/…); on the site
   // those must resolve to GitHub, not to a site route.
-  const source = raw.replace(/\]\((?!https?:|#|\/)\.?\/?([^)\s]+)\)/g, (_match, target) => `](${GITHUB_BLOB}${target})`);
+  const source = raw.replace(/\]\((?![a-z][a-z\d+.-]*:|#|\/)\.?\/?([^)\s]+)\)/gi, (_match, target) => `](${GITHUB_BLOB}${target})`);
   await writeFile(join(contentRoot, 'changelog.md'), `${frontmatter('Changelog', 'Release history of the zopia package.')}${source.trimEnd()}\n`, 'utf8');
 }
 

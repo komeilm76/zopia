@@ -44,6 +44,31 @@ describe('spec diff (Phase 3, S-91)', () => {
     expect((await diffOpenApiSpecs(jsonPath, yamlPath)).identical).toBe(true);
   });
 
+  it('S-91: bundles same-folder external references in file-backed diff inputs', async () => {
+    const directory = await temporaryDirectory();
+    const externalPath = join(directory, 'external.json');
+    const inlinePath = join(directory, 'inline.json');
+    const sharedPath = join(directory, 'shared.json');
+    const operation = { operationId: 'listPets', responses: { '200': { description: 'ok' } } };
+    await writeFile(sharedPath, JSON.stringify({ PetsPath: { summary: 'Pets', get: operation } }), 'utf8');
+    await writeFile(externalPath, JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Pets', version: '1' },
+      paths: { '/pets': { $ref: './shared.json#/PetsPath' } },
+    }), 'utf8');
+    await writeFile(inlinePath, JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'Pets', version: '1' },
+      paths: { '/pets': { summary: 'Pets', get: operation } },
+    }), 'utf8');
+
+    await expect(diffOpenApiSpecs(externalPath, inlinePath)).resolves.toMatchObject({
+      identical: true,
+      changes: [],
+      counts: { added: 0, removed: 0, changed: 0 },
+    });
+  });
+
   it('S-91: reports endpoint additions and removals with operation identities', () => {
     const result = diffOpenApiDocuments(base as any, {
       ...base,

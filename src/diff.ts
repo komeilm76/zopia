@@ -1,6 +1,7 @@
 import { ZopiaError } from './errors';
 import { collectOpenApiOperations, collectOpenApiWebhookOperations, type OpenApiOperation } from './conversions/openapi-to-api-docs';
 import { normalizeOpenApiDocument, type OpenApiDocument, type OpenApiVersion } from './conversions/openapi';
+import { bundleExternalOpenApiRefs } from './conversions/openapi-external-ref';
 import { resolveOpenApiLocalRef } from './conversions/openapi-ref';
 import { readOpenApiSourceInput } from './conversions/openapi-to-api-docs-public';
 
@@ -349,5 +350,8 @@ export function diffOpenApiDocuments(before: OpenApiDocument, after: OpenApiDocu
 export async function diffOpenApiSpecs(before: string | OpenApiDocument, after: string | OpenApiDocument): Promise<ZopiaDiffResult> {
   const older = await readOpenApiSourceInput(before);
   const newer = await readOpenApiSourceInput(after);
-  return diffOpenApiDocuments(older.document, newer.document);
+  return diffOpenApiDocuments(
+    older.sourceFile ? await bundleExternalOpenApiRefs(older.document, older.sourceFile) : older.document,
+    newer.sourceFile ? await bundleExternalOpenApiRefs(newer.document, newer.sourceFile) : newer.document,
+  );
 }

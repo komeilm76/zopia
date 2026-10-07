@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const repositoryRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -143,6 +143,18 @@ describe('documentation website contract', () => {
     expect(config).toContain('versionSidebars');
     // R-214 — every snapshot page is rendered with an outdated-version banner.
     expect(read(websiteRoot, 'scripts', 'sync-content.mjs')).toContain('YOU ARE READING OLD DOCUMENTATION');
+  });
+
+  it('R-213a: snapshot argument parsing never mistakes a flag value for a release tag', async () => {
+    const snapshot = await import(pathToFileURL(join(websiteRoot, 'scripts', 'snapshot-version.mjs')).href) as {
+      parseSnapshotArguments: (argv: string[]) => { tag?: string; keep: number };
+    };
+    expect(snapshot.parseSnapshotArguments(['--keep', '2'])).toEqual({ keep: 2 });
+    expect(snapshot.parseSnapshotArguments(['v0.7.0', '--keep', '1'])).toEqual({ tag: 'v0.7.0', keep: 1 });
+    expect(snapshot.parseSnapshotArguments([])).toEqual({ keep: 2 });
+    expect(() => snapshot.parseSnapshotArguments(['--silent'])).toThrow('unknown snapshot option');
+    expect(() => snapshot.parseSnapshotArguments(['--keep', 'v0.7.0'])).toThrow('--keep expects a positive integer');
+    expect(() => snapshot.parseSnapshotArguments(['v0.7.0', '2'])).toThrow('unexpected snapshot argument');
   });
 
   it('W-5: the built site is gated by a deterministic quality audit', () => {

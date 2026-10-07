@@ -21,7 +21,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const websiteRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -57,12 +57,31 @@ const HISTORIC_PAGES = {
 const git = (...args) => execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const minorOf = (version) => `v${version.replace(/^v/, '').split('.').slice(0, 2).join('.')}`;
 
-function parseArguments(argv) {
-  const positional = argv.filter((value) => !value.startsWith('--'));
-  const keepIndex = argv.indexOf('--keep');
-  const keep = keepIndex === -1 ? 2 : Number.parseInt(argv[keepIndex + 1] ?? '', 10);
-  if (!Number.isInteger(keep) || keep < 1) throw new Error('--keep expects a positive integer');
-  return { tag: positional[0], keep };
+/**
+ * Parse snapshot CLI arguments. Exported for contract tests; the top-level
+ * release action runs only when Node executes this file directly.
+ * @param {string[]} argv Arguments after the executable name.
+ * @returns {{ tag?: string, keep: number }} Optional release tag and retention count.
+ */
+export function parseSnapshotArguments(argv) {
+  let tag;
+  let keep;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--keep') {
+      if (keep !== undefined) throw new Error('duplicate --keep option');
+      const value = argv[index + 1];
+      if (!value || !/^\d+$/.test(value)) throw new Error('--keep expects a positive integer');
+      keep = Number(value);
+      if (!Number.isInteger(keep) || keep < 1) throw new Error('--keep expects a positive integer');
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith('--')) throw new Error(`unknown snapshot option: ${argument}`);
+    if (tag !== undefined) throw new Error(`unexpected snapshot argument: ${argument}`);
+    tag = argument;
+  }
+  return { ...(tag === undefined ? {} : { tag }), keep: keep ?? 2 };
 }
 
 /** Read the user pages of a tag (or of the working tree when no tag is given). */
@@ -97,7 +116,7 @@ async function collectPages(tag) {
 }
 
 async function main() {
-  const { tag, keep } = parseArguments(process.argv.slice(2));
+  const { tag, keep } = parseSnapshotArguments(process.argv.slice(2));
   const { version, pages, layout } = await collectPages(tag);
   const minor = minorOf(version);
   const directory = join(versionsRoot, minor);
@@ -136,4 +155,4 @@ async function main() {
   console.log(`✓ snapshotted ${minor} (${meta.tag}, ${pages.length} pages, ${layout} layout)`);
 }
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

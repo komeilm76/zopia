@@ -55,7 +55,7 @@ describe('package and release contract', () => {
   it('S-76/R-191: release identity and public package metadata are complete and synchronized', () => {
     expect(manifest).toMatchObject({
       name: 'zopia',
-      version: '0.7.0',
+      version: '0.7.1',
       description: expect.any(String),
       homepage: 'https://komeilm76.github.io/zopia/',
       bugs: { url: 'https://github.com/komeilm76/zopia/issues' },
@@ -85,7 +85,7 @@ describe('package and release contract', () => {
     const readme = readFileSync(join(repositoryRoot, 'README.md'), 'utf8');
     expect(packageLock.version).toBe(manifest.version);
     expect(packageLock.packages?.['']?.version).toBe(manifest.version);
-    expect(changelog).toContain(`## [${manifest.version}] - 2026-10-03`);
+    expect(changelog).toContain(`## [${manifest.version}] - 2026-10-07`);
     expect(readme).toContain(`v${manifest.version} released`);
   });
 
@@ -118,7 +118,7 @@ describe('package and release contract', () => {
   it('R-192: the npm archive is allowlisted, executable, and free of development files', () => {
     expect(manifest.files).toEqual(['bin', 'src', 'docs/user', '!docs/README.md', '!docs/development', 'CHANGELOG.md', 'LICENSE', 'README.md']);
     const packed = dryRunPackage();
-    expect({ name: packed.name, version: packed.version }).toEqual({ name: 'zopia', version: '0.7.0' });
+    expect({ name: packed.name, version: packed.version }).toEqual({ name: 'zopia', version: '0.7.1' });
 
     const paths = packed.files.map((file) => file.path);
     expect(paths).toEqual(expect.arrayContaining([
@@ -155,6 +155,30 @@ describe('package and release contract', () => {
     const binary = packed.files.find((file) => file.path === 'bin/zopia.js');
     expect(binary?.mode).toBe(0o755);
     expect(statSync(join(repositoryRoot, 'bin', 'zopia.js')).mode & 0o111).not.toBe(0);
+  });
+
+  it('R-193: npm and Bun lockfiles resolve the same package versions', () => {
+    const packageLock = JSON.parse(readFileSync(join(repositoryRoot, 'package-lock.json'), 'utf8')) as { packages?: Record<string, { version?: string }> };
+    const bunLock = readFileSync(join(repositoryRoot, 'bun.lock'), 'utf8');
+    const npmVersions = Object.fromEntries(Object.entries(packageLock.packages ?? {})
+      .filter(([path]) => path.startsWith('node_modules/'))
+      .map(([path, entry]) => [path.slice('node_modules/'.length), entry.version]));
+    const bunVersions = new Map<string, string>();
+    for (const line of bunLock.split(/\r?\n/)) {
+      const match = /^    "((?:\\.|[^"\\])*)": \["((?:\\.|[^"\\])*)",/.exec(line);
+      if (!match) continue;
+      bunVersions.set(match[1], match[2].slice(match[2].lastIndexOf('@') + 1));
+    }
+
+    const mismatches: string[] = [];
+    const missing: string[] = [];
+    for (const [name, version] of bunVersions) {
+      const npmVersion = npmVersions[name];
+      if (npmVersion === undefined) missing.push(name);
+      else if (npmVersion !== version) mismatches.push(`${name}: package-lock ${npmVersion}, bun.lock ${version}`);
+    }
+    expect(missing).toEqual([]);
+    expect(mismatches).toEqual([]);
   });
 
   it('R-193: publishing is guarded by the complete release gate', () => {

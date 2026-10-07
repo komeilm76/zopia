@@ -204,6 +204,30 @@ describe('API docs endpoint generation', () => {
     expect(endpoint).toContain('"default": UserSchema');
     expect(endpoint).not.toContain('LiteralOnlySchema');
   });
+  it('keeps user literals that collide with internal component-reference markers', async () => {
+    const outputDir = await temporaryDirectory('zopia-');
+    const marker = '__zopia_component_reference_0__';
+    const inlineTrap = { allOf: [{ $ref: '#/components/schemas/Base' }, { const: marker }] };
+    await generateApiDocsFiles({
+      openapi: '3.1.0',
+      info: { title: 'Marker collision', version: '1' },
+      components: { schemas: {
+        Base: { type: 'string' },
+        Trap: inlineTrap,
+      } },
+      paths: { '/inline': { get: { responses: { '200': { description: 'ok', content: { 'application/json': { schema: inlineTrap } } } } } } },
+    }, { outputDir, insertComponents: true, useComponentAsReference: true });
+
+    const component = await readFile(join(outputDir, 'components', 'Trap', 'index.ts'), 'utf8');
+    const endpoint = await readFile(join(outputDir, 'inline', 'get', 'index.ts'), 'utf8');
+    const preservedLiteral = `z.literal(${JSON.stringify(marker)})`;
+    for (const generated of [component, endpoint]) {
+      expect(generated).toContain(preservedLiteral);
+      expect(generated).not.toContain('BaseSchema.and(BaseSchema)');
+      expect(generated).not.toContain(`z.literal(${JSON.stringify('__zopia_component_reference_1__')})`);
+    }
+  });
+
   it('does not rewrite ref-looking data inside endpoint schema literals', async () => {
     const outputDir = await temporaryDirectory('zopia-');
     await generateApiDocsFiles({
